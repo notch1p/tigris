@@ -12,9 +12,9 @@ def genTable (E : Env) : VEnv -> TableOf EnvHeader
     (k, toString $ E.get! k, toString $ VE.get! k)
 
 def PEnvHeader := ["op", "prec", "assoc"]
-def genTableOp (PE : OpTable Expr) : TableOf PEnvHeader :=
-  PE.toArray.map fun ⟨(prec, sym), (_, assoc)⟩ =>
-    (sym, toString prec, toString assoc)
+def genTableOp (PE : OpTable) : TableOf PEnvHeader :=
+  PE.fold (init := #[]) fun a sym {prec, assoc,..} =>
+    a.push (sym, toString prec, toString assoc)
 def alignPE : Align PEnvHeader := (left, right, left)
 
 def HelpHeader := ["cmd", "info"]

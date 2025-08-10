@@ -1,136 +1,70 @@
 import Tigris.utils
 import Tigris.typing.types
+import Tigris.parsing.ppat
 open Expr Lexing Parser Parser.Char Pattern
 
 namespace Parsing
-mutual
 
-partial def funapp : TParser Expr := 
+def intExp      : TParser Expr := CI <$> ws intLit
+def strExp      : TParser Expr := CS <$> ws strLit
+
+def nestMatch (pat : Array Pattern) (e : Expr) : Expr :=  -- Slow
+  (·.1) <| pat.foldr (init := (e, pat.size - 1)) fun s (e, i) =>
+    match s with
+    | PVar s => (Fun s e, i)
+    | _ =>
+      (Fun (hole i) $ Match (Var $ hole i) #[(s, e)], i - 1)
+
+open TConst in def funBinder := first'
+   #[ PConst <$> PInt <$> intLit
+    , PConst <$> PStr <$> strLit
+    , PVar <$> ID
+    , parenthesized patProd
+    , parenthesized parsePattern]
+
+mutual
+partial def funapp : TParser Expr :=
   chainl1 atom (pure App)
 
 partial def atom : TParser Expr :=
-  first' $ #[ parenthesized prodExp 
-            , letrecExp             , letExp
+  first' $ #[ parenthesized prodExp
+            , withBacktracking letrecExp
+            , withBacktracking letExp
             , fixpointExp           , funExp
             , condExp               , matchExp
             , intExp                , strExp
-            , varExp                , parenthesized opSection]
+            , varExp]
             |>.map ws
 
 partial def prodExp : TParser Expr := do
-  let es <- sepBy COMMA parseExpr
+  let es <- sepBy COMMA (parsePratt 0)
   return match h : es.size with
          | 0 => CUnit
-         | 1 => es[0]
-         | _ + 2 => es[0:es.size - 1].foldr Prod' es[es.size - 1]
-
-partial def intExp      : TParser Expr := ws INT >>= pure ∘ CI
-
-partial def strExp      : TParser Expr :=
-  CS <$> (char '"' *>
-            foldl .push "" (tokenFilter (· != '"'))
-          <* char '"')
+         | 1 => transShorthand es[0]
+         | _ + 2 => es[0:es.size - 1].foldr (Prod' ∘ transShorthand) es[es.size - 1]
 
 partial def varExp      : TParser Expr :=
-  ID >>= pure ∘ fun
-          | "true"                => CB true
-          | "false"               => CB false
-          | v                     => Var v
+  ID <&> fun
+         | "true"                => CB true
+         | "false"               => CB false
+         | v                     => Var v
 
-partial def opMatcher (arr : Array $ Nat × String) : TParser OpIndex :=
-  first' $ arr.map fun (prec, s) => string s >>= pure ∘ (prec, ·)
+partial def appAtom     : TParser Expr :=
+  chainl1 atom (pure App)
 
-partial def opSection   : TParser Expr := do
-  let e₁ <- option? parseExpr
-  let tb <- get
-  let k <- opMatcher tb.keysArray
-  let e₂ <- option? parseExpr
-  if let some (op, _) := tb.get? k then
-    match e₁, e₂ with
-    | some e₁, some e₂ =>         return op e₁ e₂
-    | _, some e₂ =>               return Fun "y" $ (flip op $ e₂) $ Var "y"
-    | some e₁, _ =>               return Fun "x" $ op e₁ $ Var "x"
-    | none, none =>               return Fun "x" $ Fun "y" $ op (Var "x") (Var "y")
-  else unreachable!
-
-partial def basePattern : TParser Pattern := do
-      (kw "_" *> pure PWild) 
-  <|> (parenthesized patApps)
-  <|> do
-        let id <- ID
-        if isUpperInit id then return PCtor id #[]
-        else return PVar id
-
-partial def patApps : TParser Pattern := do
-  let hd <- basePattern
-  match hd with
-  | PCtor n #[] =>
-    PCtor n <$> takeMany basePattern
-  | _ => return hd
-
-/- Shunting-yard -/
-partial def patWithOps : TParser Pattern := do
-  let tb <- get
-  let lhs <- patApps
-  let pairs <- takeMany do
-    let k <- ws $ opMatcher tb.keysArray
-    let rhs <- patApps
-    pure (k, rhs)
-
-  if pairs.isEmpty then
-    pure lhs
-  else
-    let out : List Pattern := [lhs]
-    let ops : List (Nat × Associativity × String) := []
-
-    let rec reduceWhile (out : List Pattern) (ops : List (Nat × Associativity × String))
-                        (prec : Nat) (assoc : Associativity)
-                        : List Pattern × List (Nat × Associativity × String) :=
-      match ops with
-      | [] => (out, ops)
-      | (pTop, _, cTop) :: ops' =>
-        let cond :=
-          match assoc with
-          | .leftAssoc  => decide $ prec <= pTop
-          | .rightAssoc => decide $ prec <  pTop
-        if cond then
-          match out with
-          | r :: l :: out' =>
-              let pat := PCtor cTop #[l, r]
-              reduceWhile (pat :: out') ops' prec assoc
-          | _ => (out, ops)
-        else
-          (out, ops)
-
-    let (out, ops) <- pairs.foldlM (init := (out, ops)) fun (out, ops) (k, rhs) => do
-      let some (opExpr, assoc) := tb.get? k | unreachable!
-      let expanded := η₂' $ opExpr (Var "_") (Var "_")
-      let ctorName <-
-        match expanded with
-        | Var op => pure op
-        | other  =>
-          throwUnexpectedWithMessage none
-            s!"Invalid match pattern with operator `{k.2}`:\n\
-               expansion {repr other} does not reduce to a constructor."
-
-      let prec := k.1
-      let (out', ops') := reduceWhile out ops prec assoc
-      return (rhs :: out', (prec, assoc, ctorName) :: ops')
-
-    let rec reduceAll (out : List Pattern) : List (Nat × Associativity × String) -> List Pattern
-      | [] => out
-      | (_, _, c) :: ops' =>
-        match out with
-        | r :: l :: out' =>
-            reduceAll (PCtor c #[l, r] :: out') ops'
-        | _ => out
-    let outFinal := reduceAll out ops
-    match outFinal with
-    | [p] => pure p
-    | _   => throwUnexpectedWithMessage none "Pattern operator parsing error (stack underflow)."
+partial def parsePratt (minPrec := 0) : TParser Expr := do
+  let mut lhs <- appAtom
+  let rec loop (lhs : Expr) : TParser Expr := do
+    match <- takeBindingOp? minPrec with
+    | none => pure lhs
+    | some (_sym, {prec, assoc, impl}) =>
+      let nextMin := if assoc matches .leftAssoc then prec + 1 else prec
+      let rhs <- parsePratt nextMin
+      loop $ impl lhs rhs
+  loop lhs
 
 partial def matchDiscr  : TParser (Pattern × Expr) := do
-  let p <- patWithOps
+  let p <- parsePattern
   ARROW let body <- parseExpr     return (p, body)
 
 partial def matchExp    : TParser Expr := do
@@ -141,16 +75,16 @@ partial def matchExp    : TParser Expr := do
 
 partial def letExp      : TParser Expr := do
   LET let id <- ID
-      let a <- takeMany ID
+      let pats <- takeMany funBinder 
   EQ; let e₁ <- parseExpr
-  IN; let e₂ <- parseExpr         return Let id (a.foldr Fun e₁) e₂
+  IN; let e₂ <- parseExpr         return Let id (nestMatch pats e₁) e₂
 
-partial def letrecExp   : TParser Expr := do
+partial def letrecExp   : TParser Expr := withBacktracking do
   LET; REC
       let id <- ID
-      let a <- takeMany ID
+      let pats <- takeMany funBinder
   EQ  let e₁ <- parseExpr
-  IN  let e₂ <- parseExpr         return Let id (Fix $ Fun id $ a.foldr Fun e₁) e₂
+  IN  let e₂ <- parseExpr         return Let id (Fix $ Fun id $ nestMatch pats e₁) e₂
 
 partial def fixpointExp : TParser Expr := do
   REC;
@@ -159,16 +93,17 @@ partial def fixpointExp : TParser Expr := do
   | none   =>                     return Var "rec"
 
 partial def funExp      : TParser Expr := do
-  FUN   let var <- takeMany1 ID
-  ARROW let e <- parseExpr        return var.foldr Fun e
+  FUN   let pat <- takeMany1 funBinder
+  ARROW let e <- parseExpr
+                                  return nestMatch pat e
 
 partial def condExp     : TParser Expr := do
   IF   let c <- parseExpr
   THEN let e₁ <- parseExpr
   ELSE let e₂ <- parseExpr        return Cond c e₁ e₂
 
-partial def parseExpr : TParser Expr := 
-  buildOpParser funapp =<< get
+partial def parseExpr : TParser Expr := parsePratt
 
 end
 end Parsing
+

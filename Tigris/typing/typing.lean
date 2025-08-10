@@ -143,7 +143,7 @@ def lookupEnv (s : String) (E : Env) : Infer σ (Subst × MLType) :=
   | some s => instantiate s >>= fun t => pure (∅ , t)
 infix :50 " ∈ₑ " => lookupEnv
 
-def peelArrows (t : MLType) : Array MLType × MLType :=
+@[inline] def peelArrows (t : MLType) : Array MLType × MLType :=
   go #[] t where
   go acc
   | TArr a b => go (acc.push a) b
@@ -151,18 +151,37 @@ def peelArrows (t : MLType) : Array MLType × MLType :=
 
 def checkPat (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
   | PWild => return (∅, E)
+  | PConst $ .PInt  _ => unify tInt    expected <&> apply1
+  | PConst $ .PBool _ => unify tBool   expected <&> apply1
+  | PConst $ .PStr  _ => unify tString expected <&> apply1
+  | PConst $ .PUnit   => unify tUnit   expected <&> apply1
+
   | PVar x => return (∅, E.insert x (.Forall [] expected))
+
+  | PProd' p₁ p₂ => do
+    let tv <- fresh
+    let tv' <- fresh
+    let s₀ <- unify (tv ×'' tv') expected
+    let (E, tv, tv') := (apply s₀ E, apply s₀ tv, apply s₀ tv')
+    let (s₁, E) <- checkPat E tv p₁
+    let E := apply s₁ E
+    let tv' := apply s₁ tv'
+    let (s₂, E) <- checkPat E tv' p₂
+    return (s₂ ∪' s₁ ∪' s₀, E)
+
   | PCtor cname args => do
     -- lookup ctor type
     let (_, ctorTy) <- cname ∈ₑ E
     let (argTys, resTy) := peelArrows ctorTy
-    if h :argTys.size = args.size then
+    if h : argTys.size = args.size then
       let s₁ <- unify resTy expected
       args.size.foldM (init := (s₁, apply s₁ E)) fun i _ (s, e) => do
         let ti := apply s (argTys[i])
         let (si, Ei) <- checkPat e ti (args[i])
         return (si ∪' s, Ei)
-    else unreachable!
+    else throw $ InvalidPat s!"expected {argTys.size} binder but received {args.size}"
+where
+  @[macro_inline] apply1 s := (s, apply s E)
 
 mutual
 /--
@@ -264,3 +283,4 @@ def inferToplevel (b : Array Binding) (E : Env) : Except TypingError Env :=
   b.foldlM (init := E) fun E (id, expr) => runInfer1 expr E <&> E.insert id
 
 end MLType
+

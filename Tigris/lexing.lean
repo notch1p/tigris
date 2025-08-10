@@ -5,12 +5,10 @@ infixr : 60 " $> " => flip Functor.mapConst
 
 namespace Lexing open Parser Parser.Char
 
-def INT := @ASCII.parseInt
-
 def alphanum' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected letter or digit character or \'" do
-    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_'
+    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '·'
 def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected alphabetic character" do
@@ -30,15 +28,20 @@ def spaces : TParser Unit :=
 
 abbrev ws (t : TParser α) := spaces *> t <* spaces
 
+def reservedOp := #["|", "->", ";;", "="]
+
 def reserved := 
   #[ "infixl", "infixr", "match"
    , "data"  , "type"  , "with"
-   , "let"   , "rec"   , "in"
-   , "fn"    , "fun"   , "="
-   , "if"    , "else"  , "then"
-   , "|"     , "->"    , ";;"]
+   , "else"  , "then"  , "let"
+   , "rec"   , "fun"   , "fn"
+   , "in"    , "if"]
 
-open ASCII in def ID' : TParser String :=
+
+def opLetters := #[ '+', '-', '*', '/', ':', '$', '@', '%', '&'
+                  , '|', '<', '>', '=', '?', '!', '^', '.']
+
+open ASCII in private def ID' : TParser String :=
   withErrorMessage "identifier" do
       (· ++ ·)
   <$> (Char.toString <$> alpha')
@@ -49,6 +52,11 @@ def ID : TParser Symbol := do
   if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword {id}"
   else ws $ pure id
 
+def intLit := @ASCII.parseInt
+def strLit : TParser String :=
+  char '"' *> foldl .push "" (tokenFilter (· != '"')) <* char '"'
+def boolLit : TParser Bool := string "true" $> true <|> string "false" $> false
+
 def isUpperInit (s : String) : Bool :=
   if h : s.atEnd 0 = true then false
   else (s.get' 0 h) >= 'A' && (s.get' 0 h) <= 'Z'
@@ -57,29 +65,44 @@ def between (l : Char) (t : TParser α) (r : Char) : TParser α :=
   ws (char l) *> t <* ws (char r)
 
 def parenthesized (t : TParser α) : TParser α := between '(' t ')'
+def opSym : TParser String := ws $ do
+  let (s) <- takeMany1 $ tokenFilter $ not ∘ fun c => c == ' ' || c >= '\t' && c <= '\r'
+  let op := s.foldl String.push ""
+  if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
+  else return op
 
-abbrev kw (s : String) : TParser Unit := ws 
-                                         $ withBacktracking
-                                         $ withErrorMessage "keyword"
-                                         $ string s
-                                         *> notFollowedBy alphanum'
+def kw (s : String) : TParser Unit := ws
+                                    $ withBacktracking
+                                    $ withErrorMessage "keyword"
+                                    $ string s
+                                    *> notFollowedBy alphanum'
+
+def kwOp (s : String) : TParser Unit := ws 
+                                      $ withBacktracking
+                                      $ withErrorMessage s!"end of {s}"
+                                      $ string s
+                                      *> notFollowedBy alphanum'
+
 
 abbrev LET   := kw "let"
 abbrev IN    := kw "in"
 abbrev FUN   := kw "fun"
-abbrev EQ    := kw "="
 abbrev IF    := kw "if"
 abbrev ELSE  := kw "else"
 abbrev THEN  := kw "then"
-abbrev ARROW := kw "->"
-abbrev COMMA := kw ","
 abbrev REC   := kw "rec"
-abbrev END   := kw ";;"
 abbrev MATCH := kw "match"
 abbrev WITH  := kw "with"
-abbrev BAR   := kw "|"
 abbrev TYPE  := kw "type"
 abbrev DATA  := kw "DATA"
+
+abbrev BAR   := kwOp "|"
+abbrev ARROW := kwOp "->"
+abbrev COMMA := kwOp ","
+abbrev EQ    := kwOp "="
+abbrev END   := kwOp ";;"
+abbrev UNDERSCORE
+             := kwOp "_"
 
 abbrev ADD   := "+"
 abbrev SUB   := "-"

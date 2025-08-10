@@ -5,6 +5,7 @@ import Tigris.lexing
 import Tigris.utils
 import Tigris.typing.types
 import Tigris.typing.typing
+import Tigris.parsing.ppat
 import Tigris.parsing.pexpSimple
 import Tigris.parsing.pexp
 import Tigris.parsing.ptype

@@ -35,7 +35,7 @@ end
 
 
 def tyDecl : TParser $ Binding ⊕ TyDecl := do
-  TYPE <|> DATA let tycon <- ID let param <- takeMany ID; EQ
+  TYPE let tycon <- ID let param <- takeMany ID; EQ
   let hd <- (optional BAR *> ctor)
   let tl <- takeMany (BAR *> ctor)
   return .inr {tycon, param, ctors := #[hd] ++ tl}

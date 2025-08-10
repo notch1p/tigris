@@ -8,11 +8,12 @@ namespace Parsing open Lexing Parser PType
 abbrev TopDecl := Binding ⊕ TyDecl
 def declaration : TParser TopDecl := first'
   #[ tyDecl
+   , value parseExpr
    , letrecDecl
    , letDecl
    , infixlDecl
    , infixrDecl
-   , value parseExpr]
+   ]
 
 def module : TParser $ Array TopDecl :=
   sepBy (optional END) declaration <* optional END
@@ -22,7 +23,7 @@ def parse (s : String) : Except String Expr :=
   | .ok _ t    => pure t
   | .error _ e => throw (toString e)
 
-def parseModule (s : String) : EStateM String (OpTable Expr) (Array TopDecl) := do
+def parseModule (s : String) : EStateM String OpTable (Array TopDecl) := do
   match spaces *> module <* endOfInput |>.run s |>.run (<- get) with
   | (.ok _ t, s)    => set s *> pure t
   | (.error _ e, _) => throw (toString e)

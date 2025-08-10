@@ -33,3 +33,22 @@ def Value.toStr : Value -> String
     prod? | VP _ _ => true | _ => false
 instance : ToString Value := ⟨Value.toStr⟩
 
+def Value.asType : Value -> Type
+  | VI _ => Int | VB _ => Bool | VS _ => String
+  | VP v₁ v₂ => asType v₁ × asType v₂
+  | _ => Unit
+
+@[never_extract, extern "lean_panic_fn"]
+def panicD (m : String) (d : α) : α := d
+
+def Value.get! : (v : Value) -> v.asType
+  | VI i => i | VB b => b | VS s => s | VU => ()
+  | VP v₁ v₂ => (get! v₁, get! v₂)
+-- panic on
+  | v@(VF ..)     => panicD s!"can't extract value from {v}" ()
+  | v@(VFRec ..)  => panicD s!"can't extract value from {v}" ()
+  | v@(VOpaque ..)    => panicD s!"can't extract value from {v}" ()
+  | v@(VConstr ..)  => panicD s!"can't extract value from {v}" ()
+  | v@(VCtor ..)  => panicD s!"can't extract value from {v}" ()
+  | v@(VEvalError ..) => panicD s!"can't extract value from {v}" ()
+

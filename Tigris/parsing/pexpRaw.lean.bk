@@ -1,0 +1,41 @@
+import Tigris.utils
+import Tigris.typing.types
+import Tigris.parsing.pexpSimpleRaw
+
+open RawExpr Lexing Parser Parser.Char RawPattern Associativity RawTopDecl
+namespace Parsing.Raw 
+def infixlDecl : TParser RawTopDecl := ws do
+  INFIXL
+  let prec <- intLit
+  let sym <- strLit
+  let op := sym.trim
+  if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
+  else
+    ARROW; let body <- rawExpr
+    return InfixDecl sym {prec := prec.toNat, assoc := leftAssoc} body
+
+def infixrDecl : TParser RawTopDecl := ws do
+  INFIXR
+  let prec <- intLit
+  let sym <- strLit
+  let op := sym.trim
+  if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
+  else
+    ARROW; let body <- rawExpr
+    return InfixDecl sym {prec := prec.toNat, assoc := rightAssoc} body
+
+def letDecl    : TParser RawTopDecl := ws do
+  LET; let rec? <- test REC
+  let id <- ID
+  let args <- takeMany ID
+  EQ; let rhs <- rawExpr
+  let fn := args.foldr Fun rhs
+  return if rec? then LetRecDecl id (Fix fn)
+                 else LetDecl id fn
+end Parsing.Raw
+open Parsing.Raw
+def value p := show TParser RawTopDecl from LetDecl "_" <$> p
+def topDecl    : TParser RawTopDecl := ws $ first' #[infixlDecl, infixrDecl, letDecl, value rawExpr]
+def parseModule: TParser (Array RawTopDecl) := sepBy (optional END) topDecl
+--
+-- #eval parseModule "123"

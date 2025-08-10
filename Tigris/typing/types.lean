@@ -27,9 +27,12 @@ def MLType.toStr : MLType -> String
   | a ->' b =>
     paren (arr? a) (toStr a) ++ " → " ++ toStr b
   | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
-  | TApp s [] => s | TApp s (l :: ls) =>
-    ls.foldl (init := s!"{s} {l.toStr}") fun a s =>
-      s!"{a} {s.toStr}"
+  | TApp s [] => s 
+  | TApp s (l :: ls) =>
+    let hd := if l matches TArr .. then s!"({toStr l})" else toStr l
+    ls.foldl (init := s!"{s} {hd}") fun a s =>
+      if s matches TArr .. then s!"{a} ({s.toStr})"
+      else s!"{a} {s.toStr}"
 where
   paren b s := bif b then s!"({s})" else s
   arr? | MLType.TArr _ _ => true | _ => false
@@ -59,17 +62,19 @@ inductive TypingError
   | NoUnify (t₁ t₂ : MLType)
   | Undefined (s : String)
   | WrongCardinal (n : Nat)
-  | NoMatch (e : Expr) (arr : Array $ Pattern × Expr)
+  | NoMatch (e : Expr) (v : String) (arr : Array $ Pattern × Expr)
+  | InvalidPat (msg : String)
   | Duplicates (t : TV) (T : MLType) deriving Repr
 
 instance : ToString TypingError where
   toString
+  | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
   | .Undefined s   => s!"Variable\n  {s}\nis not in scope.\n\
                          Note: use letrec or fixcomb if this is a recursive definition"
   | .WrongCardinal n => s!"Incorrect cardinality. Expected {n}"
-  | .NoMatch e arr =>
-    s!"The expression\n  {repr e}\ncannot be matched against any of the patterns: {repr $ arr.map (·.1)}\n\
+  | .NoMatch e v arr =>
+    s!"The expression\n  {repr e} == eval ==>* {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}\n\
        This is likely because this pattern matching is non-exhaustive (No exhaustion check is performed.)"
   | .Duplicates (mkTV a) b =>
     s!"\

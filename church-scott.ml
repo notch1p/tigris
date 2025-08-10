@@ -1,0 +1,25 @@
+(* NB. Church encoding of some coproduct and their eliminator *)
+
+let inl a l r = l a
+let inr b l r = r b
+let case s l r = s l r
+let none = inl ()
+let some x = inr x
+let option_case o onNone onSome = case o onNone onSome
+let isNone o = option_case o (fun _ -> true) (fun _ -> false)
+let isSome o = option_case o (fun _ -> false) (fun _ -> true)
+let nil z c = z
+let cons x xs z c = c x (xs z c)
+let foldr f z xs = xs z (fun x acc -> f x acc)
+let sx = inl 1
+let sy = inr 2
+
+(* infixr 80 " :: " -> cons *)
+
+(* let sum_plus1 = case sx (1 + _) (10 + _) *)
+let ox = some 41
+let oy = none
+
+(* let getOrElse o d = option_case o (fun _ -> d) id *)
+let l123 = cons 1 (cons 2 (cons 3 nil))
+(* let sumList = foldr (_ + _) 0 l123 *)

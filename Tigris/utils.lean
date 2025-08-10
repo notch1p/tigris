@@ -13,7 +13,7 @@ def List.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : 
   match xs with
   | [] => default
   | x :: xs => xs.foldl (flip $ flip f ∘ mapf) (mapf x)
-
+section
 variable {ε σ τ m α} 
          [Parser.Stream σ τ] 
          [Parser.Error ε σ τ] 
@@ -50,13 +50,13 @@ partial def chainr1
 
 @[inline] def link s := η₂ $ Var s
 
-@[inline] def buildOpParser
-  (p : TParser α)
-  (table : OpTable α)
-  : TParser α := table.foldl (init := p) fun a (_, s) (e, assoc) =>
-    match assoc with
-    | .leftAssoc => chainl1 a $ infixOp s e
-    | .rightAssoc => chainr1 a $ infixOp s e
+-- @[inline] def buildOpParser
+--   (p : TParser α)
+--   (table : OpTable)
+--   : TParser α := table.foldl (init := p) fun a (_, s) (e, assoc) =>
+--     match assoc with
+--     | .leftAssoc => chainl1 a $ infixOp s e
+--     | .rightAssoc => chainr1 a $ infixOp s e
 
 def first'
   (ps : Array $ ParserT ε σ τ m α)
@@ -74,6 +74,7 @@ def first'
       | .error s f =>
         go m (Nat.le_of_lt this) (combine e f) (Stream.setPosition s savePos)
   go ps.size (Nat.le.refl) (Error.unexpected (<- getPosition) none)
+end
 
 def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
@@ -82,3 +83,60 @@ def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
 def Array.foldr1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf x my := some $ match my with | none => x | some y => f x y
   arr.foldr mf none |>.get!
+
+def potentialOp : TParser String := ws do
+  let hd <- tokenFilter $ not ∘ fun c => c.isDigit || c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
+  let tl <- takeMany $ tokenFilter $ not ∘ fun c => c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
+  return tl.foldl String.push hd.toString
+
+def takeBindingOp? (minPrec : Nat) : TParser (Option (String × OpEntry)) :=
+  (withBacktracking $ show TParser (Option $ String × OpEntry) from do
+     let tok <- potentialOp
+     let tbl <- get
+     match tbl.get? tok with
+     | none => throwUnexpectedWithMessage none "not an operator"
+     | some entry@{prec,..} =>
+       if prec < minPrec then
+         throwUnexpectedWithMessage none "prec too low"
+       else return some (tok, entry))
+  <|> pure none
+
+def hole i := s!"__?x{Nat.toSubscriptString i}"
+
+--instance prodSizeOf [SizeOf α] [SizeOf β] : SizeOf $ α × β where
+--  sizeOf p := sizeOf p.fst + sizeOf p.snd + 1
+--
+--theorem prod_fst_lt_self [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p := by
+--  simp+arith[sizeOf]
+--
+--theorem prod_snd_lt_self [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.2 < sizeOf p := by
+--  simp+arith[sizeOf]
+
+open ST in
+def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
+  let cnt : ST.Ref σ Nat <- ST.mkRef 0
+  let rec go : Expr -> ST σ Expr
+    | Var "_" | Var "·" =>
+      cnt.modifyGet fun cnt => ((Var $ hole cnt), cnt + 1)
+    | App f a => 
+      App <$> go f <*> go a
+    | Prod' l r => Prod' <$> go l <*> go r
+    | Fun x e => Fun x <$> go e
+    | Fix e => Fix <$> go e
+    | Fixcomb e => Fixcomb <$> go e
+    | Cond c t e => Cond <$> go c <*> go t <*> go e
+    | Match e discr =>
+      have h : ∀ br ∈ discr, sizeOf br < sizeOf discr := λ _ a => Array.sizeOf_lt_of_mem a
+      Match <$> go e <*> discr.attach.mapM fun {val, property} =>
+        have : sizeOf val.snd < 1 + sizeOf e + sizeOf discr := by
+          have h₁ := Nat.lt_trans (prod_sizeOf_lt val).2 $ h val property
+          omega
+        (val.1, ·) <$> go val.2
+    | e => return e
+
+  (· , ·) <$> (go e) <*> cnt.get
+
+def transShorthand (e : Expr) : Expr :=
+  let (e, n) := runST fun _ => transformPrim e
+  n.foldRev (fun i _ a => Fun (hole i) a) e
+

@@ -20,7 +20,25 @@ def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
 
 def evalPat (v : Value) (VE : VEnv) : Pattern -> Option VEnv
   | PWild => some VE
+  | PConst c =>
+    match c, v with
+    | .PInt i , .VI i' => if i == i' then some VE else none
+    | .PStr s , .VS s' => if s == s' then some VE else none
+    | .PBool b, .VB b' => if b == b' then some VE else none
+    | .PUnit  , .VU    => some VE
+    | _, _ => none
+
   | PVar x => some ⟨VE.env.insert x v⟩
+
+  | PProd' p₁ p₂ =>
+    if let VP v₁ v₂ := v then
+      if let some ⟨E₁⟩ := evalPat v₁ VE p₁ then
+        if let some E₂ := evalPat v₂ ⟨(VE.env ∪ E₁)⟩ p₂ then
+          some E₂
+        else none
+      else none
+    else none
+
   | PCtor n as =>
     match v with
     | .VConstr c fs =>
@@ -29,7 +47,7 @@ def evalPat (v : Value) (VE : VEnv) : Pattern -> Option VEnv
         let (ve, flag) := as.size.fold (init := (VE.env, true)) fun i _ (VE, _) =>
           have : fs.size = as.size := not_or.mp h |>.2 |> Classical.not_not.mp
           match evalPat fs[i] ⟨VE⟩ as[i] with
-          | some ve => (ve.env ∪ VE, true)
+          | some ve => (VE ∪ ve.env, true)
           | none    => (VE, false)
         if flag then some ⟨ve⟩ else none
     | _ => none
@@ -108,7 +126,7 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
     let v <- eval E e
     let rec tryDiscriminant i (h : i <= discr.size) :=
       match i with
-      | 0 => throw $ Undefined "no pattern matched"
+      | 0 => throw $ NoMatch e (toStr v) discr
       | j + 1 =>
         let (p, body) := discr[discr.size - j.succ]
         match evalPat v E p with
@@ -165,7 +183,7 @@ open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter
 def evalToplevel (bs : Array Binding) (VE : VEnv) : Except TypingError VEnv :=
   bs.foldlM (init := VE) fun VE@⟨env⟩ (id, e) => (VEnv.mk ∘ env.insert id) <$> eval VE e
 
-def interpret (PE : OpTable Expr) (E : Env) (VE : VEnv) (s : String) : IO (OpTable Expr × Env × VEnv) := do
+def interpret (PE : OpTable) (E : Env) (VE : VEnv) (s : String) : IO (OpTable × Env × VEnv) := do
   match parseModule s PE with
   | .ok bs PE =>
     bs.foldlM (init := (PE, E, VE)) fun (PE, E, ve@{env := VE}) b => do
@@ -177,3 +195,4 @@ def interpret (PE : OpTable Expr) (E : Env) (VE : VEnv) (s : String) : IO (OpTab
       | .inr tydecl =>
         (PE, ·) <$> registerData E ve tydecl
   | .error e _ => IO.throwServerError e
+
