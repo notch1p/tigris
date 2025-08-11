@@ -38,8 +38,9 @@ def reserved :=
    , "in"    , "if"]
 
 
-def opLetters := #[ '+', '-', '*', '/', ':', '$', '@', '%', '&'
-                  , '|', '<', '>', '=', '?', '!', '^', '.']
+def opLetters : List (TParser Char) := 
+  [ '+', '-', '*', '/', ':', '$', '@', '%', '&'
+  , '|', '<', '>', '=', '?', '!', '^', '.'].map $ char
 
 open ASCII in private def ID' : TParser String :=
   withErrorMessage "identifier" do
@@ -65,11 +66,6 @@ def between (l : Char) (t : TParser α) (r : Char) : TParser α :=
   ws (char l) *> t <* ws (char r)
 
 def parenthesized (t : TParser α) : TParser α := between '(' t ')'
-def opSym : TParser String := ws $ do
-  let (s) <- takeMany1 $ tokenFilter $ not ∘ fun c => c == ' ' || c >= '\t' && c <= '\r'
-  let op := s.foldl String.push ""
-  if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
-  else return op
 
 def kw (s : String) : TParser Unit := ws
                                     $ withBacktracking
@@ -81,7 +77,7 @@ def kwOp (s : String) : TParser Unit := ws
                                       $ withBacktracking
                                       $ withErrorMessage s!"end of {s}"
                                       $ string s
-                                      *> notFollowedBy alphanum'
+                                      *> notFollowedBy (first opLetters)
 
 
 abbrev LET   := kw "let"
@@ -93,11 +89,10 @@ abbrev THEN  := kw "then"
 abbrev REC   := kw "rec"
 abbrev MATCH := kw "match"
 abbrev WITH  := kw "with"
-abbrev TYPE  := kw "type"
-abbrev DATA  := kw "DATA"
+abbrev TYPE  := kw "type" <|> kw "data"
 
 abbrev BAR   := kwOp "|"
-abbrev ARROW := kwOp "->"
+abbrev ARROW := kwOp "=>" <|> kwOp "->"
 abbrev COMMA := kwOp ","
 abbrev EQ    := kwOp "="
 abbrev END   := kwOp ";;"
@@ -115,3 +110,4 @@ abbrev INFIXL := kw "infixl"
 abbrev INFIXR := kw "infixr"
 
 end Lexing
+

@@ -50,3 +50,4 @@ partial def parsePattern (minPrec : Nat := 0) : TParser Pattern := do
   loop lhs
 end
 end Parsing
+

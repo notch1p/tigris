@@ -10,6 +10,8 @@
 thanks to
 
 - actual currying,
+- pattern matching is $\mathcal{O}(mn)$ for pattern matrices of shape $m\times n$, no decision tree
+- no exhaustiveness check
 - zero optimization for maximum ease of reason,
 - various canonical but inefficient translations of certain constructs
 - and a naive term-rewriting interpreter.
@@ -21,11 +23,11 @@ thanks to
 there are 2 parser implemetations:
 
 - `pratt` branch, use a simplified version of pratt parser (i.e. without per-side binding power)
-- `master` branch, use a easy-to-reason precedence-climbing-like parser based on `chainl1` `chainr1`.
+- `master` branch, use a easy-to-reason precedence-climbing-like parser based on `chainl1` `chainr1`, also uses a stack machine similar to shunting-yard.
   Rebuilds the parser based on the operator precedence table on-the-fly and at every call to `parseExpr`.
 
-Inefficient as caching the parser is essentially impossible because between the state and the parser monad `TParser` exists a cyclic dependency.
-While Lean does allow mutual recursion on types (also used in the evaluator),
+The second one is quite inefficient as caching the parser is essentially impossible because if we were to cache the parser in the state then between the state and the parser monad `TParser` exists a cyclic dependency.
+While Lean does allow mutual recursion on types (also used in the evaluator: `VEnv` and `Value`),
 
 - for `abbrev/def` type definition we won't pass the termination analysis
 - for inductive type because `TParser` is a function type and due to the strict positivity that Lean kernel poses it's not going to pass typechecking either.
@@ -37,12 +39,12 @@ While Lean does allow mutual recursion on types (also used in the evaluator),
 
 - there is an dependently typed table printer inside `PP` that I cherry picked out of the undermentioned repository.
 
-the design of implementation is based on the understanding that a table depends on its header.
+the design of the implementation is based on the understanding that a table depends on its header.
 
-In practice, tables with different headers have different types (hence the dependency), two tables are of the same type if they share the same header.
+In practice, tables with different headers have different types (hence the dependency), two tables are of the same type if they share the same (in the sense of definitional equality) header.
 
-This way we _almost_ require all headers and the number of columns a table to be known compile-time, effectively fixing the shape of the table because
-a row is captured in a product, whose type (subsequently, size) is dependent on the header but is visible to the typechecker unlike `List` or `Array`.
+This way we _almost_ require all headers and the number of columns a table has to be known compile-time, effectively fixing the shape of the table because
+a row is captured in a product, whose type (subsequently, size) is dependent on the header (So in reality it's more of a `List`, but dependent) but is visible to the typechecker unlike `List` or `Array`.
 `Vector` is also possible, but it doesn't feel natural to use because unlike products it lacks the `List`-like inductive reasoning.
 
 Additionally it allows all kinds of table in the source to be properly organized.
@@ -59,7 +61,7 @@ Functions that are implemented with Lean-C interop:
 
 ### on that axiom inside [parsing/types.lean](Tigris/parsing/types.lean)
 
-- Used in `Expr.toStr` in [parsing/types.lean](Tigris/parsing/types.lean) [utils.lean](Tigris/utils.lean)
+- Used in `Expr.toStr` `transformPrim` in [parsing/types.lean](Tigris/parsing/types.lean) [utils.lean](Tigris/utils.lean)
 (same situation, I'm suspecting this something to do with nested inductive types i.e. in the `Match` branch, we use array to store match discriminants)
 
 Any constructivist (or Anyone, really) probably isn't a fan of blatantly importing axioms.
@@ -72,7 +74,7 @@ it's all fun and joy until we have to prove the obvious fact:
 (because our array carries `Pattern × Expr`, technically we only need the RHS of that logic and)
 
 $$
-\forall p : \alpha\times\beta, \mathsf{sizeOf}\ (\pi_1\ \ p) < \mathsf{sizeOf}\ p\ \land\ \mathsf{sizeOf}\ (\pi_2\ \ p) < \mathsf{sizeOf}
+\forall p:\ \alpha\times\beta, \mathsf{sizeOf}\ (\pi_1\ \ p) < \mathsf{sizeOf}\ p\ \land\ \mathsf{sizeOf}\ (\pi_2\ \ p) < \mathsf{sizeOf}\ p
 $$
 
 Do note the difference between the following:
@@ -83,8 +85,8 @@ example {p : α × β} : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p := ⟨N
 example {p : α × β} [SizeOf α] [SizeOf β] : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p := ...?
 ```
 
-Without the `SizeOf` constraint the sizeOf instance of `α` and `β` defaults to the dummy instance `instSizeOfDefault` which always return 0.
-You can't really use that to prove anything.
+Without the `SizeOf` constraint the `sizeOf` instance of `α` and `β` defaults to the dummy instance `instSizeOfDefault` which always return 0.
+You can't really use that to prove anything (other than the above ofc).
 
 We can't prove the second one because although Lean automatically generates `SizeOf` instance for every inductive type, we can't really unfold it.
 One might think that if we instantiate the type variables above with concrete types (in our case, respectively, Pattern and Expr.)
@@ -101,10 +103,14 @@ instance [SizeOf α] [SizeOf β] : SizeOf α × β where
 That works (in proving the above), but currently I've found no way to make WF recursion use the one we manually implemented so in reality we can't make
 use of this one in our termination proof.
 
-I still choose to import the fact above as an axiom instead of marking it partial is because it's just so obvious and it's just as obvious as
-proving that the function `transformPrim` terminates.
+I still choose to import the aforementioned prop as an axiom instead of marking recursive function that depends on this fact partial is because it's trivial and it's just as obvious as
+proving those functions terminates.
 
 > overall this shouldn't be a huge problem because the behavior described in the axiom is intended.
+
+### what about exhaustiveness checking?
+
+Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1], just like OCaml.
 
 ## Specification
 
@@ -113,3 +119,5 @@ See source.
 ## History
 
 - 25/08/10 taken out of [notch1p/Playbook](https://github.com/notch1p/lean-snippets)
+
+[^1]: [Maranget, Luc. "Warnings for pattern matching." Journal of Functional Programming 17.3 (2007): 387-421.](http://moscova.inria.fr/~maranget/papers/warn/warn.pdf)

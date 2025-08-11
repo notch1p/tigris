@@ -18,7 +18,7 @@ def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with
   | 1 => (· + ·) | 2 => (· - ·) | 3 => (· * ·) | 4 => (· / ·)
 
-def evalPat (v : Value) (VE : VEnv) : Pattern -> Option VEnv
+def evalPat1 (v : Value) (VE : VEnv) : Pattern -> Option VEnv
   | PWild => some VE
   | PConst c =>
     match c, v with
@@ -32,8 +32,8 @@ def evalPat (v : Value) (VE : VEnv) : Pattern -> Option VEnv
 
   | PProd' p₁ p₂ =>
     if let VP v₁ v₂ := v then
-      if let some ⟨E₁⟩ := evalPat v₁ VE p₁ then
-        if let some E₂ := evalPat v₂ ⟨(VE.env ∪ E₁)⟩ p₂ then
+      if let some ⟨E₁⟩ := evalPat1 v₁ VE p₁ then
+        if let some E₂ := evalPat1 v₂ ⟨(VE.env ∪ E₁)⟩ p₂ then
           some E₂
         else none
       else none
@@ -46,11 +46,23 @@ def evalPat (v : Value) (VE : VEnv) : Pattern -> Option VEnv
       else
         let (ve, flag) := as.size.fold (init := (VE.env, true)) fun i _ (VE, _) =>
           have : fs.size = as.size := not_or.mp h |>.2 |> Classical.not_not.mp
-          match evalPat fs[i] ⟨VE⟩ as[i] with
+          match evalPat1 fs[i] ⟨VE⟩ as[i] with
           | some ve => (VE ∪ ve.env, true)
           | none    => (VE, false)
         if flag then some ⟨ve⟩ else none
     | _ => none
+
+
+def evalPat (E : VEnv) (ps : Array Pattern) (vals : Array Value) : Option VEnv := do
+  if ps.size ≠ vals.size then none
+  else
+    let mut (E, flag) := (E, true)
+    for p in ps, v in vals do
+      if let some e := evalPat1 v E p then
+        E := e
+        flag := true
+      else flag := false break
+    if flag then some E else none
 
 def callForeign (as' : Value) (n : Nat) : Value :=
   let as := match as' with | VP v₁ v₂ => [v₁, v₂] | _ => [as']
@@ -77,7 +89,7 @@ def callForeign (as' : Value) (n : Nat) : Value :=
   | 7 => if let (VI i) := as[0] then VI $ i + 1 else unreachable!
 
   | n => .VOpaque n
-in
+
 partial def eval (E : VEnv) : Expr -> Except TypingError Value
   | CI v => pure $ VI v | CS v => pure $ VS v | CB v => pure $ VB v | CUnit => pure VU
   | Var x => match E.env.get? x with | some x => pure x | none => throw $ Undefined x
@@ -123,13 +135,13 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
   | Prod' e₁ e₂ => do
     pure $ VP (<-eval E e₁) (<-eval E e₂)
   | Match e discr => do
-    let v <- eval E e
+    let v <- e.mapM (eval E)
     let rec tryDiscriminant i (h : i <= discr.size) :=
       match i with
-      | 0 => throw $ NoMatch e (toStr v) discr
+      | 0 => throw $ NoMatch e (toString v) discr
       | j + 1 =>
         let (p, body) := discr[discr.size - j.succ]
-        match evalPat v E p with
+        match evalPat E p v with
         | some bs =>
           eval bs body
         | none => tryDiscriminant j $ Nat.le_of_succ_le h
@@ -156,7 +168,7 @@ abbrev ag (prim : Symbol) (arity : {n // n > 1}) (primE : VEnv := ⟨∅⟩) : V
   arityGen prim arity primE
 
 def prim :=
-  [ ("id"   , eval! "fun x -> x")
+  [ ("id"   , eval! "fun x => x")
   , ("rec"  , VOpaque 0)
   , ("__add", VOpaque 1)
   , ("__sub", VOpaque 2)
@@ -191,7 +203,7 @@ def interpret (PE : OpTable) (E : Env) (VE : VEnv) (s : String) : IO (OpTable ×
       | .inl (id, expr) =>
         let ty <- IO.ofExcept $ runInfer1 expr E |>.mapError toString
         let v <- IO.ofExcept $ eval ve expr |>.mapError toString
-        (PE, E.insert id ty, ⟨VE.insert id v⟩) <$ println! "{id} : {v} ⊢ {ty}"
+        (PE, E.insert id ty, ⟨VE.insert id v⟩) <$ println! "{id} : {v} |- {ty}"
       | .inr tydecl =>
         (PE, ·) <$> registerData E ve tydecl
   | .error e _ => IO.throwServerError e

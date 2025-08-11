@@ -25,7 +25,7 @@ def MLType.toStr : MLType -> String
   | TVar a => toString a 
   | TCon a => a
   | a ->' b =>
-    paren (arr? a) (toStr a) ++ " → " ++ toStr b
+    paren (arr? a) (toStr a) ++ " -> " ++ toStr b
   | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
   | TApp s [] => s 
   | TApp s (l :: ls) =>
@@ -62,7 +62,7 @@ inductive TypingError
   | NoUnify (t₁ t₂ : MLType)
   | Undefined (s : String)
   | WrongCardinal (n : Nat)
-  | NoMatch (e : Expr) (v : String) (arr : Array $ Pattern × Expr)
+  | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
   | Duplicates (t : TV) (T : MLType) deriving Repr
 
@@ -74,8 +74,8 @@ instance : ToString TypingError where
                          Note: use letrec or fixcomb if this is a recursive definition"
   | .WrongCardinal n => s!"Incorrect cardinality. Expected {n}"
   | .NoMatch e v arr =>
-    s!"The expression\n  {repr e} == eval ==>* {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}\n\
-       This is likely because this pattern matching is non-exhaustive (No exhaustion check is performed.)"
+    s!"The expression(s)\n  {repr e} which\nevaluates to {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}\n\
+       This is likely because this pattern matching is non-exhaustive (No exhaustiveness check is performed.)"
   | .Duplicates (mkTV a) b =>
     s!"\
     Unbounded fixpoint constructor does not exist in a strongly normalized system.\n\

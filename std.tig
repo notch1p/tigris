@@ -3,46 +3,62 @@ type Option a = None | Some a
 let getOption (Some a) = a
 
 let getOptionD a d =
-  match a with None -> d | Some a -> a
+  match a with | None => d | Some a => a
 
 let mapOption f a =
-  match a with None -> None | Some a -> f a
+  match a with | None => None | Some a => f a
 
 type List a = Nil | Cons a (List a)
 
-infixr 67 " :: " -> Cons
+infixr 67 " :: " => Cons
 
 let car (x :: _) = x
 let cdr (_ :: xs) = xs
 
 let rec map f xs =
   match xs with
-  | Nil -> Nil
-  | x :: xs -> f x :: map f xs
+  | Nil => Nil
+  | x :: xs => f x :: map f xs
 
 let rec foldl f xs init =
   match xs with
-  | Nil -> init
-  | x :: xs -> foldl f xs (f init x)
+  | Nil => init
+  | x :: xs => foldl f xs (f init x)
 
 let rec foldr f xs init =
   match xs with
-  | Nil -> init
-  | x :: xs -> f x $ foldr f xs init
+  | Nil => init
+  | x :: xs => f x $ foldr f xs init
 
 let foldl1 f xs =
   let rec go xs =
     match xs with
-    | x :: y :: xs ->
+    | x :: Nil => x
+    | x :: y :: xs =>
       go (f x y :: xs)
   in go xs
 
 let rec foldr1 f xs =
   let rec go xs =
     match xs with
-    | x :: y :: xs ->
+    | x :: Nil => x
+    | x :: y :: xs =>
       f x y :: go xs
   in go xs
+
+let rec append xs ys =
+  match xs, ys with
+  | Nil, ys => ys
+  | x :: xs, ys => x :: append xs ys
+
+infixl 65 " ++ " => append
+
+let rec bind xs f =
+  match xs with
+  | Nil -> Nil
+  | x :: xs -> f x ++ bind xs f
+
+infixl 55 " >>= " => bind
 
 let fst (x, y) = x
 let snd (x, y) = y

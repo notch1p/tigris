@@ -3,6 +3,7 @@ import Tigris.parsing.types
 mutual
 structure VEnv where
   env : Std.HashMap.Raw String Value
+deriving Repr
 
 inductive Value where
   | VI (i : Int) | VB (b : Bool) | VS (s : String) | VU

@@ -7,8 +7,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
+      - uses: actions/upload-artifact@v4
+        with:
+          path: .lake/build
+          name: tigris-${{ github.sha }}
+          compression-level: 9

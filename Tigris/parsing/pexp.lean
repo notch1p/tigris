@@ -19,6 +19,7 @@ def infixlDecl : TParser $ Binding ⊕ α := do
   match s, i with
   | CS op, CI i =>
     let op := op.trim
+    if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
     ARROW let e <- parseExpr
     modify (·.insert op ⟨i.toNat, .leftAssoc, η₂ e⟩)
     return .inl (s!"({op})", e)
@@ -29,16 +30,36 @@ def infixrDecl : TParser $ Binding ⊕ α := do
   match s, i with
   | CS op, CI i =>
     let op := op.trim
+    if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
     ARROW let e <- parseExpr
     modify (·.insert op ⟨i.toNat, .rightAssoc, η₂ e⟩)
     return .inl (s!"({op})", e)
   | _, _ => pure $ .inl ("_", CUnit)
 
 def letDecl : TParser $ Binding ⊕ α := do
-  LET; let id <- ID; let a <- takeMany funBinder; EQ; let b <- parseExpr;  return .inl (id, nestMatch a b)
+  LET let id <- ID
+      let a <- takeMany funBinder
+  EQ  let b <- parseExpr
+  return .inl (id, transMatch a b)
+
+def letPointedDecl : TParser $ Binding ⊕ α := do
+  LET let id <- ID
+      let a <- takeMany1 (BAR *> matchDiscr)
+  return .inl (id, pointedExp a)
+
+def letrecPointedDecl : TParser $ Binding ⊕ α := do
+  LET; REC
+      let id <- ID
+      let a <- takeMany1 (BAR *> matchDiscr)
+  return .inl (id, Fix $ Fun id $ pointedExp a)
+
 def letrecDecl : TParser $ Binding ⊕ α := do
-  LET;
-  REC; let id <- ID; let a <- takeMany funBinder; EQ; let b <- parseExpr;  return .inl (id, Fix $ Fun id $ nestMatch a b)
+  LET; REC
+      let id <- ID
+      let a <- takeMany funBinder
+  EQ  let b <- parseExpr
+  if a.isEmpty && !b matches Fun .. then return .inl (id, b)
+  else return .inl (id, Fix $ Fun id $ transMatch a b)
 
 def value {α} p := show TParser $ Binding ⊕ α from (.inl ∘ ("_", ·)) <$> p
 

@@ -59,7 +59,7 @@ def main : IO Unit := do
             println! e;
             println!
               PrettyPrint.Text.bold
-                "NOTE: Evaluation context is restore as there are errors.\n\
+                "NOTE: Evaluation context is restored as there are errors.\n\
                  Fix those then #load again to update it." true
     else try
       let (PE', E', VE') <- interpret pe e ve buf

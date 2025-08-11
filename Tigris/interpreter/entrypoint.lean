@@ -7,8 +7,10 @@ import Tigris.parsing.types
 namespace Parsing open Lexing Parser PType
 abbrev TopDecl := Binding ⊕ TyDecl
 def declaration : TParser TopDecl := first'
-  #[ tyDecl
+  #[ tyDecl <|> tyEmpty
    , value parseExpr
+   , letrecPointedDecl
+   , letPointedDecl
    , letrecDecl
    , letDecl
    , infixlDecl

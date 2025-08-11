@@ -22,7 +22,7 @@ partial def tyApps : TParser MLType := do
 
 partial def tyProd : TParser MLType := do
   let t₁ <- tyApps
-  let tn <- takeMany (ws (char '×') *> tyApps)
+  let tn <- takeMany (ws (char '×' <|> char '*') *> tyApps)
   return tn.foldr TProd t₁
 
 partial def tyArrow : TParser MLType := do
@@ -33,6 +33,9 @@ partial def tyAtom : TParser MLType :=
   tyCtor <|> parenthesized tyArrow
 end
 
+def tyEmpty : TParser $ Binding ⊕ TyDecl := do
+  TYPE let tycon <- ID let param <- takeMany ID;
+  return .inr {tycon, param, ctors := #[]}
 
 def tyDecl : TParser $ Binding ⊕ TyDecl := do
   TYPE let tycon <- ID let param <- takeMany ID; EQ

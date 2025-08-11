@@ -42,21 +42,14 @@ partial def chainr1
   fun e₁ e₂ => App (App s e₁) e₂
 
 @[inline] def η₂'
-  | App (App s _) _ => s
-  | s => s
+  | App s _ => η₂' s
+  | Fun _ e => η₂' e
+  | e => e
 
 @[inline] def infixOp (op : Symbol) (e : α -> α -> α) : TParser $ α -> α -> α :=
   (kw op) *> pure e
 
 @[inline] def link s := η₂ $ Var s
-
--- @[inline] def buildOpParser
---   (p : TParser α)
---   (table : OpTable)
---   : TParser α := table.foldl (init := p) fun a (_, s) (e, assoc) =>
---     match assoc with
---     | .leftAssoc => chainl1 a $ infixOp s e
---     | .rightAssoc => chainr1 a $ infixOp s e
 
 def first'
   (ps : Array $ ParserT ε σ τ m α)
@@ -85,7 +78,7 @@ def Array.foldr1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   arr.foldr mf none |>.get!
 
 def potentialOp : TParser String := ws do
-  let hd <- tokenFilter $ not ∘ fun c => c.isDigit || c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
+  let hd <- tokenFilter $ not ∘ fun c => c == '_' || c.isDigit || c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
   let tl <- takeMany $ tokenFilter $ not ∘ fun c => c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
   return tl.foldl String.push hd.toString
 
@@ -112,9 +105,10 @@ def hole i := s!"__?x{Nat.toSubscriptString i}"
 --theorem prod_snd_lt_self [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.2 < sizeOf p := by
 --  simp+arith[sizeOf]
 
+infixr:80 " <> " => Nat.lt_trans
 open ST in
 def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
-  let cnt : ST.Ref σ Nat <- ST.mkRef 0
+  let cnt : Ref σ Nat <- mkRef 0
   let rec go : Expr -> ST σ Expr
     | Var "_" | Var "·" =>
       cnt.modifyGet fun cnt => ((Var $ hole cnt), cnt + 1)
@@ -126,12 +120,11 @@ def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
     | Fixcomb e => Fixcomb <$> go e
     | Cond c t e => Cond <$> go c <*> go t <*> go e
     | Match e discr =>
-      have h : ∀ br ∈ discr, sizeOf br < sizeOf discr := λ _ a => Array.sizeOf_lt_of_mem a
-      Match <$> go e <*> discr.attach.mapM fun {val, property} =>
-        have : sizeOf val.snd < 1 + sizeOf e + sizeOf discr := by
-          have h₁ := Nat.lt_trans (prod_sizeOf_lt val).2 $ h val property
+      Match <$> e.mapM go <*> discr.attach.mapM fun ⟨pe, property'⟩ =>
+        have : sizeOf pe.2 < 1 + sizeOf e + sizeOf discr := by
+          have h₁ := (prod_sizeOf_lt pe).2 <> Array.sizeOf_lt_of_mem property'
           omega
-        (val.1, ·) <$> go val.2
+        (pe.1, ·) <$> go pe.2
     | e => return e
 
   (· , ·) <$> (go e) <*> cnt.get

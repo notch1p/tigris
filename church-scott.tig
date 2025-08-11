@@ -11,11 +11,11 @@ let isNone o = option_case o (const true) (const false)
 let isSome o = option_case o (const false) (const true)
 let nil z c = z
 let cons x xs z c = c x (xs z c)
-let foldr f z xs = xs z (fun x acc -> f x acc)
+let foldr f z xs = xs z (fun x acc => f x acc)
 let sx = inl 1
 let sy = inr 2
 
-infixr 80 " :: " -> cons
+infixr 80 " :: " => cons
 
 let sum_plus1 = case sx (1 + _) (10 + _)
 let ox = some 41

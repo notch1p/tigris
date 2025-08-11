@@ -74,10 +74,11 @@ instance : Rewritable Env where
 end Rewritables
 
 def gensym (n : Nat) : String :=
-  let (q, r) := (n / 26, n % 26)
-  let s := s!"'{Char.ofNat $ r + 97}"
-  if q == 0 then s
-  else q.toSubDigits.foldl (fun a s => a.push s) s
+  let (q, r) := (n / 25, n % 25)
+  let s := Char.ofNat $ r + 0x03b1
+  if q == 0 then s.toString
+  else s.toString ++ q.toSubscriptString
+
 def normalize : Scheme -> Scheme
   | .Forall _ body =>
     let rec fv 
@@ -149,7 +150,9 @@ infix :50 " ∈ₑ " => lookupEnv
   | TArr a b => go (acc.push a) b
   | t => (acc, t)
 
-def checkPat (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
+
+
+def checkPat1 (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
   | PWild => return (∅, E)
   | PConst $ .PInt  _ => unify tInt    expected <&> apply1
   | PConst $ .PBool _ => unify tBool   expected <&> apply1
@@ -163,10 +166,10 @@ def checkPat (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
     let tv' <- fresh
     let s₀ <- unify (tv ×'' tv') expected
     let (E, tv, tv') := (apply s₀ E, apply s₀ tv, apply s₀ tv')
-    let (s₁, E) <- checkPat E tv p₁
+    let (s₁, E) <- checkPat1 E tv p₁
     let E := apply s₁ E
     let tv' := apply s₁ tv'
-    let (s₂, E) <- checkPat E tv' p₂
+    let (s₂, E) <- checkPat1 E tv' p₂
     return (s₂ ∪' s₁ ∪' s₀, E)
 
   | PCtor cname args => do
@@ -177,13 +180,29 @@ def checkPat (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
       let s₁ <- unify resTy expected
       args.size.foldM (init := (s₁, apply s₁ E)) fun i _ (s, e) => do
         let ti := apply s (argTys[i])
-        let (si, Ei) <- checkPat e ti (args[i])
+        let (si, Ei) <- checkPat1 e ti (args[i])
         return (si ∪' s, Ei)
     else throw $ InvalidPat s!"expected {argTys.size} binder but received {args.size}"
 where
   @[macro_inline] apply1 s := (s, apply s E)
 
+def checkPat (E : Env) (expected : Array MLType) (ps : Array Pattern) : Infer σ (Subst × Env) := do
+  if h : ps.size ≠ expected.size then
+    throw $ InvalidPat s!"expected {expected.size} pattern but received {ps.size}"
+  else
+    ps.size.foldM (init := (∅, E)) fun i h (s, E) => do
+    let ti := apply s expected[i]
+    let (si, Ei) <- checkPat1 E ti ps[i]
+    return (si ∪' s, Ei)
+
 mutual
+/-- Infer a vector of expressions left-to-right, composing substitutions. -/
+partial def inferExprs (E : Env) (es : Array Expr) : Infer σ (Subst × Array MLType) :=
+  es.foldlM (init := (∅, #[])) fun (s, ts) i => do
+    let E := apply s E
+    let (si, ti) <- infer E i
+    let s := si ∪' s
+    return (si ∪' s, ts.push $ apply s ti)
 /--
   perform exactly 1 step of sequential inferrence in CPS style.
   Sequential inferrence is manually unwinded in
@@ -251,20 +270,21 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
     let (s₂, t₂) <- infer (apply s₁ E) e₂
     pure (s₂ ∪' s₁, (apply s₂ t₁) ×'' t₂)
 
-  | Match e discr => do
-    let (s₀, te) <- infer E e
-    let (s, t) <- discr.foldlM (init := (s₀, none)) fun (s, tRes) (p, body) => do
-      let E' := apply s E
-      let te' := apply s te
-      let (sp, Ep) <- checkPat E' te' p
-      let (sb, tb) <- infer Ep body
-      let s' := sb ∪' sp ∪' s
-      let tb' := apply s' tb
-      match tRes with
-      | none => return (s', tb')
-      | some tres =>
-        unify tres tb' <&> (· ∪' s', tRes)
-    return (s, t.get!)
+  | Match es discr => do
+    let (s₀, te) <- inferExprs E es
+    let (s, res?) <- discr.foldlM (init := (s₀, none)) fun (s, res?) (ps, body) => do
+      let Eb := apply s E
+      let expected := te.map (apply s)
+      let (spat, Eext) <- checkPat Eb expected ps
+      let (sbody, tbody) <- infer (apply spat Eext) body
+      let Sb := sbody ∪' spat ∪' s
+      let tbody := apply Sb tbody
+      if let some rt := res? then
+        let Sunify <- unify (apply Sb rt) tbody
+        let s := Sunify ∪' Sb
+        return (s, some $ apply s rt)
+      else return (Sb, tbody)
+    pure (s, res?.get!)
 
   | CB _ => pure (∅, tBool)   | CI _  => pure (∅, tInt)
   | CS _ => pure (∅, tString) | CUnit => pure (∅, tUnit)
