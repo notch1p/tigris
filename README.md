@@ -1,5 +1,11 @@
 # tigris
 
+<p><a href="https://commons.wikimedia.org/wiki/File:Sumatraanse_Tijger.jpg#/media/File:Sumatraanse_Tijger.jpg"><img src="https://upload.wikimedia.org/wikipedia/commons/d/da/Sumatraanse_Tijger.jpg" alt="File:Sumatraanse Tijger.jpg" height="1024" width="1280"></a><br>By Dick Mudde - <span class="int-own-work" lang="en">Own work</span>, Public Domain, <a href="https://commons.wikimedia.org/w/index.php?curid=2654764">Link</a></p>
+
+## artifacts
+
+check CI pages for pre-built binary, IR, generated C source and libraries.
+
 ## Synopsis
 
 > it looks like a hybrid of OCaml & Haskell & Lean,

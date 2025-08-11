@@ -7,13 +7,17 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, ubuntu-latest]
+    strategy:
+      matrix:
+        os: [ubuntu-22.04-arm, macos-latest, linux-x64]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
+
       - uses: actions/upload-artifact@v4
         with:
           path: .lake/build
-          name: tigris-${{ github.sha }}
+          name: tigris-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           compression-level: 9
