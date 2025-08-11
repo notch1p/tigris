@@ -21,11 +21,11 @@ def module : TParser $ Array TopDecl :=
   sepBy (optional END) declaration <* optional END
 
 def parse (s : String) : Except String Expr :=
-  match spaces *> parseExpr <* endOfInput |>.run s |>.run' opTable with
+  match spaces *> parseExpr <* endOfInput |>.run s |>.run' initState with
   | .ok _ t    => pure t
   | .error _ e => throw (toString e)
 
-def parseModule (s : String) : EStateM String OpTable (Array TopDecl) := do
+def parseModule (s : String) : EStateM String PEnv (Array TopDecl) := do
   match spaces *> module <* endOfInput |>.run s |>.run (<- get) with
   | (.ok _ t, s)    => set s *> pure t
   | (.error _ e, _) => throw (toString e)

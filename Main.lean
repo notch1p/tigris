@@ -20,7 +20,7 @@ def main : IO Unit := do
   let stdin <- IO.getStdin
   let E <- mkRef defaultE
   let VE <- mkRef defaultVE
-  let PE <- mkRef Parsing.opTable
+  let PE <- mkRef Parsing.initState
   println! motd
 
   repeat do
@@ -46,7 +46,7 @@ def main : IO Unit := do
       | .error e _ => println! e
     else if buf.startsWith "#dump" then
       println $ tabulate "REPL Environment" {align := alignE}  $ genTable e ve
-      print $ tabulate "Operators\n(virtually function application has max precedence)" {align := alignPE} $ genTableOp pe
+      print $ tabulate "Operators\n(virtually function application has max precedence)" {align := alignPE} $ genTableOp pe.ops
     else if buf.startsWith "#load" then
       (buf.splitOn " ").tail |>.forM fun path => do
         if !path.isEmpty then

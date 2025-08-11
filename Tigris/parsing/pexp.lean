@@ -14,6 +14,8 @@ def opTable : OpTable := .ofList
    , (MUL , ⟨70 , leftAssoc  , link "mul"⟩)
    , (DIV , ⟨70 , leftAssoc  , link "div"⟩)]
 
+def initState : PEnv := ⟨opTable, ∅⟩
+
 def infixlDecl : TParser $ Binding ⊕ α := do
   INFIXL; let i <- intExp let s <- strExp
   match s, i with
@@ -21,7 +23,7 @@ def infixlDecl : TParser $ Binding ⊕ α := do
     let op := op.trim
     if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
     ARROW let e <- parseExpr
-    modify (·.insert op ⟨i.toNat, .leftAssoc, η₂ e⟩)
+    modify fun s@{ops,..} => {s with ops := ops.insert op ⟨i.toNat, .leftAssoc, η₂ e⟩}
     return .inl (s!"({op})", e)
   | _, _ => pure $ .inl ("_", CUnit)
 
@@ -32,7 +34,7 @@ def infixrDecl : TParser $ Binding ⊕ α := do
     let op := op.trim
     if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
     ARROW let e <- parseExpr
-    modify (·.insert op ⟨i.toNat, .rightAssoc, η₂ e⟩)
+    modify fun s@{ops,..} => {s with ops := ops.insert op ⟨i.toNat, .rightAssoc, η₂ e⟩}
     return .inl (s!"({op})", e)
   | _, _ => pure $ .inl ("_", CUnit)
 

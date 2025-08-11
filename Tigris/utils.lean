@@ -67,6 +67,7 @@ def first'
       | .error s f =>
         go m (Nat.le_of_lt this) (combine e f) (Stream.setPosition s savePos)
   go ps.size (Nat.le.refl) (Error.unexpected (<- getPosition) none)
+
 end
 
 def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
@@ -85,8 +86,8 @@ def potentialOp : TParser String := ws do
 def takeBindingOp? (minPrec : Nat) : TParser (Option (String × OpEntry)) :=
   (withBacktracking $ show TParser (Option $ String × OpEntry) from do
      let tok <- potentialOp
-     let tbl <- get
-     match tbl.get? tok with
+     let {ops,..} <- get
+     match ops.get? tok with
      | none => throwUnexpectedWithMessage none "not an operator"
      | some entry@{prec,..} =>
        if prec < minPrec then

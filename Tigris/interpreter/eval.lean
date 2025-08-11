@@ -195,7 +195,7 @@ open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter
 def evalToplevel (bs : Array Binding) (VE : VEnv) : Except TypingError VEnv :=
   bs.foldlM (init := VE) fun VE@⟨env⟩ (id, e) => (VEnv.mk ∘ env.insert id) <$> eval VE e
 
-def interpret (PE : OpTable) (E : Env) (VE : VEnv) (s : String) : IO (OpTable × Env × VEnv) := do
+def interpret (PE : PEnv) (E : Env) (VE : VEnv) (s : String) : IO (PEnv × Env × VEnv) := do
   match parseModule s PE with
   | .ok bs PE =>
     bs.foldlM (init := (PE, E, VE)) fun (PE, E, ve@{env := VE}) b => do

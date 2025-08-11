@@ -111,6 +111,8 @@ partial def unify : MLType -> MLType -> Infer σ Subst
     let s₂ <- unify (apply s₁ r₁) (apply s₁ r₂)
     return s₂ ∪' s₁
   | TVar a, t | t, TVar a   => bindTV a t
+  | t@(TApp h₁ []), t'@(TCon s) | t@(TCon s), t'@(TApp h₁ []) =>
+    if h₁ == s then pure ∅ else throw $ NoUnify t t'
   | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) =>
     if h₁ != h₂ || as₁.length != as₂.length then
       throw $ NoUnify t₁ t₂
@@ -122,7 +124,8 @@ partial def unify : MLType -> MLType -> Infer σ Subst
           go (s' ∪' s) xs ys
         | _, _ => unreachable!
       go ∅ as₁ as₂
-  | t@(TCon a), t'@(TCon b) => if a == b then pure ∅ else throw $ NoUnify t t'
+  | t@(TCon a), t'@(TCon b) =>
+    if a == b then pure ∅ else throw $ NoUnify t t'
   | t₁, t₂                  => throw $ NoUnify t₁ t₂
 
 @[inline] def fresh : Infer σ MLType :=
@@ -149,8 +152,6 @@ infix :50 " ∈ₑ " => lookupEnv
   go acc
   | TArr a b => go (acc.push a) b
   | t => (acc, t)
-
-
 
 def checkPat1 (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
   | PWild => return (∅, E)

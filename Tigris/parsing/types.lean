@@ -94,7 +94,12 @@ structure OpEntry where
 instance : ToString OpEntry := ⟨fun {prec, assoc,..} => toString (prec, assoc)⟩
 
 abbrev OpTable := Std.HashMap String OpEntry
+abbrev TyArity := Std.HashMap String Nat
+
+structure PEnv where
+  ops : OpTable
+  tys : TyArity
 
 /--(ℕ × String) ↦ ε × Associativity-/
-abbrev TParser := SimpleParserT Substring Char $ StateM $ OpTable
+abbrev TParser := SimpleParserT Substring Char $ StateM $ PEnv
 
