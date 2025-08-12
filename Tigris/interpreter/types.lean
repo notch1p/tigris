@@ -24,14 +24,15 @@ def Value.toStr : Value -> String
   | VI v | VB v => toString v | VU => toString ()
   | VS v => reprStr v
   | VEvalError s => s
-  | VOpaque s   => s!"<${s}::prim>"
+  | VOpaque s   => s!"<${s}>"
   | VF _ _ _    => "<fun>"
-  | VFRec _ _ _ => "<recfun>"
-  | VCtor n k acc => s!"<{n}/{k}{acc.foldl (· ++ " " ++ toStr ·) ""}::ctor>"
-  | VConstr n fs => fs.foldl (· ++ " " ++ toStr ·) n
+  | VFRec _ _ _ => "<recfun?>"
+  | VCtor n k acc => s!"<{n}/{k} of {acc.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) ""}>"
+  | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) n
   | VP v₁ v₂    => paren (prod? v₁) (toStr v₁) ++ "," ++ toStr v₂ where
     paren b s := bif b then s!"({s})" else s
     prod? | VP _ _ => true | _ => false
+    constr? | VConstr .. => true | _ => false
 instance : ToString Value := ⟨Value.toStr⟩
 
 def Value.asType : Value -> Type

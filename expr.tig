@@ -1,0 +1,26 @@
+type Expr a =
+  | Atom a
+  | Add (Expr a) (Expr a)
+  | Sub (Expr a) (Expr a)
+  | Mul (Expr a) (Expr a)
+  | Div (Expr a) (Expr a)
+
+let rec eval
+  | Atom a => a
+  | Add e1 e2 => eval e1 + eval e2
+  | Sub e1 e2 => eval e1 - eval e2
+  | Mul e1 e2 => eval e1 * eval e2
+  | Div e1 e2 => eval e1 / eval e2
+
+let prog =
+  Mul (Atom 20) $
+    Sub (Mul (Atom 10)
+             (Atom 20)) $
+        Div (Atom 2400) $
+          Add (Atom 120) $
+            Add (Mul (Atom 10) 
+                     (Atom 20)) $
+                (Atom 0)
+;;
+let (3860) = eval prog in ()
+

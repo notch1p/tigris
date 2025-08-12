@@ -9,6 +9,7 @@ def intExp      : TParser Expr := CI <$> ws intLit
 def strExp      : TParser Expr := CS <$> ws strLit
 
 def transMatch (pat : Array Pattern) (e : Expr) : Expr :=
+  if pat.isEmpty then e else
   let hd := Match (pat.mapIdx fun i _ => Var $ hole i) #[(pat, e)]
   pat.size.foldRev (init := hd) fun i _ a => Fun (hole i) a
 
@@ -37,10 +38,10 @@ partial def atom : TParser Expr :=
             , letExp
             , letPointExp
             , letPatExp
-            , fixpointExp           , funExp
-            , condExp               , matchExp
-            , intExp                , strExp
-            , varExp]
+            , funPointed  , funExp
+            , fixpointExp , condExp
+            , matchExp    , intExp
+            , strExp      , varExp]
             |>.map ws
 
 partial def prodExp : TParser Expr := do
@@ -101,7 +102,8 @@ partial def letrecPatExp: TParser Expr := do
   LET; REC
       let pat <- funBinder
   EQ  let e₁  <- parseExpr
-  IN  let e₂  <- parseExpr        return Match #[e₁] #[(#[pat], e₂)]
+  IN  let e₂  <- parseExpr
+  return Match #[e₁] #[(#[pat], e₂)]
 
 partial def letExp      : TParser Expr := do
   LET let id <- ID
@@ -114,7 +116,9 @@ partial def letrecExp   : TParser Expr := withBacktracking do
       let id <- ID
       let pats <- takeMany funBinder
   EQ  let e₁ <- parseExpr
-  IN  let e₂ <- parseExpr         return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
+  IN  let e₂ <- parseExpr         
+  if !e₁ matches Fun .. then      return Let id (transMatch pats e₁) e₂
+  else                            return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
 
 partial def fixpointExp : TParser Expr := do
   REC;
@@ -126,6 +130,10 @@ partial def funExp      : TParser Expr := do
   FUN   let pat <- takeMany1 funBinder
   ARROW let e <- parseExpr
                                   return transMatch pat e
+
+partial def funPointed  : TParser Expr := do
+  FUN let a <- takeMany1 (BAR *> matchDiscr)
+                                  return pointedExp a
 
 partial def condExp     : TParser Expr := do
   IF   let c <- parseExpr
