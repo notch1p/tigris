@@ -43,7 +43,7 @@ let rec foldr1 f xs =
     match xs with
     | x :: Nil => x
     | x :: y :: xs =>
-      f x y :: go xs
+      f x $ foldr1 f $ y :: xs
   in go xs
 
 let rec append xs ys =

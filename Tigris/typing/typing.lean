@@ -1,5 +1,6 @@
 import Tigris.typing.types
 import Tigris.parsing.types
+import Tigris.typing.exhaust
 
 namespace MLType open Expr TV TypingError Pattern
 
@@ -31,11 +32,12 @@ abbrev dE : List (String × Scheme) :=
 
 variable {σ : Type}
 
-abbrev defaultE : Env := .ofList $
+abbrev defaultE : Env := ⟨.ofList $
   dE.foldl (init := []) fun a p@(sym, .Forall c ty) =>
     if sym.startsWith "__"
     then p :: (sym.drop 2, .Forall c $ curry ty) :: a
     else p :: a
+    , ∅⟩
 
 class Rewritable (α : Type) where
   apply : Subst -> α -> α
@@ -69,8 +71,8 @@ instance [Rewritable α] : Rewritable (List α) where
   apply := List.map ∘ apply
   fv    := List.foldr ((· ∪ ·) ∘ fv) ∅
 instance : Rewritable Env where
-  apply s e := e.map fun _ v => apply s v
-  fv      e := fv e.values
+  apply s e := {e with E := e.E.map fun _ v => apply s v}
+  fv      e := fv e.E.values
 end Rewritables
 
 def gensym (n : Nat) : String :=
@@ -81,7 +83,7 @@ def gensym (n : Nat) : String :=
 
 def normalize : Scheme -> Scheme
   | .Forall _ body =>
-    let rec fv 
+    let rec fv
       | TVar a => [a] | TCon _ => []
       | a ->' b | a ×'' b => fv a ++ fv b
       | TApp _ as => as.flatMap fv
@@ -129,7 +131,7 @@ partial def unify : MLType -> MLType -> Infer σ Subst
   | t₁, t₂                  => throw $ NoUnify t₁ t₂
 
 @[inline] def fresh : Infer σ MLType :=
-  modifyGet fun s => (TVar $ mkTV s!"?m{s}", s + 1)
+  modifyGet fun (s, l) => (TVar $ mkTV s!"?m{s}", s + 1, l)
 
 def instantiate : Scheme -> Infer σ MLType
   | .Forall as t => do
@@ -142,7 +144,7 @@ def generalize (E : Env) (t : MLType) : Scheme :=
   .Forall as t
 
 def lookupEnv (s : String) (E : Env) : Infer σ (Subst × MLType) :=
-  match E.get? s with
+  match E.E.get? s with
   | none => throw $ Undefined s
   | some s => instantiate s >>= fun t => pure (∅ , t)
 infix :50 " ∈ₑ " => lookupEnv
@@ -160,7 +162,7 @@ def checkPat1 (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
   | PConst $ .PStr  _ => unify tString expected <&> apply1
   | PConst $ .PUnit   => unify tUnit   expected <&> apply1
 
-  | PVar x => return (∅, E.insert x (.Forall [] expected))
+  | PVar x => return (∅, {E with E := E.1.insert x (.Forall [] expected)})
 
   | PProd' p₁ p₂ => do
     let tv <- fresh
@@ -196,6 +198,19 @@ def checkPat (E : Env) (expected : Array MLType) (ps : Array Pattern) : Infer σ
     let (si, Ei) <- checkPat1 E ti ps[i]
     return (si ∪' s, Ei)
 
+def extractDecl (E : Env) : MLType -> TyDecl
+  | TCon s
+  | TApp s _ => E.2.getD s default
+  | _ => default
+
+def discrToMat (arr : Array (Array Pattern × Expr)) : List (List Pattern) :=
+  arr.foldr (init := []) fun (pat, _) a =>
+    pat.toList :: a
+
+def metavariable? : MLType -> Bool
+  | TVar (.mkTV s) => if s.startsWith "?" then true else false
+  | _ => false
+
 mutual
 /-- Infer a vector of expressions left-to-right, composing substitutions. -/
 partial def inferExprs (E : Env) (es : Array Expr) : Infer σ (Subst × Array MLType) :=
@@ -221,7 +236,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 
   | Fun x e => do
     let tv       <- fresh
-    let E'       := E.insert x (.Forall [] tv)
+    let E'       := {E with E := E.1.insert x (.Forall [] tv)}
     let (s₁, t₁) <- infer E' e
     pure (s₁, apply s₁ tv ->' t₁)
 
@@ -234,7 +249,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 
   | Fix (Fun fname fbody) => do
     let tv <- fresh
-    let E' := E.insert fname (.Forall [] tv)
+    let E' := {E with E := E.1.insert fname (.Forall [] tv)}
     let (s₁, t₁) <- infer E' fbody
     let s₂ <- unify (apply s₁ tv) t₁
     let s := s₂ ∪' s₁
@@ -254,7 +269,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
     let (s₁, t₁) <- infer E e₁
     let E'       := apply s₁ E
     let t'       := generalize E' t₁
-    let (s₂, t₂) <- infer (E'.insert x t') e₂
+    let (s₂, t₂) <- infer ⟨(E'.1.insert x t'), E'.2⟩ e₂
     pure (s₂ ∪' s₁, t₂)
 
   | Cond c t e => do
@@ -273,7 +288,8 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 
   | Match es discr => do
     let (s₀, te) <- inferExprs E es
-    let (s, res?) <- discr.foldlM (init := (s₀, none)) fun (s, res?) (ps, body) => do
+    let vec := discr[0]!.1.size
+    let (s, res?, exp) <- discr.foldlM (init := (s₀, none, te)) fun (s, res?, _) (ps, body) => do
       let Eb := apply s E
       let expected := te.map (apply s)
       let (spat, Eext) <- checkPat Eb expected ps
@@ -283,8 +299,17 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
       if let some rt := res? then
         let Sunify <- unify (apply Sb rt) tbody
         let s := Sunify ∪' Sb
-        return (s, some $ apply s rt)
-      else return (Sb, tbody)
+        return (s, some $ apply s rt, expected)
+      else return (Sb, tbody, expected)
+    let exp := exp.map $ apply s
+    if exp.any metavariable? then pure ()
+    else
+      let exp' := exp.map $ extractDecl E
+      let ex := Exhaustive.exhaust exp' (discrToMat discr) vec
+      let msg := if ex matches [] then "" else s!"[WARNING] possible patterns not mentioned: {ex}\n"
+      modify fun (n, l) => (n, l ++ msg)
+
+--    dbg_trace s!"[DEBUG] matchDiscr |- {repr $ exp.map (apply s)}, {exp.any metavariable?}"
     pure (s, res?.get!)
 
   | CB _ => pure (∅, tBool)   | CI _  => pure (∅, tInt)
@@ -295,13 +320,13 @@ def closed : Std.HashMap TV MLType × MLType -> Scheme
   | (sub, ty) =>
     generalize ∅ (apply sub ty) |> normalize
 
-def runInfer1 (e : Expr) (E : Env) : Except TypingError Scheme :=
-  match runEST fun _ => infer E e |>.run' 0 with
+def runInfer1 (e : Expr) (E : Env) : Except TypingError $ Scheme × Logger :=
+  match runEST fun _ => infer E e |>.run (0, "") with
   | .error e => throw e
-  | .ok  res => pure $ closed res
+  | .ok  (res, _, log) => pure (closed res, log)
 
 def inferToplevel (b : Array Binding) (E : Env) : Except TypingError Env :=
-  b.foldlM (init := E) fun E (id, expr) => runInfer1 expr E <&> E.insert id
+  b.foldlM (init := E) fun E (id, expr) =>
+    runInfer1 expr E <&> fun e => ⟨E.1.insert id e.1, E.2⟩
 
 end MLType
-

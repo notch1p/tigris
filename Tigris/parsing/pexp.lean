@@ -60,10 +60,8 @@ def letrecDecl : TParser $ Binding ⊕ α := do
       let id <- ID
       let a <- takeMany funBinder
   EQ  let b <- parseExpr
-  if !b matches Fun .. then return .inl (id, transMatch a b)
   return .inl (id, Fix $ Fun id $ transMatch a b)
 
 def value {α} p := show TParser $ Binding ⊕ α from (.inl ∘ ("_", ·)) <$> p
 
 end Parsing
-

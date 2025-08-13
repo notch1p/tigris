@@ -15,8 +15,8 @@ def truncate (n : Nat) (s : String) : String :=
 def EnvHeader := ["id", "type", "value"]
 def alignE : Align EnvHeader := (left, left, right)
 def genTable (E : Env) : VEnv -> TableOf EnvHeader
-  | {env := VE} => E.keysArray.map fun k =>
-    (k, toString $ E.get! k, truncate 8 $ toString $ VE.get! k)
+  | {env := VE} => E.1.keysArray.map fun k =>
+    (k, toString $ E.1.get! k, truncate 8 $ toString $ VE.get! k)
 
 def PEnvHeader := ["op", "prec", "assoc"]
 def genTableOp (PE : OpTable) : TableOf PEnvHeader :=
@@ -31,4 +31,3 @@ def helpMsg : TableOf HelpHeader :=
    , ("#load <path>+", "load src from <path>+ (that doesn't contain spaces) into REPL")
    , ("#help", "show this help string")
    , ("#ast <exp|decl>", "display the parsetree of <exp> or <decl>")]
-

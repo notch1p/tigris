@@ -12,5 +12,6 @@ import Tigris.parsing.ptype
 import Tigris.interpreter.eval
 import Tigris.interpreter.entrypoint
 import Tigris.interpreter.types
+import Tigris.interpreter.app
 import Tigris.table
-import PP.dependentPP
+import PP

@@ -30,7 +30,7 @@ abbrev ws (t : TParser α) := spaces *> t <* spaces
 
 def reservedOp := #["|", "->", ";;", "="]
 
-def reserved := 
+def reserved :=
   #[ "infixl", "infixr", "match"
    , "data"  , "type"  , "with"
    , "else"  , "then"  , "let"
@@ -38,7 +38,7 @@ def reserved :=
    , "in"    , "if"]
 
 
-def opLetters : List (TParser Char) := 
+def opLetters : List (TParser Char) :=
   [ '+', '-', '*', '/', ':', '$', '@', '%', '&'
   , '|', '<', '>', '=', '?', '!', '^', '.'].map $ char
 
@@ -73,7 +73,7 @@ def kw (s : String) : TParser Unit := ws
                                     $ string s
                                     *> notFollowedBy alphanum'
 
-def kwOp (s : String) : TParser Unit := ws 
+def kwOp (s : String) : TParser Unit := ws
                                       $ withBacktracking
                                       $ withErrorMessage s!"end of {s}"
                                       $ string s
@@ -110,4 +110,3 @@ abbrev INFIXL := kw "infixl"
 abbrev INFIXR := kw "infixr"
 
 end Lexing
-

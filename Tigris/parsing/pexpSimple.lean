@@ -92,7 +92,7 @@ partial def letPointExp : TParser Expr := do
   return Let id (pointedExp br) bd
 
 partial def letrecPointExp : TParser Expr := do
-  LET; REC; 
+  LET; REC;
       let id <- ID;
       let br <- takeMany1 (BAR *> matchDiscr)
   IN  let bd <- parseExpr
@@ -116,9 +116,8 @@ partial def letrecExp   : TParser Expr := withBacktracking do
       let id <- ID
       let pats <- takeMany funBinder
   EQ  let e₁ <- parseExpr
-  IN  let e₂ <- parseExpr         
-  if !e₁ matches Fun .. then      return Let id (transMatch pats e₁) e₂
-  else                            return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
+  IN  let e₂ <- parseExpr
+                                  return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
 
 partial def fixpointExp : TParser Expr := do
   REC;
@@ -144,4 +143,3 @@ partial def parseExpr : TParser Expr := parsePratt
 
 end
 end Parsing
-

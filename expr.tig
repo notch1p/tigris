@@ -24,3 +24,6 @@ let prog =
 ;;
 let (3860) = eval prog in ()
 
+type List a = Nil | One a | Cons a (List a)
+
+let rec evalPartial | Atom a, One b => a + b

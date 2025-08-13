@@ -18,16 +18,20 @@ structure TyDecl where
   ctors : Array $ Symbol × List MLType
 deriving Repr
 
+def dummyTyDecl : TyDecl := ⟨"__dummy", #[], #[]⟩
+
+instance : Inhabited TyDecl := ⟨dummyTyDecl⟩
+
 infixr: 50 " ->' " => MLType.TArr
 infixr: 65 " ×'' " => MLType.TProd
 
 def MLType.toStr : MLType -> String
-  | TVar a => toString a 
+  | TVar a => toString a
   | TCon a => a
   | a ->' b =>
     paren (arr? a) (toStr a) ++ " -> " ++ toStr b
   | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
-  | TApp s [] => s 
+  | TApp s [] => s
   | TApp s (l :: ls) =>
     let hd := if l matches TArr .. then s!"({toStr l})" else toStr l
     ls.foldl (init := s!"{s} {hd}") fun a s =>
@@ -55,7 +59,7 @@ namespace MLType open TV Expr
 def ctorScheme (tycon : String) (tparams : List TV) (fields : List MLType) : Scheme :=
   .Forall tparams
   $ fields.foldr TArr
-  $ TApp tycon 
+  $ TApp tycon
   $ tparams.map (TVar ·)
 
 inductive TypingError
@@ -70,7 +74,7 @@ instance : ToString TypingError where
   toString
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
-  | .Undefined s   => s!"Variable\n  {s}\nis not in scope.\n\
+  | .Undefined s   => s!"Symbol\n  {s}\nis not in scope.\n\
                          Note: use letrec or fixcomb if this is a recursive definition"
   | .WrongCardinal n => s!"Incorrect cardinality. Expected {n}"
   | .NoMatch e v arr =>
@@ -85,8 +89,14 @@ instance : ToString TypingError where
 
 end MLType
 
-abbrev Env := Std.HashMap String Scheme
-abbrev Infer σ := StateRefT Nat $ EST MLType.TypingError σ
+structure Env where
+  E : Std.HashMap String Scheme
+  tyDecl : Std.HashMap String TyDecl
+deriving Repr
+
+instance : EmptyCollection Env := ⟨∅, ∅⟩
+abbrev Logger := String -- This is NOT how one should do logging.
+                        -- but Lean doesn't really have a WriterT or MonadWriter
+                        -- Lake has something similar, but that's in the build system.
+abbrev Infer σ := StateRefT (Nat × Logger) $ EST MLType.TypingError σ
 abbrev Subst := Std.HashMap TV MLType
-instance : ToString Env where
-  toString e := e.toList.foldl (init := "") fun a (v, t) => s!"{v} : {t} " ++ a

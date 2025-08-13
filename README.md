@@ -116,7 +116,10 @@ proving those functions terminates.
 
 ### what about exhaustiveness checking?
 
-Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1], just like OCaml.
+~~Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1], just like OCaml.~~
+
+Have done the very basic. 
+It's an almost one-to-one implementation of the algorithm described in the paper above.
 
 ## Specification
 

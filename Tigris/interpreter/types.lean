@@ -27,7 +27,7 @@ def Value.toStr : Value -> String
   | VOpaque s   => s!"<${s}>"
   | VF _ _ _    => "<fun>"
   | VFRec _ _ _ => "<recfun?>"
-  | VCtor n k acc => s!"<{n}/{k} of {acc.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) ""}>"
+  | VCtor n k acc => s!"<{n}/{k}{acc.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) "of"}>"
   | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) n
   | VP v₁ v₂    => paren (prod? v₁) (toStr v₁) ++ "," ++ toStr v₂ where
     paren b s := bif b then s!"({s})" else s

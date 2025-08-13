@@ -56,7 +56,7 @@ deriving Repr, Nonempty
 
 --def Expr.toStr
 --  | CI i | CS i | CB i => toString i | CUnit => toString ()
---  | App e₁ e₂ => 
+--  | App e₁ e₂ =>
 --    s!"(App ({toStr e₁}) ({toStr e₂})"
 --  | Let a e₁ e₂ => s!"(Let ({a}) ({toStr e₁}) ({toStr e₂}))"
 --  | Cond e₁ e₂ e₃ => s!"(Ite ({toStr e₁}) ({toStr e₂}) ({toStr e₃})"
@@ -102,4 +102,3 @@ structure PEnv where
 
 /--(ℕ × String) ↦ ε × Associativity-/
 abbrev TParser := SimpleParserT Substring Char $ StateM $ PEnv
-
