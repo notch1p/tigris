@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-unix:
     strategy:
       matrix:
         os: [ubuntu-22.04-arm, macos-latest, linux-x64]
@@ -15,9 +15,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
-
       - uses: actions/upload-artifact@v4
         with:
           path: .lake/build
           name: tigris-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           compression-level: 9
+
+#  build-win32:
+#    strategy:
+#      matrix:
+#        os: [windows-latest]
+#    runs-on: ${{ matrix.os }}
+#    defaults:
+#      run:
+#        shell: bash {0}
+#
+#    steps:
+#      - uses: rlalik/setup-cpp-compiler@master
+#        with:
+#          compiler: latest
+#      - run: | 
+#          echo "CC=C:/ProgramData/mingw64/mingw64/bin/cc" >> $GITHUB_ENV
+#      - uses: actions/checkout@v4
+#      - uses: leanprover/lean-action@v1
+#      - uses: actions/upload-artifact@v4
+#        with:
+#          path: .lake/build
+#          name: tigris-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+#          compression-level: 9
