@@ -1,6 +1,7 @@
 import Tigris
 
 open PrettyPrint (tabulate)
+open PrettyPrint.Text (mkBoldBlackWhite mkBold)
 open MLType (defaultE)
 open Interpreter (defaultVE)
 open Parsing (parseModule)
@@ -40,27 +41,27 @@ def main : IO Unit := do
 
     if buf.startsWith "#help" then
       print $ tabulate "Commands" {align := alignH} helpMsg
-    else if buf.startsWith "#ast" then
-      match (parseModule $ buf.drop 4).run pe with
-      | .ok b _  => println! reprStr b
-      | .error e _ => println! e
-    else if buf.startsWith "#dump" then
-      println $ tabulate "REPL Environment" {align := alignE}  $ genTable e ve
-      print $ tabulate "Operators\n(virtually function application has max precedence)" {align := alignPE} $ genTableOp pe.ops
-    else if buf.startsWith "#load" then
+    else if buf.startsWith "#a" then
+      (parseModule (buf.drop 4) pe |>.toIO') >>= fun
+      | .ok (_, b)  => println! reprStr b
+      | .error e => println! e
+    else if buf.startsWith "#d" then
+      println $ tabulate (mkBoldBlackWhite "REPL Environment") {align := alignE}  $ genTable e ve
+      print $ tabulate
+        (mkBoldBlackWhite "Operators" ++ mkBold "\n(virtually function application has max precedence)")
+        {align := alignPE} $ genTableOp pe.ops
+    else if buf.startsWith "#l" then
       (buf.splitOn " ").tail |>.forM fun path => do
         if !path.isEmpty then
           try
             let fs <- FS.readFile $ path.takeWhile fun c => c != ';' && !c.isWhitespace
-            println fs
             let (PE', E', VE') <- interpret pe e ve fs
             PE.set PE' *> E.set E' *> VE.set VE'
           catch e =>
             println! e;
             println!
-              PrettyPrint.Text.bold
                 "NOTE: Evaluation context is restored as there are errors.\n\
-                 Fix those then #load again to update it." true
+                 Fix those then #load again to update it."
     else try
       let (PE', E', VE') <- interpret pe e ve buf
       PE.set PE' *> E.set E' *> VE.set VE'
@@ -68,4 +69,3 @@ def main : IO Unit := do
 
     buf := ""
     prompt := "λ> "
-

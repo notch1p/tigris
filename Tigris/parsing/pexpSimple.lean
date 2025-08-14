@@ -4,9 +4,9 @@ import Tigris.parsing.ppat
 open Expr Lexing Parser Parser.Char Pattern
 
 namespace Parsing
-
-def intExp      : TParser Expr := CI <$> ws intLit
-def strExp      : TParser Expr := CS <$> ws strLit
+variable {σ}
+def intExp      : TParser σ Expr := CI <$> ws intLit
+def strExp      : TParser σ Expr := CS <$> ws strLit
 
 def transMatch (pat : Array Pattern) (e : Expr) : Expr :=
   if pat.isEmpty then e else
@@ -19,7 +19,7 @@ def pointedExp (discr : Array $ Array Pattern × Expr) : Expr :=
         (init := Match (discr[0].1.mapIdx fun i _ => Var $ hole i) discr)
         fun i _ a => Fun (hole i) a
 
-open TConst in def funBinder := first'
+open TConst in def funBinder : TParser σ Pattern := first'
    #[ ws $ PConst <$> PInt <$> intLit
     , ws $ PConst <$> PStr <$> strLit
     , PVar <$> ID
@@ -27,10 +27,10 @@ open TConst in def funBinder := first'
     , parenthesized parsePattern]
 
 mutual
-partial def funapp : TParser Expr :=
+partial def funapp : TParser σ Expr :=
   chainl1 atom (pure App)
 
-partial def atom : TParser Expr :=
+partial def atom : TParser σ Expr :=
   first' $ #[ parenthesized prodExp
             , letrecExp
             , letrecPointExp
@@ -44,25 +44,25 @@ partial def atom : TParser Expr :=
             , strExp      , varExp]
             |>.map ws
 
-partial def prodExp : TParser Expr := do
+partial def prodExp : TParser σ Expr := do
   let es <- sepBy COMMA (parsePratt 0)
   return match h : es.size with
          | 0 => CUnit
          | 1 => transShorthand es[0]
          | _ + 2 => es[0:es.size - 1].foldr (Prod' ∘ transShorthand) es[es.size - 1]
 
-partial def varExp      : TParser Expr :=
+partial def varExp      : TParser σ Expr :=
   ID <&> fun
          | "true"                => CB true
          | "false"               => CB false
          | v                     => Var v
 
-partial def appAtom     : TParser Expr :=
+partial def appAtom     : TParser σ Expr :=
   chainl1 atom (pure App)
 
-partial def parsePratt (minPrec := 0) : TParser Expr := do
+partial def parsePratt (minPrec := 0) : TParser σ Expr := do
   let mut lhs <- appAtom
-  let rec loop (lhs : Expr) : TParser Expr := do
+  let rec loop (lhs : Expr) : TParser σ Expr := do
     match <- takeBindingOp? minPrec with
     | none => pure lhs
     | some (_sym, {prec, assoc, impl}) =>
@@ -71,75 +71,80 @@ partial def parsePratt (minPrec := 0) : TParser Expr := do
       loop $ impl lhs rhs
   loop lhs
 
-partial def matchDiscr  : TParser $ Array Pattern × Expr := do
+partial def matchDiscr  : TParser σ $ Array Pattern × Expr := do
   let p <- sepBy1 COMMA parsePattern
   ARROW let body <- parseExpr     return (p, body)
 
-partial def matchExp    : TParser Expr := do
+partial def matchExp    : TParser σ Expr := do
   MATCH let e <- sepBy1 COMMA parseExpr; WITH
   let br <- takeMany1 (BAR *> matchDiscr)
                                   return Match e br
 
-partial def letPatExp   : TParser Expr := do
+partial def letPatExp   : TParser σ Expr := do
   LET let pat <- funBinder
   EQ  let e₁  <- parseExpr
   IN  let e₂  <- parseExpr        return Match #[e₁] #[(#[pat], e₂)]
 
-partial def letPointExp : TParser Expr := do
+partial def letPointExp : TParser σ Expr := do
   LET let id <- ID;
       let br <- takeMany1 (BAR *> matchDiscr)
   IN  let bd <- parseExpr
   return Let id (pointedExp br) bd
 
-partial def letrecPointExp : TParser Expr := do
+partial def letrecPointExp : TParser σ Expr := do
   LET; REC;
       let id <- ID;
       let br <- takeMany1 (BAR *> matchDiscr)
   IN  let bd <- parseExpr
   return Let id (Fix $ Fun id $ pointedExp br) bd
 
-partial def letrecPatExp: TParser Expr := do
+partial def letrecPatExp: TParser σ Expr := do
   LET; REC
       let pat <- funBinder
   EQ  let e₁  <- parseExpr
   IN  let e₂  <- parseExpr
   return Match #[e₁] #[(#[pat], e₂)]
 
-partial def letExp      : TParser Expr := do
+partial def letExp      : TParser σ Expr := do
   LET let id <- ID
       let pats <- takeMany funBinder
   EQ; let e₁ <- parseExpr
   IN; let e₂ <- parseExpr         return Let id (transMatch pats e₁) e₂
 
-partial def letrecExp   : TParser Expr := withBacktracking do
+partial def letrecExp   : TParser σ Expr := withBacktracking do
   LET; REC
       let id <- ID
       let pats <- takeMany funBinder
   EQ  let e₁ <- parseExpr
   IN  let e₂ <- parseExpr
+  if pats.isEmpty && !e₁ matches Fun .. then
+    modify fun (pe, s) =>
+      (pe, s ++ Logging.warn "Use letexp instead of letrec for nonrecursive definition\n")
+                                  return Let id (transMatch pats e₁) e₂
+  else
                                   return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
 
-partial def fixpointExp : TParser Expr := do
+partial def fixpointExp : TParser σ Expr := do
   REC;
   match <-option? parseExpr with
   | some e =>                     return Fixcomb e
   | none   =>                     return Var "rec"
 
-partial def funExp      : TParser Expr := do
+partial def funExp      : TParser σ Expr := do
   FUN   let pat <- takeMany1 funBinder
   ARROW let e <- parseExpr
                                   return transMatch pat e
 
-partial def funPointed  : TParser Expr := do
+partial def funPointed  : TParser σ Expr := do
   FUN let a <- takeMany1 (BAR *> matchDiscr)
                                   return pointedExp a
 
-partial def condExp     : TParser Expr := do
+partial def condExp     : TParser σ Expr := do
   IF   let c <- parseExpr
   THEN let e₁ <- parseExpr
   ELSE let e₂ <- parseExpr        return Cond c e₁ e₂
 
-partial def parseExpr : TParser Expr := parsePratt
+partial def parseExpr : TParser σ Expr := parsePratt
 
 end
 end Parsing

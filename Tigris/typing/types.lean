@@ -3,6 +3,7 @@ import Tigris.utils
 inductive TV where
   | mkTV : String -> TV deriving Repr, BEq, Ord, Hashable
 instance : ToString TV := ⟨fun | .mkTV s => s⟩
+def TV.render | mkTV s => Logging.cyan s
 
 inductive MLType where
   | TVar : TV -> MLType
@@ -42,15 +43,34 @@ where
   arr? | MLType.TArr _ _ => true | _ => false
   prod? | MLType.TProd _ _ => true | _ => false
 
+open MLType.toStr in
+def MLType.render : MLType -> String
+  | TVar a => a.render
+  | TCon a => Logging.magenta a
+  | a ->' b =>
+    paren (arr? a) (render a) ++ " → " ++ render b
+  | a ×'' b => paren (prod? a) (render a) ++ " × " ++ render b
+  | TApp s [] => Logging.magenta s
+  | TApp s (l :: ls) =>
+    let hd := if l matches TArr .. then s!"({render l})" else render l
+    ls.foldl (init := s!"{Logging.magenta s} {hd}") fun a s =>
+      if s matches TArr .. then s!"{a} ({s.render})"
+      else s!"{a} {s.render}"
+
 instance : ToString MLType := ⟨MLType.toStr⟩
 
 inductive Scheme where
   | Forall : List TV -> MLType -> Scheme deriving Repr, BEq, Ord
+def Scheme.render : Scheme -> String
+  | Forall [] t => t.render
+  | Forall (t :: ts) t' =>
+    s!"∀ {ts.foldl (· ++ " " ++ ·.render) t.render}. {t'.render}"
 
 instance : ToString Scheme where
   toString
   | .Forall [] t => toString t
-  | .Forall ts t => s!"∀ {ts.mapReduce! toString (· ++ " " ++ ·)}. {toString t}"
+  | .Forall (t :: ts) t' =>
+    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}. {t'}"
 
 instance : Inhabited Scheme where
   default := .Forall [] (MLType.TCon "False")
@@ -69,23 +89,20 @@ inductive TypingError
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
   | Duplicates (t : TV) (T : MLType) deriving Repr
-
+open Logging
 instance : ToString TypingError where
   toString
-  | .InvalidPat s  => s!"Invalid Pattern: {s}"
-  | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
-  | .Undefined s   => s!"Symbol\n  {s}\nis not in scope.\n\
-                         Note: use letrec or fixcomb if this is a recursive definition"
-  | .WrongCardinal n => s!"Incorrect cardinality. Expected {n}"
+  | .InvalidPat s  => error s!"Invalid Pattern: {s}"
+  | .NoUnify t₁ t₂ => error s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
+  | .Undefined s   => error s!"Symbol\n  {s}\nis not in scope.\n" ++
+                      note "use letrec or fixcomb if this is a recursive definition"
+  | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
   | .NoMatch e v arr =>
-    s!"The expression(s)\n  {repr e} which\nevaluates to {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}\n\
-       This is likely because this pattern matching is non-exhaustive (No exhaustiveness check is performed.)"
+    error s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}."
   | .Duplicates (mkTV a) b =>
-    s!"\
-    Unbounded fixpoint constructor does not exist in a strongly normalized system.\n\
-    Note: unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n\
-    Note: recursion is supported primitively via letrec \n\
-    Note: or unsafely via fixpoint combinator `rec`"
+    error "Unbounded fixpoint constructor does not exist in a strongly normalized system.\n" ++
+    note s!"unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n" ++
+    note "recursion is supported primitively via letrec or unsafely via fixpoint combinator `rec`"
 
 end MLType
 

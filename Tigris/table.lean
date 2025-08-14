@@ -12,22 +12,27 @@ def truncate (n : Nat) (s : String) : String :=
     s.extract ⟨0⟩ ⟨n >>> 1⟩ ++ ".." ++ s.extract ⟨s.length - n >>> 1⟩ ⟨s.length⟩
   else s
 
-def EnvHeader := ["id", "type", "value"]
+def EnvHeader : List Text.SString := ["id", "type", "value"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignE : Align EnvHeader := (left, left, right)
 def genTable (E : Env) : VEnv -> TableOf EnvHeader
-  | {env := VE} => E.1.keysArray.map fun k =>
-    (k, toString $ E.1.get! k, truncate 8 $ toString $ VE.get! k)
+  | {env := VE} => E.1.keysArray.map fun (k : String) =>
+    ( .str k
+    , .str $ truncate 20 $ toString $ E.1.get! k
+    , .str $ truncate 12 $ toString $ VE.get! k)
 
-def PEnvHeader := ["op", "prec", "assoc"]
+def PEnvHeader : List Text.SString := ["op", "prec", "assoc"].map fun s => ⟨s, {style := [.bold]}⟩
 def genTableOp (PE : OpTable) : TableOf PEnvHeader :=
   PE.fold (init := #[]) fun a sym {prec, assoc,..} =>
-    a.push (sym, toString prec, toString assoc)
+    a.push
+      ( .str sym
+      , ⟨toString prec, [], .cyan, .defaultColor⟩
+      , ⟨toString assoc, [], .magenta, .defaultColor⟩)
 def alignPE : Align PEnvHeader := (left, right, left)
 
-def HelpHeader := ["cmd", "info"]
+def HelpHeader : List Text.SString := ["cmd", "info"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignH : Align HelpHeader := (right,left)
 def helpMsg : TableOf HelpHeader :=
   #[ ("#dump", "dump the REPL environment in table form")
    , ("#load <path>+", "load src from <path>+ (that doesn't contain spaces) into REPL")
    , ("#help", "show this help string")
-   , ("#ast <exp|decl>", "display the parsetree of <exp> or <decl>")]
+   , ("#ast <exp|decl>", "display the parsetree of <exp> or <decl>")].map fun s => s.map .str .str

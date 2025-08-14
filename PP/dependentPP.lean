@@ -4,7 +4,55 @@ namespace PrettyPrint
 
 namespace Text
 
-@[inline] def bold s t := bif t then s!"\x1b[1m" ++ s ++ "\x1b[0m" else s
+inductive Color | black | red | green | yellow | blue | magenta | cyan | white | defaultColor
+inductive Style | bold  | dim | italic | underline | blinking | inverse | hidden | strikethrough
+open Color Style
+
+def styleN
+  | bold     => "1" | dim     => "2" | italic => "3" | underline     => "4"
+  | blinking => "5" | inverse => "7" | hidden => "8" | strikethrough => "9"
+
+def fgN
+  | black   => "30" | red     => "31" | green => "32" | yellow => "33"
+  | blue    => "34" | magenta => "35" | cyan  => "36" | white  => "37"
+  | defaultColor => "39"
+
+def bgN
+  | black => "40" | red     => "41" | green => "42" | yellow => "43"
+  | blue  => "44" | magenta => "45" | cyan  => "46" | white  => "47"
+  | defaultColor => "49"
+
+def ESC   := "\x1b["
+def RESET := "\x1b[0m"
+
+structure TStyle where
+  style : List Style := []
+  fg : Color := defaultColor
+  bg : Color := defaultColor
+instance : EmptyCollection TStyle := ⟨{}⟩
+@[inline] def TStyle.buildPrefix : TStyle -> String
+  | {style, fg, bg} =>
+     ESC
+  ++ fgN fg
+  ++ ";" ++ bgN bg
+  ++ style.foldl (· ++ ";" ++ styleN ·) ""
+  ++ "m"
+
+structure SString where
+  s : String
+  style : TStyle
+instance : ToString SString := ⟨(·.s)⟩
+
+namespace SString
+def str : String -> SString := fun s => ⟨s, ∅⟩
+def length : SString -> Nat := fun {s,..} => s.length
+def render : SString -> String
+  | ⟨s, style⟩ => style.buildPrefix ++ s ++ RESET
+end SString
+
+@[inline] def mkBold s := SString.mk s {style := [.bold]} |>.render
+@[inline] def mkBoldBlackWhite s :=
+  SString.mk s {style := [.bold], fg := .black, bg := .white} |>.render
 
 end Text
 
@@ -27,11 +75,14 @@ inductive PadsBy
   | perCell
   /-- pads according to the largest cell _per column_ -/
   | perCol
+section
+variable (header : List Text.SString)
+abbrev Row := ToProd header id
+abbrev Align := ToProd header λ _ => Alignment
+abbrev TableOf := Array $ Row header
+abbrev OverrideWidth := ToProd header λ _ => Option Nat
 
-abbrev Row (header : List String) := ToProd header id
-abbrev Align (header : List String) := ToProd header λ _ => Alignment
-abbrev TableOf (header : List String) := Array $ Row header
-abbrev OverrideWidth (header : List String) := ToProd header λ _ => Option Nat
+end
 
 def ovTostr (ov : OverrideWidth header) : String :=
   match header with
@@ -43,7 +94,7 @@ def rowLengthToList (t : Row header) : OverrideWidth header :=
   | [] => () | [_] => some t.length
   | %[_, _ | _] => (some $ t.1.length, rowLengthToList (t.2))
 
-def zeroOverride (header : List String) : OverrideWidth header :=
+def zeroOverride (header : List Text.SString) : OverrideWidth header :=
   match header with
   | [] => () | [_] => none
   | %[_, y | ys] => (none, zeroOverride (y :: ys))
@@ -66,71 +117,70 @@ instance : Union    $ OverrideWidth header := ⟨merge⟩
 instance : Max      $ OverrideWidth header := ⟨maxN⟩
 instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 
-structure PPSpec (header : List String) where
+structure PPSpec (header : List Text.SString) where
   align   : Align header
   width   : OverrideWidth header := 0
   header? : Bool := true
   margin  : Nat := 3
   padsBy  : PadsBy := .perCol
-  bold?   : Bool := true
 
 def calcMaxWidthPerCol (t : TableOf header) : OverrideWidth header :=
   match h : header with
   | [] => ()
-  | [_] => 
-    some $ t.push (h ▸ toProd header) |>.foldl (flip $ max ∘ String.length) 0
-  | %[_, _ | _] => 
+  | [_] =>
+    some $ t.push (h ▸ toProd header) |>.foldl (flip $ max ∘ Text.SString.length) 0
+  | %[_, _ | _] =>
     t.push (h ▸ toProd header) |>.foldl (flip $ flip (h ▸ max) ∘ rowLengthToList) $ h ▸ 0
 
 def calcMaxWidthRow (t : Row header) : Nat :=
   match header with
-  | [] => 0 | [_] => String.length t
-  | %[_, _ | _] => max (String.length t.1) (calcMaxWidthRow t.2)
+  | [] => 0 | [_] => t.length
+  | %[_, _ | _] => max t.1.length (calcMaxWidthRow t.2)
 
 def pad n (c := ' ') := c.repeat n
 
 open Alignment Text in
-def withAlign (acc term : String) padding margin b?
-  | left   => s!"{acc}{pad margin}{bold term b?}{pad padding}"
-  | right  => s!"{acc}{pad margin}{pad padding}{bold term b?}"
+def withAlign (acc term : String) padding margin
+  | left   => s!"{acc}{pad margin}{term}{pad padding}"
+  | right  => s!"{acc}{pad margin}{pad padding}{term}"
   | center => let hp := if 1 &&& padding == 0
                         then padding >>> 1 else (padding + 1) >>> 1
               let mg := if 1 &&& margin == 0
                         then margin >>> 1 else (margin + 1) >>> 1
-              s!"{acc}{pad hp}{pad mg}{bold term b?}{pad mg}{pad hp}"
+              s!"{acc}{pad hp}{pad mg}{term}{pad mg}{pad hp}"
 
 def padRow (mw : Nat) (spec : PPSpec header) (t : Row header) (acc := "")
   : String :=
   let {align := as, width := ov,margin := mg,..} := spec
   match header with
   | [] => ""
-  | [_] => if let some w := ov then withAlign acc t (w - t.length) mg false as
-           else withAlign acc t (mw - t.length) mg false as
+  | [_] => if let some w := ov then withAlign acc t.render (w - t.length) mg as
+           else withAlign acc t.render (mw - t.length) mg as
   | _ :: _ :: _ =>
     match ov with
     | (some w, ovs) =>
         padRow mw {spec with align := as.2, width := ovs} t.2
-      $ withAlign acc t.1 (w - t.1.length) mg false as.1
+      $ withAlign acc t.1.render (w - t.1.length) mg as.1
     | (_, ovs) =>
         padRow mw {spec with align := as.2, width := ovs} t.2
-      $ withAlign acc t.1 (mw - t.1.length) mg false as.1
+      $ withAlign acc t.1.render (mw - t.1.length) mg as.1
 
 def padHeader (mw : Nat) (spec : PPSpec header) (accl := 0) (acc := "")
   : String × Nat :=
-  let {align := as, width := ov,margin := mg, bold?,..} := spec
+  let {align := as, width := ov,margin := mg,..} := spec
   match header with
   | [] => ("", 0)
   | [x] => if let some w := ov
-           then (withAlign acc x (w - x.length) mg bold? as, mg + w + accl)
-           else (withAlign acc x (mw - x.length) mg bold? as, mg + accl)
+           then (withAlign acc x.render (w - x.length) mg as, mg + w + accl)
+           else (withAlign acc x.render (mw - x.length) mg as, mg + accl)
   | x :: _ :: _ =>
     match ov with
     | (some w, ovs) =>
         padHeader mw {spec with align := as.2, width := ovs} (accl + w + mg)
-      $ withAlign acc x (w - x.length) mg bold? as.1
+      $ withAlign acc x.render (w - x.length) mg as.1
     | (_, ovs) =>
         padHeader mw {spec with align := as.2, width := ovs} (accl + mw + mg)
-      $ withAlign acc x (mw - x.length) mg bold? as.1
+      $ withAlign acc x.render (mw - x.length) mg as.1
 
 def calcMaxWidthTbl (t : TableOf header) : Nat :=
   t.foldl (init := 0) fun a s => max a $ calcMaxWidthRow s
@@ -143,7 +193,7 @@ def tabulate (name : String) (spec : PPSpec header) (t : TableOf header) : Strin
   let bd := t.foldr (init := "") (padRow mw spec · ++ "\n" ++ ·)
   if spec.header? then
     let (hd, totl) := padHeader mw spec
-    s!"{withAlign "" name 0 0 true .left}\n{hd}\n{pad totl '='}\n{bd}"
+    s!"{name}\n{hd}\n{pad totl '='}\n{bd}"
   else bd
 
 end PrettyPrint

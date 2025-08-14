@@ -12,7 +12,7 @@ def registerData (E : Env) (VE : VEnv) : TyDecl -> IO (Env × VEnv)
       let arity := fields.length
       let v := if arity == 0 then .VConstr cname #[]
                              else .VCtor cname arity #[]
-      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$ println! "{cname} : {v} ⊢ {s}"
+      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$ println! "{cname} = {v.render} ⊢ {s.render}"
 
 def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with
@@ -138,7 +138,7 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
     let v <- e.mapM (eval E)
     let rec tryDiscriminant i (h : i <= discr.size) :=
       match i with
-      | 0 => throw $ NoMatch e (toString v) discr
+      | 0 => throw $ NoMatch e (toString $ v.map (·.render)) discr
       | j + 1 =>
         let (p, body) := discr[discr.size - j.succ]
         match evalPat E p v with
@@ -153,15 +153,15 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
 def arityGen (prim : Symbol) (arity : Nat) (primE : VEnv := ⟨∅⟩) : Value :=
   let rec go s
   | 0 => App (Var prim) s
-  | 1 => Fun s!"g1" (App (Var prim) (Prod' s $ Var "g1"))
+  | 1 => Fun s!"__?g1" (App (Var prim) (Prod' s $ Var "__?g1"))
   | t@(n + 2) =>
-    Fun s!"g{t}" $ (go (Prod' s (Var s!"g{t}")) (n + 1))
+    Fun s!"__?g{t}" $ (go (Prod' s (Var s!"__?g{t}")) (n + 1))
   Option.get!
   $ Except.toOption
   $ eval primE
-  $ Fun s!"g{arity}"
-  $ Fun s!"g{arity - 1}"
-  $ go (Prod' (Var s!"g{arity}") (Var s!"g{arity - 1}")) (arity - 2)
+  $ Fun s!"__?g{arity}"
+  $ Fun s!"__?g{arity - 1}"
+  $ go (Prod' (Var s!"__?g{arity}") (Var s!"__?g{arity - 1}")) (arity - 2)
 
 @[inline, always_inline]
 abbrev ag (prim : Symbol) (arity : {n // n > 1}) (primE : VEnv := ⟨∅⟩) : Value :=

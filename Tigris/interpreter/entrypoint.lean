@@ -6,7 +6,7 @@ import Tigris.parsing.types
 
 namespace Parsing open Lexing Parser PType
 abbrev TopDecl := Binding ⊕ TyDecl
-def declaration : TParser TopDecl := first'
+def declaration : TParser σ TopDecl := first'
   #[ tyDecl <|> tyEmpty
    , value parseExpr
    , letrecPointedDecl
@@ -17,18 +17,19 @@ def declaration : TParser TopDecl := first'
    , infixrDecl
    ]
 
-def module : TParser $ Array TopDecl :=
+def module : TParser σ $ Array TopDecl :=
   sepBy (optional END) declaration <* optional END
 
 def parse (s : String) : Except String Expr :=
-  match spaces *> parseExpr <* endOfInput |>.run s |>.run' initState with
+  match runST fun _ => spaces *> parseExpr <* endOfInput |>.run s |>.run' (initState, "") with
   | .ok _ t    => pure t
   | .error _ e => throw (toString e)
 
-def parseModule (s : String) : EStateM String PEnv (Array TopDecl) := do
-  match spaces *> module <* endOfInput |>.run s |>.run (<- get) with
-  | (.ok _ t, s)    => set s *> pure t
-  | (.error _ e, _) => throw (toString e)
+def parseModule (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
+  let liftEIO act := IO.toEIO IO.Error.toString act
+  match runST fun _ => spaces *> module <* endOfInput |>.run s |>.run (PE, "") with
+  | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
+  | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
 end Parsing
 

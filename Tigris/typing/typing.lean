@@ -1,6 +1,7 @@
 import Tigris.typing.types
 import Tigris.parsing.types
 import Tigris.typing.exhaust
+import PP.dependentPP
 
 namespace MLType open Expr TV TypingError Pattern
 
@@ -198,15 +199,6 @@ def checkPat (E : Env) (expected : Array MLType) (ps : Array Pattern) : Infer σ
     let (si, Ei) <- checkPat1 E ti ps[i]
     return (si ∪' s, Ei)
 
-def extractDecl (E : Env) : MLType -> TyDecl
-  | TCon s
-  | TApp s _ => E.2.getD s default
-  | _ => default
-
-def discrToMat (arr : Array (Array Pattern × Expr)) : List (List Pattern) :=
-  arr.foldr (init := []) fun (pat, _) a =>
-    pat.toList :: a
-
 def metavariable? : MLType -> Bool
   | TVar (.mkTV s) => if s.startsWith "?" then true else false
   | _ => false
@@ -288,7 +280,6 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 
   | Match es discr => do
     let (s₀, te) <- inferExprs E es
-    let vec := discr[0]!.1.size
     let (s, res?, exp) <- discr.foldlM (init := (s₀, none, te)) fun (s, res?, _) (ps, body) => do
       let Eb := apply s E
       let expected := te.map (apply s)
@@ -301,15 +292,17 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
         let s := Sunify ∪' Sb
         return (s, some $ apply s rt, expected)
       else return (Sb, tbody, expected)
-    let exp := exp.map $ apply s
-    if exp.any metavariable? then pure ()
-    else
-      let exp' := exp.map $ extractDecl E
-      let ex := Exhaustive.exhaust exp' (discrToMat discr) vec
-      let msg := if ex matches [] then "" else s!"[WARNING] possible patterns not mentioned: {ex}\n"
-      modify fun (n, l) => (n, l ++ msg)
 
---    dbg_trace s!"[DEBUG] matchDiscr |- {repr $ exp.map (apply s)}, {exp.any metavariable?}"
+    let exp := exp.map $ apply s
+    let ex := Exhaustive.exhaustWitness E exp discr
+    let msg :=
+      if let some ex := ex then
+        Logging.warn
+          s!"Partial pattern matching i.e. \
+             possible cases such as {Logging.cyan $ toString ex} are ignored\n"
+      else ""
+    modify fun (n, l) => (n, l ++ msg)
+
     pure (s, res?.get!)
 
   | CB _ => pure (∅, tBool)   | CI _  => pure (∅, tInt)

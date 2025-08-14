@@ -1,4 +1,5 @@
 import Parser
+import PP.ffidecl
 
 axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
 
@@ -9,7 +10,7 @@ inductive TConst where
   | PInt (i : Int)
   | PBool (b : Bool)
   | PStr (s : String)
-deriving Inhabited, Repr, BEq
+deriving Inhabited, Repr, BEq, Hashable
 
 instance : ToString TConst where
   toString
@@ -54,27 +55,6 @@ inductive Expr where
   | Match (aginst : Array Expr) (discr : Array (Array Pattern × Expr))
 deriving Repr, Nonempty
 
---def Expr.toStr
---  | CI i | CS i | CB i => toString i | CUnit => toString ()
---  | App e₁ e₂ =>
---    s!"(App ({toStr e₁}) ({toStr e₂})"
---  | Let a e₁ e₂ => s!"(Let ({a}) ({toStr e₁}) ({toStr e₂}))"
---  | Cond e₁ e₂ e₃ => s!"(Ite ({toStr e₁}) ({toStr e₂}) ({toStr e₃})"
---  | Fix e => s!"(Fixpoint ({toStr e}))"
---  | Fixcomb e => s!"(Fixcomb ({toStr e}))"
---  | Var s => s!"(Var {s})" | Fun a e => s!"(Fun ({a}) ({toStr e}))"
---  | Prod' e₁ e₂ => toString (toStr e₁, toStr e₂)
---  | Match e d =>
---    have h : ∀ b ∈ d, sizeOf b < sizeOf d := λ _ a => Array.sizeOf_lt_of_mem a
---    let ls : String := d.attach.foldl (init := s!"({toStr e})") fun a s =>
---      let e' := Subtype.val s
---      let p := Subtype.property s
---      have : sizeOf (Prod.snd $ Subtype.val s) < 1 + sizeOf e + sizeOf d := by
---        have h₁ := Nat.lt_trans (prod_sizeOf_lt (Subtype.val s)).2 $ h (Subtype.val s) p
---        omega
---      s!"({a},{toString (Prod.fst e')},{toStr (Prod.snd e')})"
---    s!"Match {ls}"
-
 instance : Inhabited Expr := ⟨Expr.CUnit⟩
 -- instance : ToString Expr := ⟨Expr.toStr⟩
 
@@ -100,5 +80,6 @@ structure PEnv where
   ops : OpTable
   tys : TyArity
 
-/--(ℕ × String) ↦ ε × Associativity-/
-abbrev TParser := SimpleParserT Substring Char $ StateM $ PEnv
+--abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
+abbrev TParser σ := SimpleParserT Substring Char
+                  $ StateRefT (PEnv × String) (ST σ)

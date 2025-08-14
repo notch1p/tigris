@@ -3,8 +3,9 @@ import Tigris.typing.types
 open Expr Lexing Parser Parser.Char Pattern
 
 namespace Parsing
+variable {σ}
 mutual
-partial def patAtom : TParser Pattern := ws $ first' $
+partial def patAtom : TParser σ Pattern := ws $ first' $
   #[ parenthesized patProd
    , UNDERSCORE $> PWild
    , intLit <&> (PConst ∘ .PInt)
@@ -17,23 +18,23 @@ partial def patAtom : TParser Pattern := ws $ first' $
        else return PVar id
    ]
 
-partial def patProd : TParser Pattern := do
+partial def patProd : TParser σ Pattern := do
   let es <- sepBy COMMA parsePattern
   return match h : es.size with
          | 0 => PConst .PUnit
          | 1 => es[0]
          | _ + 2 => es[0:es.size - 1].foldr PProd' es[es.size - 1]
 
-partial def patApp : TParser Pattern := do
+partial def patApp : TParser σ Pattern := do
   let hd <- patAtom
   match hd with
   | PCtor n #[] =>
     PCtor n <$> takeMany patAtom
   | _ => return hd
 
-partial def parsePattern (minPrec : Nat := 0) : TParser Pattern := do
+partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := do
   let mut lhs <- patApp
-  let rec loop (lhs : Pattern) : TParser Pattern := do
+  let rec loop (lhs : Pattern) : TParser σ Pattern := do
     match (<- takeBindingOp? minPrec) with
     | none => pure lhs
     | some (_sym, entry) =>
@@ -50,4 +51,3 @@ partial def parsePattern (minPrec : Nat := 0) : TParser Pattern := do
   loop lhs
 end
 end Parsing
-
