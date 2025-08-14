@@ -19,6 +19,11 @@ def pointedExp (discr : Array $ Array Pattern × Expr) : Expr :=
         (init := Match (discr[0].1.mapIdx fun i _ => Var $ hole i) discr)
         fun i _ a => Fun (hole i) a
 
+def warn (s : String) : TParser σ Unit :=
+  modify fun (pe, a) =>
+    (pe, a ++ Logging.warn s)
+
+
 open TConst in def funBinder : TParser σ Pattern := first'
    #[ ws $ PConst <$> PInt <$> intLit
     , ws $ PConst <$> PStr <$> strLit
@@ -103,7 +108,10 @@ partial def letrecPatExp: TParser σ Expr := do
       let pat <- funBinder
   EQ  let e₁  <- parseExpr
   IN  let e₂  <- parseExpr
-  return Match #[e₁] #[(#[pat], e₂)]
+  match pat with
+  | PVar id => return Let id (Fix $ Fun id $ e₁) e₂
+  | _ => warn "found non-variable pattern on the left hand side,\n This expression will be treated as a letexp"
+    return Match #[e₁] #[(#[pat], e₂)]
 
 partial def letExp      : TParser σ Expr := do
   LET let id <- ID
@@ -118,11 +126,9 @@ partial def letrecExp   : TParser σ Expr := withBacktracking do
   EQ  let e₁ <- parseExpr
   IN  let e₂ <- parseExpr
   if pats.isEmpty && !e₁ matches Fun .. then
-    modify fun (pe, s) =>
-      (pe, s ++ Logging.warn "Use letexp instead of letrec for nonrecursive definition\n")
-                                  return Let id (transMatch pats e₁) e₂
-  else
-                                  return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
+    warn "Use letexp instead of letrec for nonrecursive definition\n"
+    return Let id (transMatch pats e₁) e₂
+  else return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
 
 partial def fixpointExp : TParser σ Expr := do
   REC;

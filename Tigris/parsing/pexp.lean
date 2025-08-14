@@ -61,8 +61,7 @@ def letrecDecl : TParser σ $ Binding ⊕ α := do
       let a <- takeMany funBinder
   EQ  let b <- parseExpr
   if a.isEmpty && !b matches Fun .. then
-    modify fun (pe, s) =>
-      (pe, s ++ Logging.warn "Use letdecl instead of letrec for nonrecursive definition\n")
+    warn "Use letdecl instead of letrec for nonrecursive definition\n"
     return .inl (id, transMatch a b)
   else return .inl (id, Fix $ Fun id $ transMatch a b)
 

@@ -8,7 +8,7 @@ lean_lib «Tigris» where
   -- add library configuration options here
   --
 lean_lib «PP» where
-  
+
 
 @[default_target]
 lean_exe "tigris" where
@@ -22,7 +22,9 @@ target ffi.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "ffi.o"
   let srcJob <- ffi.c.fetch
   let weakArgs := #["-I", (<- getLeanIncludeDir).toString, "-I", "/usr/local/include"]
-  buildO oFile srcJob weakArgs #["-fPIC"] "cc" getLeanTrace
+  let cc := match <- IO.getEnv "CC" with | some CC => CC | none => "cc"
+  logInfo s!"Using CC={cc}"
+  buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 
 -- lean_lib ffidecl where
 --   defaultFacets := #[LeanLib.sharedFacet]
@@ -71,4 +73,4 @@ extern_lib libleanffi pkg := do
   let name := nameToStaticLib "leanffi"
   buildStaticLib (pkg.staticLibDir / name) #[ffiO]
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"2dc91a042f721dc852129b269e0ac4f144fe54c4"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"617f4fa5c48f35076274d57546884261560f1285"
