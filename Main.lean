@@ -4,7 +4,7 @@ open PrettyPrint (tabulate)
 open PrettyPrint.Text (mkBoldBlackWhite mkBold)
 open MLType (defaultE)
 open Interpreter (defaultVE)
-open Parsing (parseModule)
+open Parsing (parseModule parseModule')
 open IO
 
 def main : IO Unit := do
@@ -42,7 +42,7 @@ def main : IO Unit := do
     if buf.startsWith "#help" then
       print $ tabulate "Commands" {align := alignH} helpMsg
     else if buf.startsWith "#a" then
-      (parseModule (buf.drop 4) pe |>.toIO') >>= fun
+      (parseModule' (buf.drop 4) pe |>.toIO') >>= fun
       | .ok (_, b)  => println! reprStr b
       | .error e => println! e
     else if buf.startsWith "#d" then

@@ -64,6 +64,12 @@ def letrecDecl : TParser σ $ Binding ⊕ α := do
     warn "Use letdecl instead of letrec for nonrecursive definition\n"
     return .inl (id, transMatch a b)
   else return .inl (id, Fix $ Fun id $ transMatch a b)
+def letPatDecl : TParser σ (Pattern × Expr) := do
+  LET;
+  if <- test REC then warn "found non-variable pattern on the left hand side,\nThis declaration will be treated as a letdecl\n"
+  let pat <- Parsing.funBinder
+  EQ; let exp <- parseExpr
+  return (pat, exp)
 
 def value {α} p := show TParser σ $ Binding ⊕ α from (.inl ∘ ("_", ·)) <$> p
 

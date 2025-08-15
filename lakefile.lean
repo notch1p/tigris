@@ -23,7 +23,6 @@ target ffi.o pkg : FilePath := do
   let srcJob <- ffi.c.fetch
   let weakArgs := #["-I", (<- getLeanIncludeDir).toString, "-I", "/usr/local/include"]
   let cc := match <- IO.getEnv "CC" with | some CC => CC | none => "cc"
-  logInfo s!"Using CC={cc}"
   buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 
 -- lean_lib ffidecl where

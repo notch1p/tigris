@@ -3,6 +3,7 @@ import Tigris.typing.typing
 import Tigris.parsing.ptype
 import Tigris.typing.types
 import Tigris.parsing.types
+import Tigris.interpreter.types
 
 namespace Parsing open Lexing Parser PType
 abbrev TopDecl := Binding ⊕ TyDecl
@@ -25,7 +26,7 @@ def parse (s : String) : Except String Expr :=
   | .ok _ t    => pure t
   | .error _ e => throw (toString e)
 
-def parseModule (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
+def parseModule' (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
   let liftEIO act := IO.toEIO IO.Error.toString act
   match runST fun _ => spaces *> module <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)

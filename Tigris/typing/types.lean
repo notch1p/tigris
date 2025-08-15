@@ -92,15 +92,15 @@ inductive TypingError
 open Logging
 instance : ToString TypingError where
   toString
-  | .InvalidPat s  => error s!"Invalid Pattern: {s}"
-  | .NoUnify t₁ t₂ => error s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
-  | .Undefined s   => error s!"Symbol\n  {s}\nis not in scope.\n" ++
+  | .InvalidPat s  => s!"Invalid Pattern: {s}"
+  | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
+  | .Undefined s   => s!"Symbol\n  {s}\nis not in scope.\n" ++
                       note "use letrec or fixcomb if this is a recursive definition"
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
   | .NoMatch e v arr =>
-    error s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}."
+    s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}."
   | .Duplicates (mkTV a) b =>
-    error "Unbounded fixpoint constructor does not exist in a strongly normalized system.\n" ++
+    "Unbounded fixpoint constructor does not exist in a strongly normalized system.\n" ++
     note s!"unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n" ++
     note "recursion is supported primitively via letrec or unsafely via fixpoint combinator `rec`"
 

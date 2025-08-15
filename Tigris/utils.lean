@@ -12,7 +12,7 @@ def List.rmDup [BEq α] [Hashable α] (l : List α) : List α :=
 
 def List.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : List α) : β :=
   match xs with
-  | [] => default
+  | [] => panic! "empty list"
   | x :: xs => xs.foldl (flip $ flip f ∘ mapf) (mapf x)
 
 def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
@@ -88,6 +88,11 @@ def first'
 
 end
 
+def Array.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : Array α) : β :=
+  if h : xs.size > 0 then
+    xs[1:].foldl (flip $ flip f ∘ mapf) (mapf xs[0])
+  else panic! "empty array"
+
 def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.get!
@@ -151,3 +156,7 @@ def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
 def transShorthand (e : Expr) : Expr :=
   let (e, n) := runST fun _ => transformPrim e
   n.foldRev (fun i _ a => Fun (hole i) a) e
+
+def templateREPL id v t := id ++ " = " ++ v ++ " ⊢ " ++ t
+
+def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act

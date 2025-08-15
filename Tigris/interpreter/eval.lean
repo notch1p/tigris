@@ -18,23 +18,23 @@ def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with
   | 1 => (· + ·) | 2 => (· - ·) | 3 => (· * ·) | 4 => (· / ·)
 
-def evalPat1 (v : Value) (VE : VEnv) : Pattern -> Option VEnv
-  | PWild => some VE
+def evalPat1 (v : Value) (VE : VEnv) (acc : Array $ Symbol × Value) : Pattern -> Option (VEnv × Array (Symbol × Value))
+  | PWild => some (VE, acc)
   | PConst c =>
     match c, v with
-    | .PInt i , .VI i' => if i == i' then some VE else none
-    | .PStr s , .VS s' => if s == s' then some VE else none
-    | .PBool b, .VB b' => if b == b' then some VE else none
-    | .PUnit  , .VU    => some VE
+    | .PInt i , .VI i' => if i == i' then some (VE, acc) else none
+    | .PStr s , .VS s' => if s == s' then some (VE, acc) else none
+    | .PBool b, .VB b' => if b == b' then some (VE, acc) else none
+    | .PUnit  , .VU    => some (VE, acc)
     | _, _ => none
 
-  | PVar x => some ⟨VE.env.insert x v⟩
+  | PVar x => some (⟨VE.env.insert x v⟩, acc.push (x, v))
 
   | PProd' p₁ p₂ =>
     if let VP v₁ v₂ := v then
-      if let some ⟨E₁⟩ := evalPat1 v₁ VE p₁ then
-        if let some E₂ := evalPat1 v₂ ⟨(VE.env ∪ E₁)⟩ p₂ then
-          some E₂
+      if let some (⟨E₁⟩, acc) := evalPat1 v₁ VE acc p₁  then
+        if let some (E₂, acc) := evalPat1 v₂ ⟨(VE.env ∪ E₁)⟩ acc p₂ then
+          some (E₂, acc)
         else none
       else none
     else none
@@ -44,21 +44,20 @@ def evalPat1 (v : Value) (VE : VEnv) : Pattern -> Option VEnv
     | .VConstr c fs =>
       if h : c ≠ n ∨ fs.size ≠ as.size then none
       else
-        let (ve, flag) := as.size.fold (init := (VE.env, true)) fun i _ (VE, _) =>
+        let (ve, flag, acc) := as.size.fold (init := (VE.env, true, acc)) fun i _ (VE, _) =>
           have : fs.size = as.size := not_or.mp h |>.2 |> Classical.not_not.mp
-          match evalPat1 fs[i] ⟨VE⟩ as[i] with
-          | some ve => (VE ∪ ve.env, true)
-          | none    => (VE, false)
-        if flag then some ⟨ve⟩ else none
+          match evalPat1 fs[i] ⟨VE⟩ acc as[i] with
+          | some (ve, acc) => (VE ∪ ve.env, true, acc)
+          | none           => (VE, false, acc)
+        if flag then some (⟨ve⟩, acc) else none
     | _ => none
-
 
 def evalPat (E : VEnv) (ps : Array Pattern) (vals : Array Value) : Option VEnv := do
   if ps.size ≠ vals.size then none
   else
     let mut (E, flag) := (E, true)
     for p in ps, v in vals do
-      if let some e := evalPat1 v E p then
+      if let some (e, _) := evalPat1 v E #[] p then
         E := e
         flag := true
       else flag := false break

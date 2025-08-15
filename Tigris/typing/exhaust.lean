@@ -172,8 +172,6 @@ def exhaustWitness (env : Env) (colTypes : Array MLType) (rows : Array (Array Pa
   let lookup (s : Symbol) := env.tyDecl.get? s
   let M : 𝓜 := rows.foldr (init := []) fun (pat, _) a => pat.toList :: a
   let tys := colTypes.toList
-  match uncover lookup tys M with
-  | none => none
-  | some ps => some ps
+  uncover lookup tys M
 
 end Exhaustive

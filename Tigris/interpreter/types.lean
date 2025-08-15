@@ -35,7 +35,7 @@ def Value.toStr : Value -> String
   | VP v₁ v₂    => paren (prod? v₁) (toStr v₁) ++ "," ++ toStr v₂ where
     paren b s := bif b then s!"({s})" else s
     prod? | VP _ _ => true | _ => false
-    constr? | VConstr .. => true | _ => false
+    constr? | VConstr _ f => if f.isEmpty then false else true | _ => false
 instance : ToString Value := ⟨Value.toStr⟩
 
 open Value.toStr in open Logging (cyan blue) in

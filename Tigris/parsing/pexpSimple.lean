@@ -110,7 +110,7 @@ partial def letrecPatExp: TParser σ Expr := do
   IN  let e₂  <- parseExpr
   match pat with
   | PVar id => return Let id (Fix $ Fun id $ e₁) e₂
-  | _ => warn "found non-variable pattern on the left hand side,\n This expression will be treated as a letexp"
+  | _ => warn "found non-variable pattern on the left hand side,\nThis expression will be treated as a letexp\n"
     return Match #[e₁] #[(#[pat], e₂)]
 
 partial def letExp      : TParser σ Expr := do
