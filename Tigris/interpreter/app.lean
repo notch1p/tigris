@@ -19,9 +19,14 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         let (.Forall _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
         liftEIO (print l)
 
-        let ((_, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te pat |>.run (nat_lit 0, "")).mapError toString
+        let ((acc, _, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")).mapError toString
         liftEIO (print l)
 
+        let ty := 
+          if h : acc.size > 0 then 
+            acc.foldr (· ×'' ·) acc[acc.size - 1] (acc.size - 1) 0
+          else te
+        
         let ex := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
           liftEIO $ print $ Logging.warn
@@ -31,10 +36,10 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         let v <- EIO.ofExcept $ eval VE e |>.mapError toString
         match evalPat1 v VE #[] pat with
         | some (VE, acc) =>
-          if acc.size > 0 then
-            let (sym, val) := acc.mapReduce! (Prod.map toString (·.render)) fun (asym, aval) (sym, val) =>
-              (s!"{asym},{sym}", s!"{aval}, {val}")
-            liftEIO $ println $ templateREPL sym val te.render
+          if h : acc.size > 0 then
+            let (sym, val) := acc.foldr (init := acc[acc.size - 1]) (start := acc.size - 1) (stop := 0) fun (sym, val) (asym, aval) =>
+              (s!"{sym},{asym}", VP val aval)
+            liftEIO $ println $ templateREPL sym val.render ty.render
           return (PE, E, VE)
         | none    => throw $ NoMatch #[e] v.render #[(#[pat], Expr.CUnit)] |> toString
       | .inr b =>

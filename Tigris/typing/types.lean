@@ -34,10 +34,9 @@ def MLType.toStr : MLType -> String
   | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
   | TApp s [] => s
   | TApp s (l :: ls) =>
-    let hd := if l matches TArr .. then s!"({toStr l})" else toStr l
+    let hd := paren (arr? l || prod? l) $ toStr l
     ls.foldl (init := s!"{s} {hd}") fun a s =>
-      if s matches TArr .. then s!"{a} ({s.toStr})"
-      else s!"{a} {s.toStr}"
+      a ++ paren (arr? l || prod? l) (toStr s)
 where
   paren b s := bif b then s!"({s})" else s
   arr? | MLType.TArr _ _ => true | _ => false
@@ -52,10 +51,9 @@ def MLType.render : MLType -> String
   | a ×'' b => paren (prod? a) (render a) ++ " × " ++ render b
   | TApp s [] => Logging.magenta s
   | TApp s (l :: ls) =>
-    let hd := if l matches TArr .. then s!"({render l})" else render l
+    let hd := paren (arr? l || prod? l) $ render l
     ls.foldl (init := s!"{Logging.magenta s} {hd}") fun a s =>
-      if s matches TArr .. then s!"{a} ({s.render})"
-      else s!"{a} {s.render}"
+      a ++ paren (arr? l || prod? l) (render s)
 
 instance : ToString MLType := ⟨MLType.toStr⟩
 

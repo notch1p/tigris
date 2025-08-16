@@ -30,9 +30,10 @@ def Value.toStr : Value -> String
   | VF _ _ _    => "<fun>"
   | VFRec _ _ _ => "<recfun?>"
   | VCtor n k acc =>
-    s!"<{n}/{k}{acc.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) ""}>"
-  | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s) (toStr s)) n
-  | VP v₁ v₂    => paren (prod? v₁) (toStr v₁) ++ "," ++ toStr v₂ where
+    s!"<{n}/{k}{acc.foldl (fun a s => a ++ " " ++ paren (constr? s || prod? s) (toStr s)) ""}>"
+  | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s || prod? s) (toStr s)) n
+  | VP v₁ v₂    => paren (prod? v₁) (toStr v₁) ++ "," ++ toStr v₂
+    where
     paren b s := bif b then s!"({s})" else s
     prod? | VP _ _ => true | _ => false
     constr? | VConstr _ f => if f.isEmpty then false else true | _ => false
@@ -47,8 +48,8 @@ def Value.render : Value -> String
   | VF _ _ _    => "<fun>"
   | VFRec _ _ _ => "<recfun?>"
   | VCtor n k acc =>
-    s!"<{blue n}/{cyan $ toString k}{acc.foldl (fun a s => a ++ " " ++ paren (constr? s) (render s)) ""}>"
-  | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s) (render s)) (blue n)
+    s!"<{blue n}/{cyan $ toString k}{acc.foldl (fun a s => a ++ " " ++ paren (constr? s || prod? s) (render s)) ""}>"
+  | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s || prod? s) (render s)) (blue n)
   | VP v₁ v₂    => paren (prod? v₁) (render v₁) ++ "," ++ render v₂
 
 def Value.asType : Value -> Type

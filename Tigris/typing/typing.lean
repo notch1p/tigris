@@ -156,25 +156,25 @@ infix :50 " ∈ₑ " => lookupEnv
   | TArr a b => go (acc.push a) b
   | t => (acc, t)
 
-def checkPat1 (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
-  | PWild => return (∅, E)
-  | PConst $ .PInt  _ => unify tInt    expected <&> apply1
-  | PConst $ .PBool _ => unify tBool   expected <&> apply1
-  | PConst $ .PStr  _ => unify tString expected <&> apply1
-  | PConst $ .PUnit   => unify tUnit   expected <&> apply1
+def checkPat1 (E : Env) (expected : MLType) (acc : Array MLType) : Pattern -> Infer σ (Array MLType × Subst × Env)
+  | PWild => return (acc, ∅, E)
+  | PConst $ .PInt  _ => unify tInt    expected <&> apply1 acc
+  | PConst $ .PBool _ => unify tBool   expected <&> apply1 acc
+  | PConst $ .PStr  _ => unify tString expected <&> apply1 acc
+  | PConst $ .PUnit   => unify tUnit   expected <&> apply1 acc
 
-  | PVar x => return (∅, {E with E := E.1.insert x (.Forall [] expected)})
+  | PVar x => return (acc.push expected, ∅, {E with E := E.1.insert x (.Forall [] expected)})
 
   | PProd' p₁ p₂ => do
     let tv <- fresh
     let tv' <- fresh
     let s₀ <- unify (tv ×'' tv') expected
     let (E, tv, tv') := (apply s₀ E, apply s₀ tv, apply s₀ tv')
-    let (s₁, E) <- checkPat1 E tv p₁
+    let (acc, s₁, E) <- checkPat1 E tv acc p₁
     let E := apply s₁ E
     let tv' := apply s₁ tv'
-    let (s₂, E) <- checkPat1 E tv' p₂
-    return (s₂ ∪' s₁ ∪' s₀, E)
+    let (acc, s₂, E) <- checkPat1 E tv' acc p₂
+    return (acc, s₂ ∪' s₁ ∪' s₀, E)
 
   | PCtor cname args => do
     -- lookup ctor type
@@ -182,13 +182,13 @@ def checkPat1 (E : Env) (expected : MLType) : Pattern -> Infer σ (Subst × Env)
     let (argTys, resTy) := peelArrows ctorTy
     if h : argTys.size = args.size then
       let s₁ <- unify resTy expected
-      args.size.foldM (init := (s₁, apply s₁ E)) fun i _ (s, e) => do
+      args.size.foldM (init := (acc, s₁, apply s₁ E)) fun i _ (acc, s, e) => do
         let ti := apply s (argTys[i])
-        let (si, Ei) <- checkPat1 e ti (args[i])
-        return (si ∪' s, Ei)
+        let (acc, si, Ei) <- checkPat1 e ti acc (args[i])
+        return (acc, si ∪' s, Ei)
     else throw $ InvalidPat s!"expected {argTys.size} binder but received {args.size}"
 where
-  @[macro_inline] apply1 s := (s, apply s E)
+  @[macro_inline] apply1 acc s := (acc, s, apply s E)
 
 def checkPat (E : Env) (expected : Array MLType) (ps : Array Pattern) : Infer σ (Subst × Env) := do
   if h : ps.size ≠ expected.size then
@@ -196,7 +196,7 @@ def checkPat (E : Env) (expected : Array MLType) (ps : Array Pattern) : Infer σ
   else
     ps.size.foldM (init := (∅, E)) fun i h (s, E) => do
     let ti := apply s expected[i]
-    let (si, Ei) <- checkPat1 E ti ps[i]
+    let (_, si, Ei) <- checkPat1 E ti #[] ps[i]
     return (si ∪' s, Ei)
 
 def metavariable? : MLType -> Bool
