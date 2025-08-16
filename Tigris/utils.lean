@@ -93,6 +93,9 @@ def Array.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs :
     xs[1:].foldl (flip $ flip f ∘ mapf) (mapf xs[0])
   else panic! "empty array"
 
+def Array.mapReduce (mapf : α -> β) (f : β -> β -> β) (xs : Array α) (h : xs.size > 0) : β :=
+  xs[1:].foldl (flip $ flip f ∘ mapf) (mapf xs[0])
+
 def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.get!

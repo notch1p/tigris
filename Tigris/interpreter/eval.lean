@@ -12,7 +12,7 @@ def registerData (E : Env) (VE : VEnv) : TyDecl -> IO (Env × VEnv)
       let arity := fields.length
       let v := if arity == 0 then .VConstr cname #[]
                              else .VCtor cname arity #[]
-      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$ println! "{cname} = {v.render} ⊢ {s.render}"
+      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$ println! templateREPL cname v.render s.render
 
 def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with

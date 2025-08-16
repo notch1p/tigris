@@ -58,9 +58,9 @@ def main : IO Unit := do
             let (PE', E', VE') <- interpret pe e ve fs
             PE.set PE' *> E.set E' *> VE.set VE'
           catch e =>
-            println! e;
-            println!
-                "NOTE: Evaluation context is restored as there are errors.\n\
+            println! Logging.error $ toString e;
+            println! Logging.warn  $
+                "Evaluation context is restored as there are errors.\n\
                  Fix those then #load again to update it."
     else try
       let (PE', E', VE') <- interpret pe e ve buf

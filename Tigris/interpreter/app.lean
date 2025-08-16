@@ -31,8 +31,8 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         let v <- EIO.ofExcept $ eval VE e |>.mapError toString
         match evalPat1 v VE #[] pat with
         | some (VE, acc) =>
-          if acc.size > 0 then
-            let (sym, val) := acc.mapReduce! (Prod.map toString (·.render)) fun (asym, aval) (sym, val) =>
+          if h : acc.size > 0 then
+            let (sym, val) := acc.mapReduce (Prod.map toString (·.render)) (h := h) fun (asym, aval) (sym, val) =>
               (s!"{asym},{sym}", s!"{aval}, {val}")
             liftEIO $ println $ templateREPL sym val te.render
           return (PE, E, VE)

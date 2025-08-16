@@ -54,7 +54,9 @@ partial def prodExp : TParser σ Expr := do
   return match h : es.size with
          | 0 => CUnit
          | 1 => transShorthand es[0]
-         | _ + 2 => es[0:es.size - 1].foldr (Prod' ∘ transShorthand) es[es.size - 1]
+         | _ + 2 =>
+           transShorthand $
+            es[0:es.size - 1].foldr Prod' es[es.size - 1]
 
 partial def varExp      : TParser σ Expr :=
   ID <&> fun
