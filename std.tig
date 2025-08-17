@@ -15,8 +15,7 @@ infixr 67 " :: " => Cons
 let car (x :: _) = x
 let cdr (_ :: xs) = xs
 
-let rec map f xs =
-  match xs with
+let rec map f
   | Nil => Nil
   | x :: xs => f x :: map f xs
 
@@ -38,27 +37,28 @@ let foldl1 f xs =
       go (f x y :: xs)
   in go xs
 
-let rec foldr1 f xs =
+let foldr1 f xs =
   let rec go xs =
     match xs with
     | x :: Nil => x
     | x :: y :: xs =>
-      f x $ foldr1 f $ y :: xs
+      f x $ go $ y :: xs
   in go xs
 
-let rec append xs ys =
-  match xs, ys with
+let rec append
   | Nil, ys => ys
   | x :: xs, ys => x :: append xs ys
 
 infixl 65 " ++ " => append
 
-let rec bind xs f =
-  match xs with
+let rec bind f
   | Nil -> Nil
-  | x :: xs -> f x ++ bind xs f
+  | x :: xs -> f x ++ bind f xs
 
-infixl 55 " >>= " => bind
+let flip f x y = f y x
+
+infixr 55 " =<< " => bind
+infixl 55 " >>= " => flip bind
 
 let fst (x, y) = x
 let snd (x, y) = y

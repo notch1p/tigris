@@ -40,13 +40,13 @@ def main : IO Unit := do
     if input.startsWith "\n" then continue
 
     if buf.startsWith "#help" then
-      print $ tabulate "Commands" {align := alignH} helpMsg
+      print $ tabulate (mkBoldBlackWhite "Commands") {align := alignH} helpMsg
     else if buf.startsWith "#a" then
       (parseModule' (buf.drop 4) pe |>.toIO') >>= fun
       | .ok (_, b)  => println! reprStr b
       | .error e => println! e
     else if buf.startsWith "#d" then
-      println $ tabulate (mkBoldBlackWhite "REPL Environment") {align := alignE}  $ genTable e ve
+      println $ tabulate (mkBoldBlackWhite "REPL Environment") {align := alignE} $ genTable e ve
       print $ tabulate
         (mkBoldBlackWhite "Operators" ++ mkBold "\n(virtually function application has max precedence)")
         {align := alignPE} $ genTableOp pe.ops

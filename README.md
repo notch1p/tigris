@@ -67,7 +67,7 @@ Functions that are implemented with Lean-C interop:
 
 ### on that axiom inside [parsing/types.lean](Tigris/parsing/types.lean)
 
-- Used in `Expr.toStr` `transformPrim` in [parsing/types.lean](Tigris/parsing/types.lean) [utils.lean](Tigris/utils.lean)
+- Used in `transformPrim` from [utils.lean](Tigris/utils.lean)
 (same situation, I'm suspecting this something to do with nested inductive types i.e. in the `Match` branch, we use array to store match discriminants)
 
 Any constructivist (or Anyone, really) probably isn't a fan of blatantly importing axioms.

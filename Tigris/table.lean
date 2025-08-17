@@ -22,7 +22,7 @@ def genTable (E : Env) : VEnv -> TableOf EnvHeader
 
 def PEnvHeader : List Text.SString := ["op", "prec", "assoc"].map fun s => ⟨s, {style := [.bold]}⟩
 def genTableOp (PE : OpTable) : TableOf PEnvHeader :=
-  PE.fold (init := #[]) fun a sym {prec, assoc,..} =>
+  PE.values.foldl (init := #[]) fun a {sym, prec, assoc,..} =>
     a.push
       ( .str sym
       , ⟨toString prec, [], .cyan, .defaultColor⟩

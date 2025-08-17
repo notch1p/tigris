@@ -8,7 +8,7 @@ namespace Lexing open Parser Parser.Char
 def alphanum' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected letter or digit character or \'" do
-    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '·'
+    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '!' || c == '?'
 def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected alphabetic character" do
@@ -29,7 +29,7 @@ def spaces : TParser σ Unit :=
 
 abbrev ws (t : TParser σ α) := spaces *> t <* spaces
 
-def reservedOp := #["|", "->", ";;", "="]
+def reservedOp := #["|", "->", ";;", "=>", ",", "_"]
 
 def reserved :=
   #[ "infixl", "infixr", "match"
@@ -37,11 +37,6 @@ def reserved :=
    , "else"  , "then"  , "let"
    , "rec"   , "fun"   , "fn"
    , "in"    , "if"]
-
-
-def opLetters : List (TParser σ Char) :=
-  [ '+', '-', '*', '/', ':', '$', '@', '%', '&'
-  , '|', '<', '>', '=', '?', '!', '^', '.'].map $ char
 
 open ASCII in private def ID' : TParser σ String :=
   withErrorMessage "identifier" do
@@ -74,12 +69,15 @@ def kw (s : String) : TParser σ Unit := ws
                                     $ string s
                                     *> notFollowedBy alphanum'
 
-def kwOp (s : String) : TParser σ Unit := ws
-                                      $ withBacktracking
-                                      $ withErrorMessage s!"end of {s}"
-                                      $ string s
-                                      *> notFollowedBy (first opLetters)
+def kwOpExact (s : String) : TParser σ Unit := ws
+  $ withBacktracking
+  $ withErrorMessage s
+  $ string s *> pure ()
 
+def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := ws
+  $ withBacktracking
+  $ withErrorMessage s
+  $ (string s : TParser σ String) *> notFollowedBy (tokenFilter badNext)
 
 abbrev LET  : TParser σ Unit := kw "let"
 abbrev IN   : TParser σ Unit := kw "in"
@@ -92,13 +90,14 @@ abbrev MATCH: TParser σ Unit := kw "match"
 abbrev WITH : TParser σ Unit := kw "with"
 abbrev TYPE : TParser σ Unit := kw "type" <|> kw "data"
 
-abbrev BAR  : TParser σ Unit := kwOp "|"
-abbrev ARROW: TParser σ Unit := kwOp "=>" <|> kwOp "->"
-abbrev COMMA: TParser σ Unit := kwOp ","
-abbrev EQ   : TParser σ Unit := kwOp "="
-abbrev END  : TParser σ Unit := kwOp ";;"
-abbrev UNDERSCORE : TParser σ Unit
-             := kwOp "_"
+abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
+abbrev ARROW: TParser σ Unit := ws
+  $ withBacktracking
+  $ (void $ string "=>") <|> (void $ string "->")
+abbrev COMMA: TParser σ Unit := kwOpExact ","
+abbrev EQ   : TParser σ Unit := kwOpNoExtend "=" (fun c => c == '>' || c == '=')
+abbrev END  : TParser σ Unit := kwOpExact ";;"
+abbrev UNDERSCORE : TParser σ Unit := kwOpExact "_"
 
 abbrev ADD   := "+"
 abbrev SUB   := "-"

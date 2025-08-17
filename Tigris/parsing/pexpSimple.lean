@@ -72,7 +72,7 @@ partial def parsePratt (minPrec := 0) : TParser σ Expr := do
   let rec loop (lhs : Expr) : TParser σ Expr := do
     match <- takeBindingOp? minPrec with
     | none => pure lhs
-    | some (_sym, {prec, assoc, impl}) =>
+    | some (_sym, {prec, assoc, impl,..}) =>
       let nextMin := if assoc matches .leftAssoc then prec + 1 else prec
       let rhs <- parsePratt nextMin
       loop $ impl lhs rhs
@@ -94,16 +94,18 @@ partial def letPatExp   : TParser σ Expr := do
 
 partial def letPointExp : TParser σ Expr := do
   LET let id <- ID;
+      let pre <- takeMany funBinder
       let br <- takeMany1 (BAR *> matchDiscr)
   IN  let bd <- parseExpr
-  return Let id (pointedExp br) bd
+  return Let id (transMatch pre $ pointedExp br) bd
 
 partial def letrecPointExp : TParser σ Expr := do
   LET; REC;
       let id <- ID;
+      let pre <- takeMany funBinder
       let br <- takeMany1 (BAR *> matchDiscr)
   IN  let bd <- parseExpr
-  return Let id (Fix $ Fun id $ pointedExp br) bd
+  return Let id (Fix $ Fun id $ transMatch pre $ pointedExp br) bd
 
 partial def letrecPatExp: TParser σ Expr := do
   LET; REC
@@ -121,7 +123,7 @@ partial def letExp      : TParser σ Expr := do
   EQ; let e₁ <- parseExpr
   IN; let e₂ <- parseExpr         return Let id (transMatch pats e₁) e₂
 
-partial def letrecExp   : TParser σ Expr := withBacktracking do
+partial def letrecExp   : TParser σ Expr := do
   LET; REC
       let id <- ID
       let pats <- takeMany funBinder

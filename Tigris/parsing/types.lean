@@ -67,14 +67,24 @@ instance : ToString Associativity where
 abbrev Binding := Symbol × Expr
 
 structure OpEntry where
+  sym : Symbol
   prec : Nat
   assoc : Associativity
   impl : Expr -> Expr -> Expr
 
 instance : ToString OpEntry := ⟨fun {prec, assoc,..} => toString (prec, assoc)⟩
+instance : Repr OpEntry := ⟨fun {prec, assoc,..} _ => toString (prec, assoc)⟩
 
-abbrev OpTable := Std.HashMap String OpEntry
-abbrev TyArity := Std.HashMap String Nat
+abbrev OpTable := Lean.Data.Trie OpEntry
+abbrev TyArity := Lean.Data.Trie Nat
+
+open Lean.Data.Trie in
+def Lean.Data.Trie.ofList (arr : List (String × α)) : Trie α :=
+  arr.foldl (fun a s => insert a s.1 s.2) ∅
+in
+def Lean.Data.Trie.findD (t : Trie α) (s : String) (dflt : α) : α := t.find? s |>.getD dflt
+in
+attribute [inline] ofList findD
 
 structure PEnv where
   ops : OpTable

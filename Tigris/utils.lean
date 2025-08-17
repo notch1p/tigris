@@ -86,6 +86,25 @@ def first'
         go m (Nat.le_of_lt this) (combine e f) (Stream.setPosition s savePos)
   go ps.size (Nat.le.refl) (Error.unexpected (<- getPosition) none)
 
+def treeParse
+  (p : α -> ParserT ε σ τ m α)
+  (root : Std.DTreeMap.Internal.Impl α (λ _ => β))
+  (combine : ε -> ε -> ε := fun _ => id)
+  : ParserT ε σ τ m (α × β) := getPosition >>= (go root $ Error.unexpected · none) where
+  go rt (e : ε) s := do
+    match rt with
+    | .leaf => return .error s e
+    | .inner _ k v l r =>
+      match <- go l e s with
+      | .ok s res => return .ok s res
+      | .error s f =>
+        let savePos := Stream.getPosition s
+        match <- p k s with
+        | .ok s res => return .ok s (res, v)
+        | .error s f' =>
+          go r (combine f f') (Stream.setPosition s savePos)
+
+
 end
 
 def Array.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : Array α) : β :=
@@ -104,22 +123,33 @@ def Array.foldr1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf x my := some $ match my with | none => x | some y => f x y
   arr.foldr mf none |>.get!
 
-def potentialOp : TParser σ String := ws do
-  let hd <- tokenFilter $ not ∘ fun c => c == '_' || c.isDigit || c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
-  let tl <- takeMany $ tokenFilter $ not ∘ fun c => c == ',' || c == ')' || c == ' ' || c >= '\t' && c <= '\r'
-  return tl.foldl String.push hd.toString
+def isNotOpInit
+  | '_' | ',' | '(' | ')' | ' '
+  | '{' | '}' | '[' | ']' => false
+  | c => not $ c.isDigit || c >= '\t' && c <= '\r'
 
+def isNotOpCand
+  | '_' | ',' | '(' | ')' | ' '
+  | '{' | '}' | '[' | ']' => false
+  | c => not $ c >= '\t' && c <= '\r'
+
+def potentialOp : TParser σ String := do
+  let hd <- tokenFilter isNotOpInit
+  let tl <- takeMany $ tokenFilter isNotOpCand
+  return tl.foldl String.push hd.toString
+local infixl:40 " <? " => flip (· <|> ·)
 def takeBindingOp? (minPrec : Nat) : TParser σ (Option (String × OpEntry)) :=
-  (withBacktracking $ show TParser σ (Option $ String × OpEntry) from do
-     let tok <- potentialOp
-     let ({ops,..}, _) <- get
-     match ops.get? tok with
-     | none => throwUnexpectedWithMessage none "not an operator"
-     | some entry@{prec,..} =>
-       if prec < minPrec then
-         throwUnexpectedWithMessage none "prec too low"
-       else return some (tok, entry))
-  <|> pure none
+  pure none <? do
+  let tokSpan <- ws $ lookAhead potentialOp
+  let ({ops,..}, _) <- get
+  match ops.matchPrefix tokSpan 0 with
+  | none => throwUnexpectedWithMessage none "not an operator"
+  | some entry@{sym,prec,..} =>
+    if prec < minPrec then
+      throwUnexpectedWithMessage none "prec too low"
+    if reservedOp.contains tokSpan then throwUnexpectedWithMessage none "reserved"
+    else
+      string sym *> return some (sym, entry)
 
 def hole i := s!"__?x{Nat.toSubscriptString i}"
 

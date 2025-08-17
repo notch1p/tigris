@@ -10,7 +10,7 @@ def registerTy (name : String) (arity : Nat) : TParser σ Unit := do
   modify fun (st@{tys,..}, l) => ({st with tys := tys.insert name arity}, l)
 
 def getTyArity (name : String) : TParser σ Nat := do
-  get <&> (·.1.tys.getD name 0)
+  get <&> (·.1.tys.findD name 0)
 
 mutual
 partial def tyCtor : TParser σ MLType := do
