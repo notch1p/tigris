@@ -18,7 +18,7 @@ partial def tyCtor : TParser σ MLType := do
   if isUpperInit id then return TApp id []
   else return TVar (.mkTV id)
 
-partial def tyApps : TParser σ MLType := do
+partial def tyApps : TParser σ MLType := withErrorMessage "TyTerm" do
   let hd <- tyAtom
   match hd with
   | .TApp h [] =>
@@ -47,7 +47,7 @@ def tyEmpty : TParser σ $ Binding ⊕ TyDecl := do
   TYPE let tycon <- ID let param <- takeMany ID;
   return .inr {tycon, param, ctors := #[]}
 
-def tyDecl : TParser σ $ Binding ⊕ TyDecl := do
+def tyDecl : TParser σ $ Binding ⊕ TyDecl := withErrorMessage "TyDecl" do
   TYPE let tycon <- ID let param <- takeMany ID; EQ
   registerTy tycon param.size
   let hd <- (optional BAR *> ctor)

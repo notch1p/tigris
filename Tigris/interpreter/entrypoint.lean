@@ -17,6 +17,7 @@ def declaration : TParser σ TopDecl := first'
    , infixlDecl
    , infixrDecl
    ]
+  simpErrorCombine
 
 def module : TParser σ $ Array TopDecl :=
   sepBy (optional END) declaration <* optional END

@@ -5,7 +5,7 @@ open Expr Lexing Parser Parser.Char Pattern
 namespace Parsing
 variable {σ}
 mutual
-partial def patAtom : TParser σ Pattern := ws $ first' $
+partial def patAtom : TParser σ Pattern := ws $ first' (combine := simpErrorCombine) $
   #[ parenthesized patProd
    , UNDERSCORE $> PWild
    , intLit <&> (PConst ∘ .PInt)
@@ -33,9 +33,9 @@ partial def patApp : TParser σ Pattern := do
   | _ => return hd
 
 partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := do
-  let mut lhs <- patApp
+  let lhs <- patApp
   let rec loop (lhs : Pattern) : TParser σ Pattern := do
-    match (<- takeBindingOp? minPrec) with
+    match <- takeBindingOp? minPrec with
     | none => pure lhs
     | some (_sym, entry) =>
       let nextMin :=
@@ -43,11 +43,14 @@ partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := do
         | .leftAssoc  => entry.prec + 1
         | .rightAssoc => entry.prec
       let rhs <- parsePattern nextMin
-      if let Var ctor := η₂' (entry.impl (Var "_") (Var "_")) then
-        loop (PCtor ctor #[lhs, rhs])
-      else
+      let expr' := η₂' $ entry.impl (Var "_") (Var "_")
+      match expr', lhs with
+      | Var "_", PCtor ctor args =>
+        loop (PCtor ctor $ args.push rhs)
+      | Var ctor, lhs => loop (PCtor ctor #[lhs, rhs])
+      | _, _ =>
         throwUnexpectedWithMessage none
-          s!"expr {repr $ η₂' $ entry.impl (Var "_") (Var "_")} does not reduce to a constructor"
+          s!"{repr expr'} or {lhs} does not reduce to a (applicable) pattern"
   loop lhs
 end
 end Parsing

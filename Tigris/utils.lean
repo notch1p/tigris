@@ -69,9 +69,44 @@ partial def chainr1
 
 @[inline] def link s := η₂ $ Var s
 
+namespace Parser.Error
+def Simple.flatten
+  [Parser.Stream σ τ]
+  : Simple σ τ -> Stream.Position σ × Option τ × Array (Stream.Position σ × String)
+  | .unexpected pos tok? => (pos, tok?, #[])
+  | .addMessage e pos msg =>
+    let (p, t, ms) := Simple.flatten e
+    (p, t, ms.push (pos, msg))
+
+def Simple.rebuild
+  [Parser.Stream σ τ]
+  (failPos : Stream.Position σ) (found? : Option τ) (msgs : Array (Stream.Position σ × String)) : Simple σ τ :=
+  let base := Simple.unexpected failPos found?
+  msgs.foldl (init := base) (fun acc (pos, m) => Simple.addMessage acc pos m)
+end Parser.Error
+section open Error
+private def dedupMsgsAt
+  (pos : Stream.Position Substring)
+  (msgs : Array (Stream.Position Substring × String))
+  : Array (Stream.Position Substring × String) :=
+  let seen : Std.HashSet String := ∅
+  (·.1) <| msgs.foldl (init := (#[], seen)) fun (out, seen) (p, m) =>
+    if p == pos then
+      if let (true, seen) := seen.containsThenInsert m then
+        (out.push (p, m), seen)
+      else (out, seen)
+    else (out, seen)
+def simpErrorCombine (e₁ : Simple Substring Char) (e₂ : Simple Substring Char) : Simple Substring Char :=
+  let (p₁, f₁, m₁) := e₁.flatten
+  let (p₂, f₂, m₂) := e₂.flatten
+  if p₁ < p₂ then e₂ else if p₂ < p₁ then e₁ else
+    let found := f₁ <|> f₂
+    let merged := dedupMsgsAt p₁ (m₁ ++ m₂)
+    Simple.rebuild p₁ found merged
+end
 def first'
   (ps : Array $ ParserT ε σ τ m α)
-  (combine : ε → ε → ε := fun _ => id)
+  (combine : ε → ε → ε)
   : ParserT ε σ τ m α := do
   let rec go n (h : n <= ps.size) e s :=
     match _ : n with
@@ -138,16 +173,22 @@ def potentialOp : TParser σ String := do
   let tl <- takeMany $ tokenFilter isNotOpCand
   return tl.foldl String.push hd.toString
 local infixl:40 " <? " => flip (· <|> ·)
+
 def takeBindingOp? (minPrec : Nat) : TParser σ (Option (String × OpEntry)) :=
   pure none <? do
-  let tokSpan <- ws $ lookAhead potentialOp
+  let tokSpan <- spaces *> lookAhead potentialOp
   let ({ops,..}, _) <- get
   match ops.matchPrefix tokSpan 0 with
   | none => throwUnexpectedWithMessage none "not an operator"
   | some entry@{sym,prec,..} =>
     if prec < minPrec then
       throwUnexpectedWithMessage none "prec too low"
-    if reservedOp.contains tokSpan then throwUnexpectedWithMessage none "reserved"
+    if let some revop := reservedOp.matchPrefix tokSpan 0
+    then
+      if sym.length > revop.length then
+        string sym *> return some (sym, entry)
+      else
+        throwUnexpectedWithMessage none "reserved"
     else
       string sym *> return some (sym, entry)
 
@@ -186,10 +227,10 @@ def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
 
   (· , ·) <$> (go e) <*> cnt.get
 
-def transShorthand (e : Expr) : Expr :=
+@[inline] def transShorthand (e : Expr) : Expr :=
   let (e, n) := runST fun _ => transformPrim e
   n.foldRev (fun i _ a => Fun (hole i) a) e
 
-def templateREPL id v t := id ++ " = " ++ v ++ " ⊢ " ++ t
+@[inline] def templateREPL id v t := id ++ " = " ++ v ++ " ⊢ " ++ t
 
-def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act
+@[inline] def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act

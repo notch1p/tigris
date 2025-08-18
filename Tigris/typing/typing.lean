@@ -15,11 +15,6 @@ where
 local instance : CoeHead String TV := ⟨mkTV⟩
 local instance : CoeTail TV MLType := ⟨TVar⟩
 
-@[inline] abbrev tInt := TCon "Int"
-@[inline] abbrev tBool := TCon "Bool"
-@[inline] abbrev tString := TCon "String"
-@[inline] abbrev tUnit := TCon "Unit"
-
 abbrev dE : List (String × Scheme) :=
   [ ("rec"  , .Forall ["α"] $ ("α" ->' "α") ->' "α")
   , ("__add", .Forall []    $ tInt ×'' tInt ->' tInt)

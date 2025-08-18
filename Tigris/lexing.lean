@@ -7,11 +7,11 @@ namespace Lexing open Parser Parser.Char
 
 def alphanum' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
-  withErrorMessage "expected letter or digit character or \'" do
+  withErrorMessage "letter or digit character or \'" do
     tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '!' || c == '?'
 def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
-  withErrorMessage "expected alphabetic character" do
+  withErrorMessage "alphabetic character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
 section
 variable {σ}
@@ -29,7 +29,13 @@ def spaces : TParser σ Unit :=
 
 abbrev ws (t : TParser σ α) := spaces *> t <* spaces
 
-def reservedOp := #["|", "->", ";;", "=>", ",", "_"]
+def reservedOp : Lean.Data.Trie Symbol := .ofList
+  [ ("|", "|")
+  , ("->", "->")
+  , (";;", ";;")
+  , ("=>", "=>")
+  , (",", ",")
+  , ("_", "_")]
 
 def reserved :=
   #[ "infixl", "infixr", "match"
@@ -46,7 +52,7 @@ open ASCII in private def ID' : TParser σ String :=
 
 def ID : TParser σ Symbol := do
   let id <- ID'
-  if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword {id}"
+  if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
   else ws $ pure id
 
 def intLit := @ASCII.parseInt
@@ -59,25 +65,26 @@ def isUpperInit (s : String) : Bool :=
   else (s.get' 0 h) >= 'A' && (s.get' 0 h) <= 'Z'
 
 def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α :=
-  ws (char l) *> t <* ws (char r)
+  (ws $ char l) *> t <* (ws $ char r)
 
 def parenthesized (t : TParser σ α) : TParser σ α := between '(' t ')'
 
 def kw (s : String) : TParser σ Unit := ws
                                     $ withBacktracking
-                                    $ withErrorMessage "keyword"
+                                    $ withErrorMessage s!"kw '{s}'"
                                     $ string s
                                     *> notFollowedBy alphanum'
 
 def kwOpExact (s : String) : TParser σ Unit := ws
   $ withBacktracking
-  $ withErrorMessage s
-  $ string s *> pure ()
+  $ withErrorMessage s!"kwOp '{s}'"
+  $ void
+  $ string s
 
 def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := ws
   $ withBacktracking
-  $ withErrorMessage s
-  $ (string s : TParser σ String) *> notFollowedBy (tokenFilter badNext)
+  $ withErrorMessage s!"kwOp '{s}'"
+  $ string s *> notFollowedBy (tokenFilter badNext)
 
 abbrev LET  : TParser σ Unit := kw "let"
 abbrev IN   : TParser σ Unit := kw "in"
@@ -93,6 +100,7 @@ abbrev TYPE : TParser σ Unit := kw "type" <|> kw "data"
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
 abbrev ARROW: TParser σ Unit := ws
   $ withBacktracking
+  $ withErrorMessage "reserved operator '=>' or '->'"
   $ (void $ string "=>") <|> (void $ string "->")
 abbrev COMMA: TParser σ Unit := kwOpExact ","
 abbrev EQ   : TParser σ Unit := kwOpNoExtend "=" (fun c => c == '>' || c == '=')
@@ -109,4 +117,5 @@ abbrev ATT   := "@@"
 abbrev INFIXL : TParser σ Unit := kw "infixl"
 abbrev INFIXR : TParser σ Unit := kw "infixr"
 end
+
 end Lexing

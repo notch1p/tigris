@@ -4,9 +4,10 @@ open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter IO
 
 namespace Parsing open Lexing Parser PType
 
-def lpOrMod : TParser σ (Pattern × Expr ⊕ TopDecl) := first' #[.inr <$> declaration, .inl <$> letPatDecl]
+def lpOrMod : TParser σ (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Decl" $
+  first' #[.inr <$> declaration, .inl <$> letPatDecl] simpErrorCombine
 
-def toplevel : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := 
+def toplevel : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Toplevel" $
   sepBy (optional END) lpOrMod <* optional END
 
 def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEnv × Env × VEnv) :=
@@ -22,11 +23,11 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         let ((acc, _, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")).mapError toString
         liftEIO (print l)
 
-        let ty := 
-          if h : acc.size > 0 then 
+        let ty :=
+          if h : acc.size > 0 then
             acc.foldr (· ×'' ·) acc[acc.size - 1] (acc.size - 1) 0
           else te
-        
+
         let ex := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
           liftEIO $ print $ Logging.warn
@@ -51,7 +52,7 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
           liftEIO $ println $ templateREPL id v.render ty.render
           return (PE, ⟨E.1.insert id ty, E.2⟩, ⟨VE.env.insert id v⟩)
         | .inr tydecl =>
-          (PE, ·) <$> liftEIO (registerData E VE tydecl)
+          (PE, ·) <$> registerData E VE tydecl
   | (.error _ e, (_, l)) => liftEIO (print l) *> throw (toString e)
 
 
@@ -61,4 +62,3 @@ def evalToplevel (bs : Array Binding) (VE : VEnv) : Except TypingError VEnv :=
   bs.foldlM (init := VE) fun VE@⟨env⟩ (id, e) => (VEnv.mk ∘ env.insert id) <$> eval VE e
 
 def interpret PE E VE s := parseModule s PE E VE |>.toIO $ userError ∘ Logging.error
-

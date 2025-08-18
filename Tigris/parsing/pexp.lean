@@ -23,7 +23,8 @@ def infixlDecl : TParser σ $ Binding ⊕ α := do
   match s, i with
   | CS op, CI i =>
     let op := op.trim
-    if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
+    if reservedOp.find? op matches some _
+    then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
     ARROW let e <- parseExpr
     modify fun (s@{ops,..}, l) =>
       let ops := ops.insert op ⟨op, i.toNat, .leftAssoc, η₂ e⟩
@@ -36,7 +37,8 @@ def infixrDecl : TParser σ $ Binding ⊕ α := do
   match s, i with
   | CS op, CI i =>
     let op := op.trim
-    if reservedOp.contains op then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
+    if reservedOp.find? op matches some _
+    then throwUnexpectedWithMessage none s!"this operator {op} may not be redefined."
     ARROW let e <- parseExpr
     modify fun (s@{ops,..}, l) =>
       let ops := ops.insert op ⟨op, i.toNat, .rightAssoc, η₂ e⟩

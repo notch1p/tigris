@@ -5,8 +5,8 @@ open Expr Lexing Parser Parser.Char Pattern
 
 namespace Parsing
 variable {σ}
-def intExp      : TParser σ Expr := CI <$> ws intLit
-def strExp      : TParser σ Expr := CS <$> ws strLit
+def intExp      : TParser σ Expr := CI <$> (spaces *> intLit)
+def strExp      : TParser σ Expr := CS <$> (spaces *> strLit)
 
 def transMatch (pat : Array Pattern) (e : Expr) : Expr :=
   if pat.isEmpty then e else
@@ -24,30 +24,31 @@ def warn (s : String) : TParser σ Unit :=
     (pe, a ++ Logging.warn s)
 
 
-open TConst in def funBinder : TParser σ Pattern := first'
-   #[ ws $ PConst <$> PInt <$> intLit
-    , ws $ PConst <$> PStr <$> strLit
-    , PVar <$> ID
-    , parenthesized patProd
-    , parenthesized parsePattern]
+open TConst in def funBinder : TParser σ Pattern := spaces *> first'
+  #[ PConst <$> PInt <$> intLit
+   , PConst <$> PStr <$> strLit
+   , PVar <$> ID
+   , parenthesized patProd
+   , parenthesized parsePattern]
+  simpErrorCombine
 
 mutual
 partial def funapp : TParser σ Expr :=
   chainl1 atom (pure App)
 
-partial def atom : TParser σ Expr :=
-  first' $ #[ parenthesized prodExp
-            , letrecExp
-            , letrecPointExp
-            , letrecPatExp
-            , letExp
-            , letPointExp
-            , letPatExp
-            , funPointed  , funExp
-            , fixpointExp , condExp
-            , matchExp    , intExp
-            , strExp      , varExp]
-            |>.map ws
+partial def atom : TParser σ Expr := spaces *>
+  first' #[ parenthesized prodExp
+          , letrecExp
+          , letrecPointExp
+          , letrecPatExp
+          , letExp
+          , letPointExp
+          , letPatExp
+          , funPointed  , funExp
+          , fixpointExp , condExp
+          , matchExp    , intExp
+          , strExp      , varExp]
+         simpErrorCombine
 
 partial def prodExp : TParser σ Expr := do
   let es <- sepBy COMMA (parsePratt 0)
@@ -68,7 +69,7 @@ partial def appAtom     : TParser σ Expr :=
   chainl1 atom (pure App)
 
 partial def parsePratt (minPrec := 0) : TParser σ Expr := do
-  let mut lhs <- appAtom
+  let lhs <- appAtom
   let rec loop (lhs : Expr) : TParser σ Expr := do
     match <- takeBindingOp? minPrec with
     | none => pure lhs
@@ -154,7 +155,7 @@ partial def condExp     : TParser σ Expr := do
   THEN let e₁ <- parseExpr
   ELSE let e₂ <- parseExpr        return Cond c e₁ e₂
 
-partial def parseExpr : TParser σ Expr := parsePratt
+partial def parseExpr : TParser σ Expr := withErrorMessage "Term" parsePratt
 
 end
 end Parsing

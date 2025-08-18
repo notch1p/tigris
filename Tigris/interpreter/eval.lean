@@ -5,14 +5,18 @@ import Tigris.interpreter.types
 import Tigris.interpreter.entrypoint
 
 namespace Interpreter open Parsing PType Value MLType TV Pattern Expr TypingError
-def registerData (E : Env) (VE : VEnv) : TyDecl -> IO (Env × VEnv)
+def registerData (E : Env) (VE : VEnv) : TyDecl -> EIO String (Env × VEnv)
   | ty@{ctors,tycon,param} =>
-    ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields) =>
-      let s := ctorScheme tycon (param |>.map mkTV |>.toList) fields
-      let arity := fields.length
-      let v := if arity == 0 then .VConstr cname #[]
-                             else .VCtor cname arity #[]
-      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$ println! templateREPL cname v.render s.render
+    if (primTy.find? tycon matches some ()) && param.isEmpty then
+      throw s!"The primitive type {tycon} may not be redefined"
+    else
+      ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields) =>
+        let s := ctorScheme tycon (param |>.map mkTV |>.toList) fields
+        let arity := fields.length
+        let v := if arity == 0 then .VConstr cname #[]
+                               else .VCtor cname arity #[]
+        (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$
+          liftEIO (println! templateREPL cname v.render s.render)
 
 def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with
@@ -80,9 +84,18 @@ def callForeign (as' : Value) (n : Nat) : Value :=
       | VI i, VI i' | VB i, VB i' | VS i, VS i' | VOpaque i, VOpaque i' =>
         pure $ i == i'
       | VU, VU => pure true
-      | VF .., VF .. => throw $ VEvalError s!"equality handler is not implemented for function type"
+      | VF .., VF .. => throw $ VEvalError s!"equality handler is not implemented for functions"
       | VP l r, VP l' r' => (· && ·) <$> go l l' <*> go r r'
-      | x, y => unreachable!
+      | VConstr s₁ v₁, VConstr s₂ v₂ => do
+        let f₁ := s₁ == s₂;
+        let mut f₂ := true
+        for v₁ in v₁, v₂ in v₂ do
+          let x <- go v₁ v₂
+          f₂ := x && f₂
+          if f₂ then continue else break
+        return f₁ && f₂
+      | VCtor .., VCtor .. => throw $ VEvalError s!"equality handler is not implemented for constructors"
+      | _, _ => unreachable!
     match go as[0] as[1]! with
     | .ok x => VB x | .error e => e
   | 7 => if let (VI i) := as[0] then VI $ i + 1 else unreachable!

@@ -8,7 +8,7 @@ check CI pages for pre-built binary, IR, generated C source and libraries.
 
 ## Synopsis
 
-> it looks like a hybrid of OCaml & Haskell & Lean,
+it looks like a hybrid of OCaml & Haskell & Lean,
 
 > [!WARNING]
 > But runs like shit.
@@ -68,7 +68,7 @@ Functions that are implemented with Lean-C interop:
 ### on that axiom inside [parsing/types.lean](Tigris/parsing/types.lean)
 
 - Used in `transformPrim` from [utils.lean](Tigris/utils.lean)
-(same situation, I'm suspecting this something to do with nested inductive types i.e. in the `Match` branch, we use array to store match discriminants)
+  (same situation, I'm suspecting this something to do with nested inductive types i.e. in the `Match` branch, we use array to store match discriminants)
 
 Any constructivist (or Anyone, really) probably isn't a fan of blatantly importing axioms.
 
@@ -114,12 +114,32 @@ proving those functions terminates.
 
 > overall this shouldn't be a huge problem because the behavior described in the axiom is intended.
 
-### what about exhaustiveness checking?
+### what about (...)
+
+#### Exhaustiveness check
 
 - [x] Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1], just like OCaml.
 
-Has done the very barebone. 
+Has done the very barebone.
 It's an almost one-to-one implementation of the algorithm described in the paper above.
+
+#### Typeclass/Constraints
+
+- [ ] Planned. if I'm going to do it then it would be a dictionary passing implementation.
+- because there isn't any memoization of values this implementation will not impose monomorphism restriction found in Haskell (On a separate note: as there's currently no side effects such as mutable references, we are free from value restriction as well).
+
+currently primitive polymorphic functions that should be constrained (e.g. homogeneous equality) is done directly
+in the interpreter (somewhat akin to a dynamically typed `(· = ·)`):
+looking up tags inside values at runtime then dispatching to correct monomorphic implementations.
+
+For values (including constructors) of function type, an error is thrown as equality handlers for
+these values aren't implemented (and likely never will).
+
+One could argue that theoretically we could implement
+an intensional (syntactic) approach by transforming their AST to normal forms and compare them
+with the equality relation on `Expr`, as is the case in Lean (besides `funext`).
+
+But This is unlikely to be done because I've decided it's too elaborate and metatheoretic.
 
 ## Specification
 

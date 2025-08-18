@@ -30,7 +30,7 @@ def MLType.toStr : MLType -> String
   | TVar a => toString a
   | TCon a => a
   | a ->' b =>
-    paren (arr? a) (toStr a) ++ " -> " ++ toStr b
+    paren (arr? a) (toStr a) ++ " → " ++ toStr b
   | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
   | TApp s [] => s
   | TApp s (l :: ls) =>
@@ -102,6 +102,11 @@ instance : ToString TypingError where
     note s!"unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n" ++
     note "recursion is supported primitively via letrec or unsafely via fixpoint combinator `rec`"
 
+@[inline] abbrev tInt := TCon "Int"
+@[inline] abbrev tBool := TCon "Bool"
+@[inline] abbrev tString := TCon "String"
+@[inline] abbrev tUnit := TCon "Unit"
+def primTy : Lean.Data.Trie Unit := .ofList [("Int", ()), ("Bool", ()), ("String", ()), ("Unit", ())]
 end MLType
 
 structure Env where
