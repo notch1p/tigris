@@ -1,0 +1,17 @@
+let exfalso = rec id
+
+type Bad = Bad (Bad -> Bad) NB. The classic circular argument:
+                            NB. Bad is in nonpositive position.
+
+let rec collapse
+  | Bad k => collapse $ k $ Bad k
+
+let bad = Bad collapse
+
+NB. try running this w/ #type collapse bad in the REPL
+NB. let falsehood = collapse bad 
+          NB. Because applying collapse results in divergence
+          NB. (stack overflow in our case)
+          NB. (infinite loop in practice due to tailcall)
+          NB. from a programming perspective
+          NB. this can still be considered safe.

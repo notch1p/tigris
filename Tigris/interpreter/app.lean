@@ -7,11 +7,17 @@ namespace Parsing open Lexing Parser PType
 def lpOrMod : TParser σ (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Decl" $
   first' #[.inr <$> declaration, .inl <$> letPatDecl] simpErrorCombine
 
-def toplevel : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Toplevel" $
-  sepBy (optional END) lpOrMod <* optional END
+def lpOrModOrMut : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := do
+  if <- test MUTUAL then
+    mutTyDecl <* END
+  else Array.singleton <$> lpOrMod
+
+def toplevel : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Toplevel" $ do
+  let hd <- lpOrModOrMut <* optional END
+  foldl (· ++ ·) hd (lpOrModOrMut <* optional END)
 
 def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEnv × Env × VEnv) :=
-  match runST fun _ => Lexing.spaces *> toplevel <* endOfInput |>.run s |>.run (PE, "") with
+  match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ xs, (PE, l)) => do
     liftEIO (print l)
     xs.foldlM (init := (PE, E, VE)) fun (PE, E, VE) decl => do
@@ -54,7 +60,6 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         | .inr tydecl =>
           (PE, ·) <$> registerData E VE tydecl
   | (.error _ e, (_, l)) => liftEIO (print l) *> throw (toString e)
-
 
 end Parsing
 

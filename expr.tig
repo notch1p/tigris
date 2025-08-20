@@ -27,3 +27,8 @@ let 3860 = eval prog
 type List a = Nil | One a | Cons a (List a)
 
 let rec evalPartial | Atom a, One b => a + b
+
+mutual
+type Tree a = Empty | Node a (Forest a)
+type Forest a = Nil | Cons (Tree a) (Forest a)
+;;

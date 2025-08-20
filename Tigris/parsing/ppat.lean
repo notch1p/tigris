@@ -49,8 +49,8 @@ partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := do
         loop (PCtor ctor $ args.push rhs)
       | Var ctor, lhs => loop (PCtor ctor #[lhs, rhs])
       | _, _ =>
-        throwUnexpectedWithMessage none
-          s!"{repr expr'} or {lhs} does not reduce to a (applicable) pattern"
+        error s!"{repr expr'} or {lhs} does not reduce to a (applicable) pattern\n"
+        throwUnexpected
   loop lhs
 end
 end Parsing

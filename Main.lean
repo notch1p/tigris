@@ -12,7 +12,7 @@ def main : IO Unit := do
 
   let motd := "A basic language using Hindley-Milner type system\n\
                with a naive (term-rewriting) interpreted implementation.\n\
-               For language specifications see source: Playbook/hm.lean\n\
+               For language specifications see source.\n\
                Type #help;; to check available commands.\n\
                To exit press <C-d> (Unix) or <C-z> if on Windows."
   let mut prompt := "λ> "
@@ -41,8 +41,15 @@ def main : IO Unit := do
 
     if buf.startsWith "#help" then
       print $ tabulate (mkBoldBlackWhite "Commands") {align := alignH} helpMsg
+    else if buf.startsWith "#c" || buf.startsWith "#t" then
+      try
+        let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
+        let (s, l) <- MLType.runInfer1 exp e |> ofExcept
+        print l
+        println! s.render
+      catch e => println! e
     else if buf.startsWith "#a" then
-      (parseModule' (buf.drop 4) pe |>.toIO') >>= fun
+      (parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace) pe |>.toIO') >>= fun
       | .ok (_, b)  => println! reprStr b
       | .error e => println! e
     else if buf.startsWith "#d" then
@@ -58,10 +65,10 @@ def main : IO Unit := do
             let (PE', E', VE') <- interpret pe e ve fs
             PE.set PE' *> E.set E' *> VE.set VE'
           catch e =>
-            println! Logging.error $ toString e;
-            println! Logging.warn  $
-                "Evaluation context is restored as there are errors.\n\
-                 Fix those then #load again to update it."
+            println! toString e
+            println! Logging.warn $
+              "Evaluation context is restored as there are errors.\n\
+               Fix those then #load again to update it."
     else try
       let (PE', E', VE') <- interpret pe e ve buf
       PE.set PE' *> E.set E' *> VE.set VE'

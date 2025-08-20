@@ -96,7 +96,8 @@ instance : ToString TypingError where
                       note "use letrec or fixcomb if this is a recursive definition"
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
   | .NoMatch e v arr =>
-    s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString $ arr.map (·.1)}."
+    let arr := arr.map $ Array.map Pattern.render ∘ Prod.fst
+    s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString arr}."
   | .Duplicates (mkTV a) b =>
     "Unbounded fixpoint constructor does not exist in a strongly normalized system.\n" ++
     note s!"unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n" ++
@@ -105,6 +106,7 @@ instance : ToString TypingError where
 @[inline] abbrev tInt := TCon "Int"
 @[inline] abbrev tBool := TCon "Bool"
 @[inline] abbrev tString := TCon "String"
+@[inline] abbrev tEmpty := TCon "Empty"
 @[inline] abbrev tUnit := TCon "Unit"
 def primTy : Lean.Data.Trie Unit := .ofList [("Int", ()), ("Bool", ()), ("String", ()), ("Unit", ())]
 end MLType
