@@ -14,11 +14,11 @@ def truncate (n : Nat) (s : String) : String :=
 
 def EnvHeader : List Text.SString := ["id", "type", "value"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignE : Align EnvHeader := (left, left, right)
-def genTable (E : Env) : VEnv -> TableOf EnvHeader
+def genTable (E : Env) (widTy : Nat) (widVal : Nat) : VEnv -> TableOf EnvHeader
   | {env := VE} => E.1.keysArray.map fun (k : String) =>
     ( .str k
-    , .str $ truncate 20 $ toString $ E.1.get! k
-    , .str $ truncate 12 $ toString $ VE.get! k)
+    , .str $ truncate widTy  $ toString $ E.1.get! k
+    , .str $ truncate widVal $ toString $ VE.get!  k)
 
 def PEnvHeader : List Text.SString := ["op", "prec", "assoc"].map fun s => ⟨s, {style := [.bold]}⟩
 def genTableOp (PE : OpTable) : TableOf PEnvHeader :=

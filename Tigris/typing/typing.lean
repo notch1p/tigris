@@ -23,6 +23,7 @@ abbrev dE : List (String × Scheme) :=
   , ("__div", .Forall []    $ tInt ×'' tInt ->' tInt)
   , ("__eq" , .Forall ["α"] $ "α" ×'' "α" ->' tBool)
   , ("not"  , .Forall []    $ tBool ->' tBool)
+  , ("elim" , .Forall ["α"] $ tEmpty ->' "a")
   , ("id"   , .Forall ["α"] $ "α" ->' "α")
   , ("succ" , .Forall []    $ tInt ->' tInt)]
 
@@ -294,7 +295,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
       if let some ex := ex then
         Logging.warn
           s!"Partial pattern matching i.e. \
-             possible cases such as {Logging.cyan $ toString ex} are ignored\n"
+             possible cases such as {toString $ ex.map (·.render)} are ignored\n"
       else ""
     modify fun (n, l) => (n, l ++ msg)
 

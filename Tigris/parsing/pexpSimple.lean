@@ -19,12 +19,25 @@ def pointedExp (discr : Array $ Array Pattern × Expr) : Expr :=
         (init := Match (discr[0].1.mapIdx fun i _ => Var $ hole i) discr)
         fun i _ a => Fun (hole i) a
 
-def warn (s : String) : TParser σ Unit :=
-  modify fun (pe, a) =>
-    (pe, a ++ Logging.warn s)
+def mkProdPat (arr : Array Symbol) : Pattern :=
+  match h : arr.size with
+  | 0 => PWild | 1 => PVar arr[0]
+  | (_ + 2) => arr.foldr (PProd' ∘ PVar) (PVar arr[arr.size - 1]) (arr.size - 1)
 
+def mkTupExpr (arr : Array Expr) : Expr :=
+  match h : arr.size with
+  | 0 => CUnit | 1 => arr[0]
+  | (_ + 2) => arr.foldr Prod' arr[arr.size - 1] (arr.size - 1)
 
-open TConst in def funBinder : TParser σ Pattern := spaces *> first'
+open TConst in
+@[inline] def funBinder : TParser σ Pattern := spaces *> first'
+  #[ PConst <$> PInt <$> intLit
+   , PConst <$> PStr <$> strLit
+   , parenthesized patProd
+   , parenthesized parsePattern]
+  simpErrorCombine
+in
+@[inline] def funBinderID : TParser σ Pattern := spaces *> first'
   #[ PConst <$> PInt <$> intLit
    , PConst <$> PStr <$> strLit
    , PVar <$> ID
@@ -38,13 +51,8 @@ partial def funapp : TParser σ Expr :=
 
 partial def atom : TParser σ Expr := spaces *>
   first' #[ parenthesized prodExp
-          , letrecExp
-          , letrecPointExp
-          , letrecPatExp
-          , letExp
-          , letPointExp
-          , letPatExp
-          , funPointed  , funExp
+          , letDispatch
+          , funDispatch
           , fixpointExp , condExp
           , matchExp    , intExp
           , strExp      , varExp]
@@ -88,52 +96,41 @@ partial def matchExp    : TParser σ Expr := do
   let br <- takeMany1 (BAR *> matchDiscr)
                                   return Match e br
 
-partial def letPatExp   : TParser σ Expr := do
-  LET let pat <- funBinder
-  EQ  let e₁  <- parseExpr
-  IN  let e₂  <- parseExpr        return Match #[e₁] #[(#[pat], e₂)]
-
-partial def letPointExp : TParser σ Expr := do
-  LET let id <- ID;
-      let pre <- takeMany funBinder
-      let br <- takeMany1 (BAR *> matchDiscr)
-  IN  let bd <- parseExpr
-  return Let id (transMatch pre $ pointedExp br) bd
-
-partial def letrecPointExp : TParser σ Expr := do
-  LET; REC;
-      let id <- ID;
-      let pre <- takeMany funBinder
-      let br <- takeMany1 (BAR *> matchDiscr)
-  IN  let bd <- parseExpr
-  return Let id (Fix $ Fun id $ transMatch pre $ pointedExp br) bd
-
-partial def letrecPatExp: TParser σ Expr := do
-  LET; REC
-      let pat <- funBinder
-  EQ  let e₁  <- parseExpr
-  IN  let e₂  <- parseExpr
-  match pat with
-  | PVar id => return Let id (Fix $ Fun id $ e₁) e₂
-  | _ => warn "found non-variable pattern on the left hand side,\nThis expression will be treated as a letexp\n"
-    return Match #[e₁] #[(#[pat], e₂)]
-
-partial def letExp      : TParser σ Expr := do
-  LET let id <- ID
-      let pats <- takeMany funBinder
-  EQ; let e₁ <- parseExpr
-  IN; let e₂ <- parseExpr         return Let id (transMatch pats e₁) e₂
-
-partial def letrecExp   : TParser σ Expr := do
-  LET; REC
-      let id <- ID
-      let pats <- takeMany funBinder
-  EQ  let e₁ <- parseExpr
-  IN  let e₂ <- parseExpr
-  if pats.isEmpty && !e₁ matches Fun .. then
-    warn "Use letexp instead of letrec for nonrecursive definition\n"
-    return Let id (transMatch pats e₁) e₂
-  else return Let id (Fix $ Fun id $ transMatch pats e₁) e₂
+partial def letDispatch : TParser σ Expr := do
+  LET
+  match <- test REC with
+  | false =>
+    match <- option? funBinder with
+    | some pat =>
+      EQ let e₁ <- parseExpr; IN let e₂ <- parseExpr
+      return Match #[e₁] #[(#[pat], e₂)]
+    | none =>
+      let id <- ID; let pre <- takeMany funBinderID
+      match <- test BAR with
+      | true =>
+        let br <- sepBy1 BAR matchDiscr
+        IN; let e₂ <- parseExpr return Let id (transMatch pre $ pointedExp br) e₂
+      | false =>
+        EQ; let e₁ <- parseExpr; IN; let e₂ <- parseExpr
+        return Let id (transMatch pre e₁) e₂
+  | true =>
+    match <- option? funBinder with
+    | some pat =>
+      EQ let e₁ <- parseExpr; IN let e₂ <- parseExpr
+      warn "found non-variable pattern on the left hand side,\nThis expression will be treated as a letexp\n"
+      return Match #[e₁] #[(#[pat], e₂)]
+    | none =>
+      let id <- ID; let pre <- takeMany funBinderID
+      match <- test BAR with
+      | true =>
+        let br <- sepBy1 BAR matchDiscr
+        IN; let e₂ <- parseExpr return Let id (Fix $ Fun id $ transMatch pre $ pointedExp br) e₂
+      | false =>
+        EQ; let e₁ <- parseExpr; IN; let e₂ <- parseExpr
+        if pre.isEmpty && !e₁ matches Fun .. then
+          warn "Use letexp instead of letrec for nonrecursive definition\n"
+          return Let id (transMatch pre e₁) e₂
+        else return Let id (Fix $ Fun id $ transMatch pre e₁) e₂
 
 partial def fixpointExp : TParser σ Expr := do
   REC;
@@ -141,14 +138,13 @@ partial def fixpointExp : TParser σ Expr := do
   | some e =>                     return Fixcomb e
   | none   =>                     return Var "rec"
 
-partial def funExp      : TParser σ Expr := do
-  FUN   let pat <- takeMany1 funBinder
-  ARROW let e <- parseExpr
-                                  return transMatch pat e
-
-partial def funPointed  : TParser σ Expr := do
-  FUN let a <- takeMany1 (BAR *> matchDiscr)
-                                  return pointedExp a
+partial def funDispatch : TParser σ Expr := do
+  FUN
+  match <- test BAR with
+  | true => let args <- sepBy1 BAR matchDiscr; return pointedExp args
+  | false =>
+    let pat <- takeMany1 funBinderID; ARROW let e <- parseExpr
+    return transMatch pat e
 
 partial def condExp     : TParser σ Expr := do
   IF   let c <- parseExpr

@@ -1,9 +1,19 @@
 import Parser
-import PP.ffidecl
+import PP.dependentPP
 
 axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
 
 abbrev Symbol := String
+
+namespace Logging open PrettyPrint Text
+def blue s := (show SString from ⟨s, [], .blue, .defaultColor⟩).render
+def cyan s := (show SString from ⟨s, [], .green, .defaultColor⟩).render
+def magenta s := (show SString from ⟨s, [], .magenta, .defaultColor⟩).render
+def note s := (show SString from ⟨"[NOTE] ", [.bold], .cyan, .defaultColor⟩).render ++ s
+def info s := (show SString from ⟨"[INFO] ", [.bold], .blue, .defaultColor⟩).render ++ s
+def warn s := (show SString from ⟨"[WARN] ", [.bold], .yellow, .defaultColor⟩).render ++ s
+def error s := (show SString from ⟨"[ERROR] ", [.bold], .red, .defaultColor⟩).render ++ s
+end Logging
 
 inductive TConst where
   | PUnit
@@ -18,6 +28,11 @@ instance : ToString TConst where
   | .PInt i => toString i
   | .PBool b => toString b
   | .PStr s => reprStr s
+
+def TConst.render
+  | PUnit => Logging.cyan $ toString ()
+  | PInt i | PBool i => Logging.cyan $ toString i
+  | PStr s => Logging.cyan $ reprStr s
 
 inductive Pattern where
   | PVar (x : Symbol)
@@ -37,12 +52,22 @@ def Pattern.beq : Pattern -> Pattern -> Bool
 
 instance : BEq Pattern := ⟨Pattern.beq⟩
 
-def Pattern.toStr
+def Pattern.toStr : Pattern -> String
   | PVar x => toString x
   | PWild  => "_"
   | PConst p => toString p
   | PProd' p₁ p₂ => toString (toStr p₁, toStr p₂)
-  | PCtor n args => args.foldl (fun a s => a ++ " " ++ toStr s) n
+  | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prod? s) (toStr s)) n where
+  paren b s := bif b then s!"({s})" else s
+  prod? | PProd' .. => true | _ => false
+open Pattern.toStr in
+def Pattern.render : Pattern -> String
+  | PVar x => toString x
+  | PWild => "_"
+  | PConst p => p.render
+  | PProd' p₁ p₂ => toString (render p₁, render p₂)
+  | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prod? s) (render s)) $ Logging.blue n
+
 
 instance : ToString Pattern := ⟨Pattern.toStr⟩
 
@@ -89,6 +114,7 @@ attribute [inline] ofList findD
 structure PEnv where
   ops : OpTable
   tys : TyArity
+  undTy : List Symbol
 
 --abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT Substring Char

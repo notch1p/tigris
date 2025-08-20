@@ -100,6 +100,9 @@ def callForeign (as' : Value) (n : Nat) : Value :=
     | .ok x => VB x | .error e => e
   | 7 => if let (VI i) := as[0] then VI $ i + 1 else unreachable!
 
+  | 8 =>
+    VEvalError "you have constructed the absolute falsehood, from this anything holds (ex falso quodlibet)."
+
   | n => .VOpaque n
 
 partial def eval (E : VEnv) : Expr -> Except TypingError Value
@@ -159,7 +162,7 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
         | none => tryDiscriminant j $ Nat.le_of_succ_le h
     tryDiscriminant discr.size Nat.le.refl
 
-@[always_inline, inline] def parse! s := parse s |>.toOption |>.get!
+@[always_inline, inline] def parse! s := parse s initState |>.toOption |>.get!
 @[always_inline, inline] def eval! s (e : VEnv := ⟨∅⟩) := parse! s |> eval e |>.toOption |>.get!
 
 def arityGen (prim : Symbol) (arity : Nat) (primE : VEnv := ⟨∅⟩) : Value :=
@@ -188,7 +191,8 @@ def prim :=
   , ("__div", VOpaque 4)
   , ("not"  , VOpaque 5)
   , ("__eq" , VOpaque 6)
-  , ("succ" , VOpaque 7)]
+  , ("succ" , VOpaque 7)
+  , ("elim" , VOpaque 8)]
 def prim' : VEnv := ⟨.ofList prim⟩
 
 scoped macro n:term "of!" s:term : term => `(($n, (ag (String.append "__" $n) ⟨$s, by omega⟩ prim')))

@@ -8,28 +8,34 @@ import Tigris.interpreter.types
 namespace Parsing open Lexing Parser PType
 abbrev TopDecl := Binding ⊕ TyDecl
 def declaration : TParser σ TopDecl := first'
-  #[ tyDecl <|> tyEmpty
+  #[ tyDecl false <|> tyEmpty
    , value parseExpr
-   , letrecPointedDecl
-   , letPointedDecl
-   , letrecDecl
-   , letDecl
+   , letDeclDispatch
    , infixlDecl
    , infixrDecl
    ]
   simpErrorCombine
 
+def mutTyDecl : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := do
+  let tysd <- takeMany1 (tyDecl true)
+  let ({undTy,tys,..}, _) <- get
+  let undty := undTy.filter (tys.find? · matches none)
+  if let [] := undty then return tysd.map .inr
+  else
+    error s!"unresolved types {undTy.map Logging.magenta} must not elide mutual block\n"
+    throwUnexpected
+
 def module : TParser σ $ Array TopDecl :=
   sepBy (optional END) declaration <* optional END
 
-def parse (s : String) : Except String Expr :=
-  match runST fun _ => spaces *> parseExpr <* endOfInput |>.run s |>.run' (initState, "") with
+def parse (s : String) (PE : PEnv) : Except String Expr :=
+  match runST fun _ => parseExpr <* optional END <* spaces <* endOfInput |>.run s |>.run' (PE, "") with
   | .ok _ t    => pure t
   | .error _ e => throw (toString e)
 
 def parseModule' (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
   let liftEIO act := IO.toEIO IO.Error.toString act
-  match runST fun _ => spaces *> module <* endOfInput |>.run s |>.run (PE, "") with
+  match runST fun _ => module <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
@@ -38,7 +44,7 @@ end Parsing
 namespace MLType
 
 def check1 (s : String) (E : Env := defaultE) : String :=
-  match Parsing.parse s with
+  match Parsing.parse s Parsing.initState with
   | .error e => toString e
   | .ok e    =>
     match runInfer1 e E with

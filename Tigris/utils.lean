@@ -15,6 +15,11 @@ def List.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : 
   | [] => panic! "empty list"
   | x :: xs => xs.foldl (flip $ flip f ∘ mapf) (mapf x)
 
+def List.foldr1 (f : α -> α -> α) (xs : List α) (h : xs ≠ []) : α :=
+  match xs with
+  | [x] => x
+  | x :: y :: xs => f x (foldr1 f (y :: xs) $ List.cons_ne_nil y xs)
+
 def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
   | x :: xs, y :: ys => foldl2 f (f init x y) xs ys
   | _, _ => init
@@ -22,15 +27,6 @@ def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> �
 def List.foldr2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
   | x :: xs, y :: ys => f (foldr2 f init xs ys) x y
   | _, _ => init
-namespace Logging open PrettyPrint Text
-def blue s := (show SString from ⟨s, [], .blue, .defaultColor⟩).render
-def cyan s := (show SString from ⟨s, [], .green, .defaultColor⟩).render
-def magenta s := (show SString from ⟨s, [], .magenta, .defaultColor⟩).render
-def note s := (show SString from ⟨"[NOTE] ", [.bold], .cyan, .defaultColor⟩).render ++ s
-def info s := (show SString from ⟨"[INFO] ", [.bold], .blue, .defaultColor⟩).render ++ s
-def warn s := (show SString from ⟨"[WARN] ", [.bold], .yellow, .defaultColor⟩).render ++ s
-def error s := (show SString from ⟨"[ERROR] ", [.bold], .red, .defaultColor⟩).render ++ s
-end Logging
 section
 variable {ε σ τ m α}
          [Parser.Stream σ τ]
@@ -55,6 +51,13 @@ partial def chainr1
   let x <- p; rest x where
   rest x :=
     (do let f <- op; chainr1 p op <&> f x) <|> pure x
+
+def warn (s : String) : TParser σ Unit :=
+  modify fun (pe, a) =>
+    (pe, a ++ Logging.warn s)
+def error (s : String) : TParser σ Unit :=
+  modify fun (pe, a) =>
+    (pe, a ++ Logging.error s)
 
 @[inline] def η₂ s :=
   fun e₁ e₂ => App (App s e₁) e₂
@@ -179,7 +182,7 @@ def takeBindingOp? (minPrec : Nat) : TParser σ (Option (String × OpEntry)) :=
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({ops,..}, _) <- get
   match ops.matchPrefix tokSpan 0 with
-  | none => throwUnexpectedWithMessage none "not an operator"
+  | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then
       throwUnexpectedWithMessage none "prec too low"

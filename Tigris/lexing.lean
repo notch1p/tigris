@@ -38,7 +38,7 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
   , ("_", "_")]
 
 def reserved :=
-  #[ "infixl", "infixr", "match"
+  #[ "mutual","infixl" , "infixr", "match"
    , "data"  , "type"  , "with"
    , "else"  , "then"  , "let"
    , "rec"   , "fun"   , "fn"
@@ -51,9 +51,9 @@ open ASCII in private def ID' : TParser σ String :=
   <*> foldl String.push "" alphanum'
 
 def ID : TParser σ Symbol := do
-  let id <- ID'
+  let id <- spaces *> ID'
   if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
-  else ws $ pure id
+  pure id
 
 def intLit := @ASCII.parseInt
 def strLit : TParser σ String :=
@@ -69,39 +69,40 @@ def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α :=
 
 def parenthesized (t : TParser σ α) : TParser σ α := between '(' t ')'
 
-def kw (s : String) : TParser σ Unit := ws
-                                    $ withBacktracking
+def kw (s : String) : TParser σ Unit := spaces *>
+                                     (withBacktracking
                                     $ withErrorMessage s!"kw '{s}'"
                                     $ string s
-                                    *> notFollowedBy alphanum'
+                                    *> notFollowedBy alphanum')
 
-def kwOpExact (s : String) : TParser σ Unit := ws
-  $ withBacktracking
+def kwOpExact (s : String) : TParser σ Unit := spaces *>
+   (withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ void
-  $ string s
+  $ string s)
 
-def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := ws
-  $ withBacktracking
+def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := spaces *>
+   (withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
-  $ string s *> notFollowedBy (tokenFilter badNext)
+  $ string s *> notFollowedBy (tokenFilter badNext))
 
-abbrev LET  : TParser σ Unit := kw "let"
-abbrev IN   : TParser σ Unit := kw "in"
-abbrev FUN  : TParser σ Unit := kw "fun"
-abbrev IF   : TParser σ Unit := kw "if"
-abbrev ELSE : TParser σ Unit := kw "else"
-abbrev THEN : TParser σ Unit := kw "then"
-abbrev REC  : TParser σ Unit := kw "rec"
-abbrev MATCH: TParser σ Unit := kw "match"
-abbrev WITH : TParser σ Unit := kw "with"
-abbrev TYPE : TParser σ Unit := kw "type" <|> kw "data"
+abbrev LET    : TParser σ Unit := kw "let"
+abbrev IN     : TParser σ Unit := kw "in"
+abbrev FUN    : TParser σ Unit := kw "fun"
+abbrev IF     : TParser σ Unit := kw "if"
+abbrev ELSE   : TParser σ Unit := kw "else"
+abbrev THEN   : TParser σ Unit := kw "then"
+abbrev REC    : TParser σ Unit := kw "rec"
+abbrev MATCH  : TParser σ Unit := kw "match"
+abbrev WITH   : TParser σ Unit := kw "with"
+abbrev TYPE   : TParser σ Unit := kw "type" <|> kw "data"
+abbrev MUTUAL : TParser σ Unit := kw "mutual"
 
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
-abbrev ARROW: TParser σ Unit := ws
-  $ withBacktracking
+abbrev ARROW: TParser σ Unit := spaces *>
+   (withBacktracking
   $ withErrorMessage "reserved operator '=>' or '->'"
-  $ (void $ string "=>") <|> (void $ string "->")
+  $ (void $ string "=>") <|> (void $ string "->"))
 abbrev COMMA: TParser σ Unit := kwOpExact ","
 abbrev EQ   : TParser σ Unit := kwOpNoExtend "=" (fun c => c == '>' || c == '=')
 abbrev END  : TParser σ Unit := kwOpExact ";;"
