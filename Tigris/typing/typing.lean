@@ -294,8 +294,8 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
     let msg :=
       if let some ex := ex then
         Logging.warn
-          s!"Partial pattern matching i.e. \
-             possible cases such as {toString $ ex.map (·.render)} are ignored\n"
+          s!"Partial pattern matching, \
+             possible cases such as {ex.map (·.render)} are ignored\n"
       else ""
     modify fun (n, l) => (n, l ++ msg)
 

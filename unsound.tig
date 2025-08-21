@@ -8,7 +8,7 @@ let rec collapse
 
 let bad = Bad collapse
 
-NB. try running this w/ #type collapse bad in the REPL
+NB. try running this w/ `#type collapse` bad in the REPL
 NB. let falsehood = collapse bad 
           NB. Because applying collapse results in divergence
           NB. (stack overflow in our case)

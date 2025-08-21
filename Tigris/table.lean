@@ -32,7 +32,11 @@ def alignPE : Align PEnvHeader := (left, right, left)
 def HelpHeader : List Text.SString := ["cmd", "info"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignH : Align HelpHeader := (right,left)
 def helpMsg : TableOf HelpHeader :=
-  #[ ("#dump", "dump the REPL environment in table form")
-   , ("#load <path>+", "load src from <path>+ (that doesn't contain spaces) into REPL")
-   , ("#help", "show this help string")
-   , ("#ast <exp|decl>", "display the parsetree of <exp> or <decl>")].map fun s => s.map .str .str
+  #[ ("#dump [x] [y]"      , "dump the REPL environment in table form")
+   , (""                   , "set truncate threshold for (type,val) = (x, y)")
+   , ("#load <path>+"      , "load src from space-separated <path> into REPL")
+   , (""                   , "<path> may not contain spaces")
+   , ("#help"              , "show this help string")
+   , ("#ast <exp|decl>"    , "display the parsetree of <exp> or <decl>")
+   , ("#(type|check) <exp>", "typecheck <exp> without evaluating it, useful for")
+   , (""                   , "type reduction on a potentially diverging term")].map $ Prod.map .str .str

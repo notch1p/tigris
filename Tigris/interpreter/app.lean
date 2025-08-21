@@ -37,8 +37,8 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         let ex := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
           liftEIO $ print $ Logging.warn
-            s!"Partial pattern matching i.e. \
-               possible cases such as {Logging.cyan $ toString ex} are ignored\n"
+            s!"Partial pattern matching, \
+               possible cases such as {ex.map (·.render)} are ignored\n"
 
         let v <- EIO.ofExcept $ eval VE e |>.mapError toString
         match evalPat1 v VE #[] pat with
@@ -66,4 +66,4 @@ end Parsing
 def evalToplevel (bs : Array Binding) (VE : VEnv) : Except TypingError VEnv :=
   bs.foldlM (init := VE) fun VE@⟨env⟩ (id, e) => (VEnv.mk ∘ env.insert id) <$> eval VE e
 
-def interpret PE E VE s := parseModule s PE E VE |>.toIO $ userError ∘ Logging.error
+def interpret PE E VE s := parseModule s PE E VE |>.toIO userError

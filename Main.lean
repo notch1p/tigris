@@ -47,14 +47,14 @@ def main : IO Unit := do
         let (s, l) <- MLType.runInfer1 exp e |> ofExcept
         print l
         println! s.render
-      catch e => println! e
+      catch e => println! Logging.error $ toString e
     else if buf.startsWith "#a" then
       (parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace) pe |>.toIO') >>= fun
       | .ok (_, b)  => println! reprStr b
-      | .error e => println! e
+      | .error e => println! Logging.error $ toString e
     else if buf.startsWith "#d" then
       let args := buf.splitOn " " |>.filterMap fun s => s.toNat?
-      let (x, y) := match args with | [] => (20, 20) | x :: y :: _ => (x, y) | x :: _ => (x, x)
+      let (x, y) := match args with | [] => (30, 40) | x :: y :: _ => (x, y) | x :: _ => (x, x)
       println $ tabulate (mkBoldBlackWhite "REPL Environment") {align := alignE} $ genTable e x y ve
       print $ tabulate
         (mkBoldBlackWhite "Operators" ++ mkBold "\n(virtually function application has max precedence)")
@@ -67,14 +67,14 @@ def main : IO Unit := do
             let (PE', E', VE') <- interpret pe e ve fs
             PE.set PE' *> E.set E' *> VE.set VE'
           catch e =>
-            println! toString e
+            println! Logging.error $ toString e
             println! Logging.warn $
               "Evaluation context is restored as there are errors.\n\
                Fix those then #load again to update it."
     else try
       let (PE', E', VE') <- interpret pe e ve buf
       PE.set PE' *> E.set E' *> VE.set VE'
-    catch e => println! e
+    catch e => println! Logging.error $ toString e
 
     buf := ""
     prompt := "λ> "

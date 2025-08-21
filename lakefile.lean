@@ -21,7 +21,7 @@ input_file ffi.c where
 target ffi.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "ffi.o"
   let srcJob <- ffi.c.fetch
-  let weakArgs := #["-I", (<- getLeanIncludeDir).toString, "-I", "/usr/local/include"]
+  let weakArgs := #["-I", (<- getLeanIncludeDir).toString, "-I", "/usr/local/include", "-O3"]
   let cc := match <- IO.getEnv "CC" with | some CC => CC | none => "cc"
   buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 

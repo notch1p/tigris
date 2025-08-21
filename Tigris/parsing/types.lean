@@ -57,16 +57,18 @@ def Pattern.toStr : Pattern -> String
   | PWild  => "_"
   | PConst p => toString p
   | PProd' p₁ p₂ => toString (toStr p₁, toStr p₂)
-  | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prod? s) (toStr s)) n where
+  | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prodOrApp? s) (toStr s)) n where
   paren b s := bif b then s!"({s})" else s
-  prod? | PProd' .. => true | _ => false
+  prodOrApp? | PProd' .. => true
+             | PCtor _ args => if args.isEmpty then false else true
+             | _ => false
 open Pattern.toStr in
 def Pattern.render : Pattern -> String
   | PVar x => toString x
   | PWild => "_"
   | PConst p => p.render
   | PProd' p₁ p₂ => toString (render p₁, render p₂)
-  | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prod? s) (render s)) $ Logging.blue n
+  | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prodOrApp? s) (render s)) $ Logging.blue n
 
 
 instance : ToString Pattern := ⟨Pattern.toStr⟩
