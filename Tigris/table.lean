@@ -32,11 +32,15 @@ def alignPE : Align PEnvHeader := (left, right, left)
 def HelpHeader : List Text.SString := ["cmd", "info"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignH : Align HelpHeader := (right,left)
 def helpMsg : TableOf HelpHeader :=
-  #[ ("#dump [x] [y]"      , "dump the REPL environment in table form")
-   , (""                   , "set truncate threshold for (type,val) = (x, y)")
-   , ("#load <path>+"      , "load src from space-separated <path> into REPL")
-   , (""                   , "<path> may not contain spaces")
-   , ("#help"              , "show this help string")
-   , ("#ast <exp|decl>"    , "display the parsetree of <exp> or <decl>")
-   , ("#(type|check) <exp>", "typecheck <exp> without evaluating it, useful for")
-   , (""                   , "type reduction on a potentially diverging term")].map $ Prod.map .str .str
+  #[ (.str "#dump [x] [y]"      , .str "dump the REPL environment in table form")
+   , (.str ""                   , .str "set truncate threshold for (type,val) = (x, y)")
+   , (.str "#load <path>+"      , .str "load src from space-separated <path> into REPL")
+   , (.str ""                   , .byl "<path> may not contain spaces or semicolon")
+   , (.str "#sync <src>"        , .str "interpret <src> in the main thread")
+   , (.str ""                   , .str "(input is evaluated in a separate thread by default)")
+   , (.str ""                   , .str "due to limitations, stack overflow in a separate thread")
+   , (.str ""                   , .byl "WOULD still crash the main thread i.e. the REPL")
+   , (.str "#help"              , .str "show this help string")
+   , (.str "#ast <exp|decl>"    , .str "display the parsetree of <exp> or <decl>")
+   , (.str "#(type|check) <exp>", .str "typecheck <exp> without evaluating it, useful for")
+   , (.str ""                   , .str "type reduction on a potentially diverging term")]

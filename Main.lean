@@ -39,7 +39,7 @@ def main : IO Unit := do
     if !input.trimRight.endsWith ";;" then continue
     if input.startsWith "\n" then continue
 
-    if buf.startsWith "#help" then
+    if buf.startsWith "#h" then
       print $ tabulate (mkBoldBlackWhite "Commands") {align := alignH} helpMsg
     else if buf.startsWith "#c" || buf.startsWith "#t" then
       try
@@ -64,17 +64,25 @@ def main : IO Unit := do
         if !path.isEmpty then
           try
             let fs <- FS.readFile $ path.takeWhile fun c => c != ';' && !c.isWhitespace
-            let (PE', E', VE') <- interpret pe e ve fs
+            let t <- IO.asTask (interpret pe e ve fs) (Task.Priority.dedicated)
+            let (PE', E', VE') <- IO.ofExcept =<< (IO.wait t |>.toIO)
             PE.set PE' *> E.set E' *> VE.set VE'
           catch e =>
             println! Logging.error $ toString e
             println! Logging.warn $
               "Evaluation context is restored as there are errors.\n\
                Fix those then #load again to update it."
+    else if buf.startsWith "#s" then
+      try
+        let (PE', E', VE') <- interpret pe e ve $ buf.dropWhile (not ∘ Char.isWhitespace)
+        PE.set PE' *> E.set E' *> VE.set VE'
+      catch e => println! Logging.error $ toString e
     else try
-      let (PE', E', VE') <- interpret pe e ve buf
+      let t <- IO.asTask (interpret pe e ve buf) (Task.Priority.dedicated)
+      let (PE', E', VE') <- IO.ofExcept =<< (IO.wait t |>.toIO)
       PE.set PE' *> E.set E' *> VE.set VE'
     catch e => println! Logging.error $ toString e
 
     buf := ""
     prompt := "λ> "
+
