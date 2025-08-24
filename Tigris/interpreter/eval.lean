@@ -7,16 +7,13 @@ import Tigris.interpreter.entrypoint
 namespace Interpreter open Parsing PType Value MLType TV Pattern Expr TypingError
 def registerData (E : Env) (VE : VEnv) : TyDecl -> EIO String (Env × VEnv)
   | ty@{ctors,tycon,param} =>
-    if (primTy.find? tycon matches some ()) && param.isEmpty then
-      throw s!"The primitive type {tycon} may not be redefined"
-    else
-      ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields) =>
-        let s := ctorScheme tycon (param |>.map mkTV |>.toList) fields
-        let arity := fields.length
-        let v := if arity == 0 then .VConstr cname #[]
-                               else .VCtor cname arity #[]
-        (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$
-          liftEIO (println! templateREPL cname v.render s.render)
+    ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields) =>
+      let s := ctorScheme tycon (param |>.map mkTV |>.toList) fields
+      let arity := fields.length
+      let v := if arity == 0 then .VConstr cname #[]
+                             else .VCtor cname arity #[]
+      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$
+        liftEIO (println! templateREPL cname v.render s.render)
 
 def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with

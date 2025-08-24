@@ -59,6 +59,7 @@ def error (s : String) : TParser σ Unit :=
   modify fun (pe, a) =>
     (pe, a ++ Logging.error s)
 
+
 @[inline] def η₂ s :=
   fun e₁ e₂ => App (App s e₁) e₂
 

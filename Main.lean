@@ -41,6 +41,8 @@ def main : IO Unit := do
 
     if buf.startsWith "#h" then
       print $ tabulate (mkBoldBlackWhite "Commands") {align := alignH} helpMsg
+    else if buf.startsWith "#f" then
+      PE.set Parsing.initState *> VE.set defaultVE *> E.set defaultE
     else if buf.startsWith "#c" || buf.startsWith "#t" then
       try
         let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept

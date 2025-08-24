@@ -43,4 +43,6 @@ def helpMsg : TableOf HelpHeader :=
    , (.str "#help"              , .str "show this help string")
    , (.str "#ast <exp|decl>"    , .str "display the parsetree of <exp> or <decl>")
    , (.str "#(type|check) <exp>", .str "typecheck <exp> without evaluating it, useful for")
-   , (.str ""                   , .str "type reduction on a potentially diverging term")]
+   , (.str ""                   , .str "type reduction on a potentially diverging term")
+   , (.str "#flush"             , .str "flush the environment")
+   , (.str ""                   , .byl "This will restore the startup environment")]

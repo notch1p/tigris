@@ -36,7 +36,7 @@ def MLType.toStr : MLType -> String
   | TApp s (l :: ls) =>
     let hd := paren (arr? l || prod? l) $ toStr l
     ls.foldl (init := s!"{s} {hd}") fun a s =>
-      a ++ paren (arr? l || prod? l) (toStr s)
+      a ++ " " ++ paren (arr? l || prod? l) (toStr s)
 where
   paren b s := bif b then s!"({s})" else s
   arr? | MLType.TArr _ _ => true | _ => false
@@ -53,7 +53,7 @@ def MLType.render : MLType -> String
   | TApp s (l :: ls) =>
     let hd := paren (arr? l || prod? l) $ render l
     ls.foldl (init := s!"{Logging.magenta s} {hd}") fun a s =>
-      a ++ paren (arr? l || prod? l) (render s)
+      a ++ " " ++ paren (arr? l || prod? l) (render s)
 
 instance : ToString MLType := ⟨MLType.toStr⟩
 
@@ -108,7 +108,6 @@ instance : ToString TypingError where
 @[inline] abbrev tString := TCon "String"
 @[inline] abbrev tEmpty := TCon "Empty"
 @[inline] abbrev tUnit := TCon "Unit"
-def primTy : Lean.Data.Trie Unit := .ofList [("Int", ()), ("Bool", ()), ("String", ()), ("Unit", ())]
 end MLType
 
 structure Env where

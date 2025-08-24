@@ -16,7 +16,9 @@ def opTablePrim : List (Symbol × OpEntry) :=
   , (DIV , ⟨DIV, 70 , leftAssoc  , link "div"⟩)]
 
 def opTable : OpTable := .ofList opTablePrim
-def initState : PEnv := {ops := opTable, tys := ∅, undTy := []}
+def tyTable : TyArity := 
+  .ofList [("Int",0), ("String", 0), ("Bool", 0), ("Unit", 0), ("Empty", 0)]
+def initState : PEnv := {ops := opTable, tys := tyTable, undTy := []}
 
 def infixlDecl : TParser σ $ Binding ⊕ α := do
   INFIXL; let i <- intExp let s <- strExp
