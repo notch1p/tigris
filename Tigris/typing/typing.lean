@@ -95,7 +95,9 @@ def normalize : Scheme -> Scheme
       | TApp h as => TApp h $ as.map normtype
       | t => t
   .Forall (List.map Prod.snd ord) (normtype body)
-def merge (s₁ s₂ : Subst) := s₁ ∪ s₂.map fun _ v => apply s₁ v
+@[inline] def merge (s₁ s₂ : Subst) :=
+  s₂.fold (init := s₁) fun acc k v =>
+    acc.insert k (apply s₁ v)
 infixl : 65 " ∪' " => merge
 
 def bindTV (a : TV) (t : MLType) : Infer σ Subst :=

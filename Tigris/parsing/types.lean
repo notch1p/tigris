@@ -103,7 +103,7 @@ instance : ToString OpEntry := ⟨fun {prec, assoc,..} => toString (prec, assoc)
 instance : Repr OpEntry := ⟨fun {prec, assoc,..} _ => toString (prec, assoc)⟩
 
 abbrev OpTable := Lean.Data.Trie OpEntry
-abbrev TyArity := Lean.Data.Trie Nat
+abbrev TyArity := Lean.Data.Trie (Nat × Bool)
 
 open Lean.Data.Trie in
 def Lean.Data.Trie.ofList (arr : List (String × α)) : Trie α :=

@@ -16,8 +16,12 @@ def opTablePrim : List (Symbol × OpEntry) :=
   , (DIV , ⟨DIV, 70 , leftAssoc  , link "div"⟩)]
 
 def opTable : OpTable := .ofList opTablePrim
-def tyTable : TyArity := 
-  .ofList [("Int",0), ("String", 0), ("Bool", 0), ("Unit", 0), ("Empty", 0)]
+def tyTable : TyArity :=
+  .ofList [ ("Int"   , 0, true)
+          , ("String", 0, true)
+          , ("Bool"  , 0, true)
+          , ("Unit"  , 0, true)
+          , ("Empty" , 0, true)]
 def initState : PEnv := {ops := opTable, tys := tyTable, undTy := []}
 
 def infixlDecl : TParser σ $ Binding ⊕ α := do

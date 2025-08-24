@@ -26,13 +26,8 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         let (.Forall _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
         liftEIO (print l)
 
-        let ((acc, _, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")).mapError toString
+        let ((tyacc, _, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")).mapError toString
         liftEIO (print l)
-
-        let ty :=
-          if h : acc.size > 0 then
-            acc.foldr (· ×'' ·) acc[acc.size - 1] (acc.size - 1) 0
-          else te
 
         let ex := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
@@ -42,13 +37,11 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
 
         let v <- EIO.ofExcept $ eval VE e |>.mapError toString
         match evalPat1 v VE #[] pat with
-        | some (VE, acc) =>
-          if h : acc.size > 0 then
-            let (sym, val) := acc.foldr (init := acc[acc.size - 1]) (start := acc.size - 1) (stop := 0) fun (sym, val) (asym, aval) =>
-              (s!"{sym},{asym}", VP val aval)
+        | some (VE, vacc) =>
+          for ty in tyacc, (sym, val) in vacc do
             liftEIO $ println $ templateREPL sym val.render ty.render
           return (PE, E, VE)
-        | none    => throw $ NoMatch #[e] v.render #[(#[pat], Expr.CUnit)] |> toString
+        | none => throw $ NoMatch #[e] v.render #[(#[pat], Expr.CUnit)] |> toString
       | .inr b =>
         match b with
         | .inl (id, expr) =>

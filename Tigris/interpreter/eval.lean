@@ -45,7 +45,7 @@ def evalPat1 (v : Value) (VE : VEnv) (acc : Array $ Symbol × Value) : Pattern -
     | .VConstr c fs =>
       if h : c ≠ n ∨ fs.size ≠ as.size then none
       else
-        let (ve, flag, acc) := as.size.fold (init := (VE.env, true, acc)) fun i _ (VE, _) =>
+        let (ve, flag, acc) := as.size.fold (init := (VE.env, true, acc)) fun i _ (VE, _, acc) =>
           have : fs.size = as.size := not_or.mp h |>.2 |> Classical.not_not.mp
           match evalPat1 fs[i] ⟨VE⟩ acc as[i] with
           | some (ve, acc) => (VE ∪ ve.env, true, acc)

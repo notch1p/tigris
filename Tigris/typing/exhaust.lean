@@ -10,7 +10,7 @@ def 𝒮 (head : Symbol) (arity : Nat) (M : 𝓜) : 𝓜 :=
   M.foldr (init := []) fun row acc =>
     match row with
     | PCtor c args :: ps =>
-        if c == head ∧ args.size = arity then
+        if c == head && args.size == arity then
           (args.toList ++ ps) :: acc
         else
           acc

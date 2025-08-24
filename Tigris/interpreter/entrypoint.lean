@@ -19,7 +19,7 @@ def declaration : TParser σ TopDecl := first'
 def mutTyDecl : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := do
   let tysd <- takeMany1 (tyDecl true)
   let ({undTy,tys,..}, _) <- get
-  let undty := undTy.filter (tys.find? · matches none)
+  let undty := undTy.filter (tys.find? · matches some (_, false))
   if let [] := undty then return tysd.map .inr
   else
     error s!"unresolved types {undTy.map Logging.magenta} must not elide mutual block\n"
