@@ -2,13 +2,7 @@ import Lake
 open Lake DSL System
 
 package "tigris" where
-  version := v!"0.1.0"
-
-lean_lib «Tigris» where
-  -- add library configuration options here
-  --
-lean_lib «PP» where
-
+  version := v!"0.6.2"
 
 @[default_target]
 lean_exe "tigris" where
@@ -25,10 +19,11 @@ target ffi.o pkg : FilePath := do
   let cc := match <- IO.getEnv "CC" with | some CC => CC | none => "cc"
   buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 
--- lean_lib ffidecl where
---   defaultFacets := #[LeanLib.sharedFacet]
---   srcDir := "Playbook"
--- #check LeanLibConfig
+lean_lib «Tigris» where
+  precompileModules := true
+lean_lib «PP» where
+  moreLinkObjs := #[ffi.o]
+  precompileModules := true
 
 
 open IO.FS String in

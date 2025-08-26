@@ -10,18 +10,18 @@ open IO
 def main : IO Unit := do
   setStdoutBuf false
 
-  let motd := "A basic language using Hindley-Milner type system\n\
+  let mut prompt := "> "
+  let mut buf := ""
+
+  let stdin <- getStdin
+  let E <- mkRef defaultE
+  let VE <- mkRef defaultVE
+  let PE <- mkRef Parsing.initState
+  letI motd := "A basic language using Hindley-Milner type system\n\
                with a naive (term-rewriting) interpreted implementation.\n\
                For language specifications see source.\n\
                Type #help;; to check available commands.\n\
                To exit press <C-d> (Unix) or <C-z> if on Windows."
-  let mut prompt := "λ> "
-  let mut buf := ""
-
-  let stdin <- IO.getStdin
-  let E <- mkRef defaultE
-  let VE <- mkRef defaultVE
-  let PE <- mkRef Parsing.initState
   println! motd
 
   repeat do
@@ -30,7 +30,7 @@ def main : IO Unit := do
     let ve <- VE.get
 
     print prompt
-    prompt := ".. "
+    prompt := "- "
 
     let input <- FS.Stream.getLine stdin
     buf := buf ++ input |>.trimLeft
@@ -43,6 +43,15 @@ def main : IO Unit := do
       print $ tabulate (mkBoldBlackWhite "Commands") {align := alignH} helpMsg
     else if buf.startsWith "#f" then
       PE.set Parsing.initState *> VE.set defaultVE *> E.set defaultE
+      println! Logging.note "REPL environment has been flushed"
+    else if buf.startsWith "#e" then
+      let fp := buf.dropRightWhile (fun c => c.isWhitespace || c == ';') |>.splitOn " " |>.tail
+      try
+        let some editor <- (· <|> ·) <$> getEnv "VISUAL" <*> getEnv "EDITOR"
+                        | throwServerError "env $EDITOR has not been set"
+        let p <- Process.spawn {cmd := editor, args := fp.toArray}
+        () <$ p.wait
+      catch e => println! Logging.error $ toString e
     else if buf.startsWith "#c" || buf.startsWith "#t" then
       try
         let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
@@ -65,13 +74,13 @@ def main : IO Unit := do
       (buf.splitOn " ").tail |>.forM fun path => do
         if !path.isEmpty then
           try
-            let fs <- FS.readFile $ path.takeWhile fun c => c != ';' && !c.isWhitespace
-            let t <- IO.asTask (interpret pe e ve fs) (Task.Priority.dedicated)
-            let (PE', E', VE') <- IO.ofExcept =<< (IO.wait t |>.toIO)
+            let fs <- FS.readFile $ path.dropRightWhile fun c => c.isWhitespace || c == ';'
+            let t <- asTask (interpret pe e ve fs) .dedicated
+            let (PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
             PE.set PE' *> E.set E' *> VE.set VE'
           catch e =>
             println! Logging.error $ toString e
-            println! Logging.warn $
+            println! Logging.warn  $
               "Evaluation context is restored as there are errors.\n\
                Fix those then #load again to update it."
     else if buf.startsWith "#s" then
@@ -80,11 +89,11 @@ def main : IO Unit := do
         PE.set PE' *> E.set E' *> VE.set VE'
       catch e => println! Logging.error $ toString e
     else try
-      let t <- IO.asTask (interpret pe e ve buf) (Task.Priority.dedicated)
-      let (PE', E', VE') <- IO.ofExcept =<< (IO.wait t |>.toIO)
+      let t <- asTask (interpret pe e ve buf) .dedicated
+      let (PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
       PE.set PE' *> E.set E' *> VE.set VE'
     catch e => println! Logging.error $ toString e
 
     buf := ""
-    prompt := "λ> "
+    prompt := "> "
 

@@ -1,1 +1,3 @@
 /.lake
+/compile_commands.json
+/.cache

@@ -1,4 +1,3 @@
-
 #include <lean/lean.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,13 +10,13 @@ enum BYTELEN { Bin = 2, Tri, Quad, Invalid = 0 };
 
 OBJRES
 string_repeat_ascii(uint8_t c, size_t n) {
-  char* str = (char*)calloc(n + 1, sizeof(uint8_t));
+  char *str = (char *)calloc(n + 1, sizeof(uint8_t));
   memset(str, c, n * sizeof(uint8_t));
 
   return lean_mk_string(str);
 }
 
-enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {
+enum BYTELEN codepoint_to_bytes(uint32_t c, char *s) {
   if (c < 0x800) {
     s[0] = 0xC0 | c >> 6;
     s[1] = 0x80 | c & 0x3F;
@@ -44,7 +43,7 @@ string_repeat_utf8(uint32_t c, size_t n) {
   assert(len);
 
   size_t lenb = n * len;
-  char* str = (char*)calloc(lenb + 1, sizeof(uint8_t));
+  char *str = (char *)calloc(lenb + 1, sizeof(uint8_t));
 
   for (size_t i = 0; i < n; i++) {
     memcpy(str + i * len, bytes, len);
@@ -62,5 +61,5 @@ LEAN_EXPORT OBJRES lean_disable_stdout_buffer(uint8_t i) {
   if (i == 0) {
     setbuf(stdout, NULL);
   }
-  return lean_io_result_mk_ok(lean_box(0));  // runtime Unit repr
+  return lean_io_result_mk_ok(lean_box(0)); // runtime Unit repr
 }
