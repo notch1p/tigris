@@ -3,7 +3,9 @@ import Tigris.utils
 inductive TV where
   | mkTV : String -> TV deriving Repr, BEq, Ord, Hashable
 instance : ToString TV := ⟨fun | .mkTV s => s⟩
-def TV.render | mkTV s => Logging.cyan s
+def TV.renderFmt : TV -> Std.Format
+  | mkTV s => Logging.cyan s
+instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
 
 inductive MLType where
   | TVar : TV -> MLType
@@ -42,27 +44,28 @@ where
   arr? | MLType.TArr _ _ => true | _ => false
   prod? | MLType.TProd _ _ => true | _ => false
 
-open MLType.toStr in
-def MLType.render : MLType -> String
-  | TVar a => a.render
-  | TCon a => Logging.magenta a
-  | a ->' b =>
-    paren (arr? a) (render a) ++ " → " ++ render b
-  | a ×'' b => paren (prod? a) (render a) ++ " × " ++ render b
-  | TApp s [] => Logging.magenta s
-  | TApp s (l :: ls) =>
-    let hd := paren (arr? l || prod? l) $ render l
-    ls.foldl (init := s!"{Logging.magenta s} {hd}") fun a s =>
-      a ++ " " ++ paren (arr? l || prod? l) (render s)
+open Std.Format Std.ToFormat in open Logging (magenta) in
+def MLType.renderFmt : MLType -> Std.Format
+  | TVar a => format a
+  | TCon a => magenta a
+  | a ->' b => nestD $ group $ paren? (arr? a) (renderFmt a) <> "→" <+> renderFmt b
+  | a ×'' b => nestD $ group $ paren? (prod? a) (renderFmt a) <> "×" <+> renderFmt b
+  | TApp s ls => nestD $ group $ joinSep (text (magenta s) :: ls.map fun s => parenthesize s (renderFmt s)) line
+where
+  paren? b s := bif b then paren s else s
+  arr? | MLType.TArr _ _ => true | _ => false
+  prod? | MLType.TProd _ _ => true | _ => false
+  parenthesize s := paren? (arr? s || prod? s)
 
 instance : ToString MLType := ⟨MLType.toStr⟩
+instance : Std.ToFormat MLType := ⟨MLType.renderFmt⟩
 
 inductive Scheme where
   | Forall : List TV -> MLType -> Scheme deriving Repr, BEq, Ord
-def Scheme.render : Scheme -> String
-  | Forall [] t => t.render
-  | Forall (t :: ts) t' =>
-    s!"∀ {ts.foldl (· ++ " " ++ ·.render) t.render}. {t'.render}"
+
+open Std.Format Std.ToFormat in @[always_inline, inline]
+def Scheme.renderFmt : Scheme -> Std.Format
+  | Forall _ t' => format t'
 
 instance : ToString Scheme where
   toString
@@ -70,6 +73,7 @@ instance : ToString Scheme where
   | .Forall (t :: ts) t' =>
     s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}. {t'}"
 
+instance : Std.ToFormat Scheme := ⟨Scheme.renderFmt⟩
 instance : Inhabited Scheme where
   default := .Forall [] (MLType.TCon "False")
 namespace MLType open TV Expr
@@ -110,9 +114,12 @@ instance : ToString TypingError where
 @[inline] abbrev tUnit := TCon "Unit"
 end MLType
 
+abbrev TyMap := Std.HashMap String TyDecl
+abbrev SchemeMap := Std.TreeMap String Scheme
+
 structure Env where
-  E : Std.HashMap String Scheme
-  tyDecl : Std.HashMap String TyDecl
+  E : SchemeMap
+  tyDecl : TyMap
 deriving Repr
 
 instance : EmptyCollection Env := ⟨∅, ∅⟩
@@ -120,4 +127,5 @@ abbrev Logger := String -- This is NOT how one should do logging.
                         -- but Lean doesn't really have a WriterT or MonadWriter
                         -- Lake has something similar, but that's in the build system.
 abbrev Infer σ := StateRefT (Nat × Logger) $ EST MLType.TypingError σ
-abbrev Subst := Std.HashMap TV MLType
+abbrev Subst := Std.TreeMap TV MLType
+

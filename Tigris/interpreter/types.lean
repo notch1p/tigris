@@ -3,7 +3,7 @@ import Tigris.utils
 
 mutual
 structure VEnv where
-  env : Std.HashMap.Raw String Value
+  env : Std.TreeMap.Raw String Value
 deriving Repr
 
 inductive Value where
@@ -17,11 +17,13 @@ inductive Value where
   | VConstr (name : String) (fields : Array Value)
   deriving Nonempty
 end
+
 instance : Inhabited Value := ⟨.VEvalError $ "something wrong during evaluation.\n"
                                           ++ Logging.note
                                             "Likely implementation error or a breach of type safety\n\
                                              The type system is unsound by design\n\
                                              because the primitive `rec` fixpoint combinator is present"⟩
+
 def Value.toStr : Value -> String
   | VI v | VB v => toString v | VU => toString ()
   | VS v => reprStr v
@@ -39,18 +41,27 @@ def Value.toStr : Value -> String
     constr? | VConstr _ f => if f.isEmpty then false else true | _ => false
 instance : ToString Value := ⟨Value.toStr⟩
 
-open Value.toStr in open Logging (cyan blue) in
-def Value.render : Value -> String
-  | VI v | VB v => Logging.cyan $ toString v | VU => Logging.cyan $ toString ()
-  | VS v => Logging.cyan $ reprStr v
-  | VEvalError s => Logging.error s
-  | VOpaque s   => s!"<${s}>"
-  | VF _ _ _    => "<fun>"
-  | VFRec _ _ _ => "<recfun?>"
+open Logging (cyan blue error) in open Std.Format in
+def Value.renderFmt : Value -> Std.Format
+  | VI v | VB v => cyan $ toString v | VU => cyan $ toString ()
+  | VS v => cyan $ reprStr v
+  | VEvalError s => error s
+  | VOpaque s => s!"<${s}>"
+  | VF .. | VFRec .. => "<fun>"
   | VCtor n k acc =>
-    s!"<{blue n}/{cyan $ toString k}{acc.foldl (fun a s => a ++ " " ++ paren (constr? s || prod? s) (render s)) ""}>"
-  | VConstr n fs => fs.foldl (fun a s => a ++ " " ++ paren (constr? s || prod? s) (render s)) (blue n)
-  | VP v₁ v₂    => paren (prod? v₁) (render v₁) ++ "," ++ render v₂
+    letI acc := text s!"{blue n}/{cyan $ toString k}" :: acc.foldr (fun s a => (parenthesize s (renderFmt s)) :: a) []
+    group ∘ nestD $ joinSep acc line
+  | VConstr n fs =>
+    group ∘ nestD $ joinSep (text (blue n) :: fs.foldr (fun s a => (parenthesize s (renderFmt s)) :: a) []) line
+  | VP v₁ v₂ =>
+    nestD ∘ group $ paren? (prod? v₁) (renderFmt v₁) ++ "," <+> renderFmt v₂
+    where
+    paren? b s := bif b then paren s else s
+    prod? | VP _ _ => true | _ => false
+    constr? | VConstr _ f => if f.isEmpty then false else true | _ => false
+    parenthesize s :=
+      paren? (constr? s || prod? s)
+instance : Std.ToFormat Value := ⟨Value.renderFmt⟩
 
 def Value.asType : Value -> Type
   | VI _ => Int | VB _ => Bool | VS _ => String

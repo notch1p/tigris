@@ -206,8 +206,8 @@ def hole i := s!"__?x{Nat.toSubscriptString i}"
 --
 --theorem prod_snd_lt_self [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.2 < sizeOf p := by
 --  simp+arith[sizeOf]
-
-infixr:80 " <> " => Nat.lt_trans
+section
+local infixr:80 " <> " => Nat.lt_trans
 open ST in
 def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
   let cnt : Ref σ Nat <- mkRef 0
@@ -234,7 +234,17 @@ def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
 @[inline] def transShorthand (e : Expr) : Expr :=
   let (e, n) := runST fun _ => transformPrim e
   n.foldRev (fun i _ a => Fun (hole i) a) e
-
-@[inline] def templateREPL id v t := id ++ " = " ++ v ++ " ⊢ " ++ t
+end
+section
+open Std.Format
+@[inline] def fillBeside (f₁ f₂ : Std.Format) := f₁ ++ line ++ f₂
+@[inline] def spaceBeside (f₁ f₂ : Std.Format) := f₁ ++ " " ++ f₂
+infixl : 60 " <+> " => fillBeside
+infixl : 60 " <> " => spaceBeside
+@[inline] def templateREPLfmt id v t :=
+  fill $ id <> "=" <+> v <+> "⊢" <> nestD t
+@[inline] def templateREPL id v t := pretty (width := 160) $ templateREPLfmt id v t
+end
 
 @[inline] def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act
+

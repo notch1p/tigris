@@ -5,7 +5,7 @@ open PrettyPrint.Text (mkBoldBlackWhite mkBold)
 open MLType (defaultE)
 open Interpreter (defaultVE)
 open Parsing (parseModule parseModule')
-open IO
+open IO Std.ToFormat
 
 def main : IO Unit := do
   setStdoutBuf false
@@ -57,7 +57,7 @@ def main : IO Unit := do
         let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
         let (s, l) <- MLType.runInfer1 exp e |> ofExcept
         print l
-        println! s.render
+        println! (format s) |>.pretty 160
       catch e => println! Logging.error $ toString e
     else if buf.startsWith "#a" then
       (parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace) pe |>.toIO') >>= fun

@@ -18,7 +18,7 @@ let prog =
              (Atom 20)) $
         Div (Atom 2400) $
           Add (Atom 120) $
-            Add (Mul (Atom 10) 
+            Add (Mul (Atom 10)
                      (Atom 20)) $
                 (Atom 0)
 ;;

@@ -1,6 +1,6 @@
 import Tigris.interpreter.eval
 
-open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter IO
+open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter IO Std.ToFormat
 
 namespace Parsing open Lexing Parser PType
 
@@ -39,16 +39,16 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         match evalPat1 v VE #[] pat with
         | some (VE, vacc) =>
           for ty in tyacc, (sym, val) in vacc do
-            liftEIO $ println $ templateREPL sym val.render ty.render
+            liftEIO $ println $ templateREPL sym (format val) (format ty)
           return (PE, E, VE)
-        | none => throw $ NoMatch #[e] v.render #[(#[pat], Expr.CUnit)] |> toString
+        | none => throw $ NoMatch #[e] (format v).pretty #[(#[pat], Expr.CUnit)] |> toString
       | .inr b =>
         match b with
         | .inl (id, expr) =>
           let (ty, l) <- ofExcept $ runInfer1 expr E |>.mapError toString
           liftEIO (print l)
           let v <- ofExcept $ eval VE expr |>.mapError toString
-          liftEIO $ println $ templateREPL id v.render ty.render
+          liftEIO $ println $ templateREPL id (format v) (format ty)
           return (PE, ⟨E.1.insert id ty, E.2⟩, ⟨VE.env.insert id v⟩)
         | .inr tydecl =>
           (PE, ·) <$> registerData E VE tydecl

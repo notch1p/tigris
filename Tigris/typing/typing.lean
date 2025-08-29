@@ -62,7 +62,7 @@ def fvT : MLType -> Std.HashSet TV
 instance : Rewritable MLType := ⟨applyT, fvT⟩
 instance : Rewritable Scheme where
   apply s | .Forall as t =>
-            .Forall as $ apply (as.foldr (fun a s => s.erase a) s) t
+            .Forall as $ apply (s.eraseMany as) t
   fv      | .Forall as t => fv t \ Std.HashSet.ofList as
 instance [Rewritable α] : Rewritable (List α) where
   apply := List.map ∘ apply
@@ -96,7 +96,7 @@ def normalize : Scheme -> Scheme
       | t => t
   .Forall (List.map Prod.snd ord) (normtype body)
 @[inline] def merge (s₁ s₂ : Subst) :=
-  s₂.fold (init := s₁) fun acc k v =>
+  s₂.foldl (init := s₁) fun acc k v =>
     acc.insert k (apply s₁ v)
 infixl : 65 " ∪' " => merge
 
@@ -135,7 +135,7 @@ partial def unify : MLType -> MLType -> Infer σ Subst
 def instantiate : Scheme -> Infer σ MLType
   | .Forall as t => do
     let as' <- as.mapM fun _ => fresh
-    let s := as.zip as' |> Std.HashMap.ofList
+    let s := as.zip as' |> .ofList
     return apply s t
 
 def generalize (E : Env) (t : MLType) : Scheme :=
@@ -225,23 +225,23 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
   | Var x => x ∈ₑ E
 
   | Fun x e => do
-    let tv       <- fresh
-    let E'       := {E with E := E.1.insert x (.Forall [] tv)}
-    let (s₁, t₁) <- infer E' e
+    let tv          <- fresh
+    let {E, tyDecl} := E
+    let (s₁, t₁)    <- infer ⟨E.insert x (.Forall [] tv), tyDecl⟩ e
     pure (s₁, apply s₁ tv ->' t₁)
 
   | Fixcomb e => do
-    let tv <- fresh
-    let tv' <- fresh
+    let tv         <- fresh
+    let tv'        <- fresh
     let (s₁, cont) <- infer1 E (∅, id) e
-    let s₂ <- unify (apply s₁ (cont tv')) ((tv ->' tv) ->' tv)
+    let s₂         <- unify (apply s₁ (cont tv')) ((tv ->' tv) ->' tv)
     pure (s₂ ∪' s₁, apply s₂ tv')
 
   | Fix (Fun fname fbody) => do
-    let tv <- fresh
-    let E' := {E with E := E.1.insert fname (.Forall [] tv)}
-    let (s₁, t₁) <- infer E' fbody
-    let s₂ <- unify (apply s₁ tv) t₁
+    let tv          <- fresh
+    let {E, tyDecl} := E
+    let (s₁, t₁)    <- infer ⟨E.insert fname (.Forall [] tv), tyDecl⟩ fbody
+    let s₂          <- unify (apply s₁ tv) t₁
     let s := s₂ ∪' s₁
     pure (s₂ ∪' s₁, apply s tv)
   | Fix e => do
@@ -256,10 +256,11 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
     pure (s₃ ∪' s₂ ∪' s₁, apply s₃ tv)
 
   | Let x e₁ e₂ => do
-    let (s₁, t₁) <- infer E e₁
-    let E'       := apply s₁ E
-    let t'       := generalize E' t₁
-    let (s₂, t₂) <- infer ⟨(E'.1.insert x t'), E'.2⟩ e₂
+    let (s₁, t₁)    <- infer E e₁
+    let E           := apply s₁ E
+    let t'          := generalize E t₁
+    let {E, tyDecl} := E
+    let (s₂, t₂)    <- infer ⟨E.insert x t', tyDecl⟩ e₂
     pure (s₂ ∪' s₁, t₂)
 
   | Cond c t e => do
@@ -307,7 +308,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
   | CS _ => pure (∅, tString) | CUnit => pure (∅, tUnit)
 end
 
-def closed : Std.HashMap TV MLType × MLType -> Scheme
+def closed : Subst × MLType -> Scheme
   | (sub, ty) =>
     generalize ∅ (apply sub ty) |> normalize
 

@@ -4,7 +4,7 @@ import Tigris.parsing.ptype
 import Tigris.interpreter.types
 import Tigris.interpreter.entrypoint
 
-namespace Interpreter open Parsing PType Value MLType TV Pattern Expr TypingError
+namespace Interpreter open Parsing PType Value MLType TV Pattern Expr TypingError Std.ToFormat
 def registerData (E : Env) (VE : VEnv) : TyDecl -> EIO String (Env × VEnv)
   | ty@{ctors,tycon,param} =>
     ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields) =>
@@ -13,7 +13,7 @@ def registerData (E : Env) (VE : VEnv) : TyDecl -> EIO String (Env × VEnv)
       let v := if arity == 0 then .VConstr cname #[]
                              else .VCtor cname arity #[]
       (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$
-        liftEIO (println! templateREPL cname v.render s.render)
+        liftEIO (println! templateREPL cname (format v) (format s))
 
 def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
   match n with
@@ -33,9 +33,9 @@ def evalPat1 (v : Value) (VE : VEnv) (acc : Array $ Symbol × Value) : Pattern -
 
   | PProd' p₁ p₂ =>
     if let VP v₁ v₂ := v then
-      if let some (⟨E₁⟩, acc) := evalPat1 v₁ VE acc p₁  then
-        if let some (E₂, acc) := evalPat1 v₂ ⟨(VE.env ∪ E₁)⟩ acc p₂ then
-          some (E₂, acc)
+      if let some (⟨E₁⟩, acc) := evalPat1 v₁ VE acc p₁ then
+        if let res@(some _) := evalPat1 v₂ ⟨E₁⟩ acc p₂ then
+          res
         else none
       else none
     else none
@@ -48,7 +48,7 @@ def evalPat1 (v : Value) (VE : VEnv) (acc : Array $ Symbol × Value) : Pattern -
         let (ve, flag, acc) := as.size.fold (init := (VE.env, true, acc)) fun i _ (VE, _, acc) =>
           have : fs.size = as.size := not_or.mp h |>.2 |> Classical.not_not.mp
           match evalPat1 fs[i] ⟨VE⟩ acc as[i] with
-          | some (ve, acc) => (VE ∪ ve.env, true, acc)
+          | some (ve, acc) => (ve.env, true, acc)
           | none           => (VE, false, acc)
         if flag then some (⟨ve⟩, acc) else none
     | _ => none
@@ -150,7 +150,7 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
     let v <- e.mapM (eval E)
     let rec tryDiscriminant i (h : i <= discr.size) :=
       match i with
-      | 0 => throw $ NoMatch e (toString $ v.map (·.render)) discr
+      | 0 => throw $ NoMatch e (toString $ v.map format) discr
       | j + 1 =>
         let (p, body) := discr[discr.size - j.succ]
         match evalPat E p v with
@@ -202,3 +202,4 @@ abbrev defaultVE : VEnv where
      , "eq"  of! 2]
 
 end Interpreter
+

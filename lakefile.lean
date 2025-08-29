@@ -2,7 +2,7 @@ import Lake
 open Lake DSL System
 
 package "tigris" where
-  version := v!"0.6.2"
+  version := v!"0.6.5"
 
 @[default_target]
 lean_exe "tigris" where
@@ -20,10 +20,10 @@ target ffi.o pkg : FilePath := do
   buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 
 lean_lib «Tigris» where
-  precompileModules := true
+--  precompileModules := true
 lean_lib «PP» where
-  moreLinkObjs := #[ffi.o]
-  precompileModules := true
+--  moreLinkObjs := #[ffi.o]
+--  precompileModules := true
 
 
 open IO.FS String in
