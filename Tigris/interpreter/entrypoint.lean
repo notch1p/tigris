@@ -44,7 +44,7 @@ end Parsing
 namespace MLType
 
 def check1 (s : String) (E : Env := defaultE) : String :=
-  match Parsing.parse s Parsing.initState with
+  match Parsing.parse s initState with
   | .error e => toString e
   | .ok e    =>
     match runInfer1 e E with

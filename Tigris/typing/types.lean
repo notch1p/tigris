@@ -1,19 +1,5 @@
 import Tigris.utils
 
-inductive TV where
-  | mkTV : String -> TV deriving Repr, BEq, Ord, Hashable
-instance : ToString TV := ⟨fun | .mkTV s => s⟩
-def TV.renderFmt : TV -> Std.Format
-  | mkTV s => Logging.cyan s
-instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
-
-inductive MLType where
-  | TVar : TV -> MLType
-  | TCon : String -> MLType
-  | TArr : MLType -> MLType -> MLType
-  | TProd : MLType -> MLType -> MLType
-  | TApp : String -> List MLType -> MLType
-deriving Repr, BEq, Ord, Inhabited
 
 structure TyDecl where
   tycon : String
@@ -128,4 +114,3 @@ abbrev Logger := String -- This is NOT how one should do logging.
                         -- Lake has something similar, but that's in the build system.
 abbrev Infer σ := StateRefT (Nat × Logger) $ EST MLType.TypingError σ
 abbrev Subst := Std.TreeMap TV MLType
-

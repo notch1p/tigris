@@ -73,6 +73,24 @@ def error (s : String) : TParser σ Unit :=
 
 @[inline] def link s := η₂ $ Var s
 
+open Associativity in def opTablePrim : List (Symbol × OpEntry) :=
+  [ (DOL , ⟨DOL, 1  , rightAssoc , App⟩)
+  , (ATT , ⟨ATT, 1  , rightAssoc , App⟩)
+  , ("=" , ⟨"=", 50 , leftAssoc  , link "eq"⟩)
+  , (ADD , ⟨ADD, 65 , leftAssoc  , link "add"⟩)
+  , (SUB , ⟨SUB, 65 , leftAssoc  , link "sub"⟩)
+  , (MUL , ⟨MUL, 70 , leftAssoc  , link "mul"⟩)
+  , (DIV , ⟨DIV, 70 , leftAssoc  , link "div"⟩)]
+
+def opTable : OpTable := .ofList opTablePrim
+def tyTable : TyArity :=
+  .ofList [ ("Int"   , 0, true)
+          , ("String", 0, true)
+          , ("Bool"  , 0, true)
+          , ("Unit"  , 0, true)
+          , ("Empty" , 0, true)]
+def initState : PEnv := {ops := opTable, tys := tyTable, undTy := []}
+
 namespace Parser.Error
 def Simple.flatten
   [Parser.Stream σ τ]
@@ -247,4 +265,3 @@ infixl : 60 " <> " => spaceBeside
 end
 
 @[inline] def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act
-

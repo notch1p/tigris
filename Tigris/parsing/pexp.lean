@@ -6,24 +6,6 @@ open Expr Lexing Parser Parser.Char Pattern Associativity
 namespace Parsing
 variable {σ}
 
-def opTablePrim : List (Symbol × OpEntry) :=
-  [ (DOL , ⟨DOL, 1  , rightAssoc , App⟩)
-  , (ATT , ⟨ATT, 1  , rightAssoc , App⟩)
-  , ("=" , ⟨"=", 50 , leftAssoc  , link "eq"⟩)
-  , (ADD , ⟨ADD, 65 , leftAssoc  , link "add"⟩)
-  , (SUB , ⟨SUB, 65 , leftAssoc  , link "sub"⟩)
-  , (MUL , ⟨MUL, 70 , leftAssoc  , link "mul"⟩)
-  , (DIV , ⟨DIV, 70 , leftAssoc  , link "div"⟩)]
-
-def opTable : OpTable := .ofList opTablePrim
-def tyTable : TyArity :=
-  .ofList [ ("Int"   , 0, true)
-          , ("String", 0, true)
-          , ("Bool"  , 0, true)
-          , ("Unit"  , 0, true)
-          , ("Empty" , 0, true)]
-def initState : PEnv := {ops := opTable, tys := tyTable, undTy := []}
-
 def infixlDecl : TParser σ $ Binding ⊕ α := do
   INFIXL; let i <- intExp let s <- strExp
   match s, i with

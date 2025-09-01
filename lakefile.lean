@@ -19,9 +19,9 @@ target ffi.o pkg : FilePath := do
   let cc := match <- IO.getEnv "CC" with | some CC => CC | none => "cc"
   buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 
-lean_lib «Tigris» where
+lean_lib «Tigris»
 --  precompileModules := true
-lean_lib «PP» where
+lean_lib «PP»
 --  moreLinkObjs := #[ffi.o]
 --  precompileModules := true
 
