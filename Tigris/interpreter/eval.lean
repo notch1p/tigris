@@ -158,6 +158,7 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
           eval bs body
         | none => tryDiscriminant j $ Nat.le_of_succ_le h
     tryDiscriminant discr.size Nat.le.refl
+  | Ascribe e _ => eval E e
 
 @[always_inline, inline] def parse! s := parse s initState |>.toOption |>.get!
 @[always_inline, inline] def eval! s (e : VEnv := ⟨∅⟩) := parse! s |> eval e |>.toOption |>.get!
@@ -202,4 +203,3 @@ abbrev defaultVE : VEnv where
      , "eq"  of! 2]
 
 end Interpreter
-

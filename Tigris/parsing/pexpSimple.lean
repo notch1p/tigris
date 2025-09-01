@@ -1,6 +1,7 @@
 import Tigris.utils
 import Tigris.typing.types
 import Tigris.parsing.ppat
+import Tigris.parsing.ptype
 open Expr Lexing Parser Parser.Char Pattern
 
 namespace Parsing
@@ -50,13 +51,19 @@ partial def funapp : TParser σ Expr :=
   chainl1 atom (pure App)
 
 partial def atom : TParser σ Expr := spaces *>
-  first' #[ parenthesized prodExp
+  first' #[ ascription
+          , parenthesized prodExp
           , letDispatch
           , funDispatch
           , fixpointExp , condExp
           , matchExp    , intExp
           , strExp      , varExp]
          simpErrorCombine
+
+partial def ascription : TParser σ Expr := parenthesized do
+    let e <- parseExpr
+    COLON
+    Ascribe e <$> PType.tyExp
 
 partial def prodExp : TParser σ Expr := do
   let es <- sepBy COMMA (parsePratt 0)

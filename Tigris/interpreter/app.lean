@@ -28,8 +28,8 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
 
         let ((tyacc, _, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")).mapError toString
         liftEIO (print l)
-
-        let ex := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
+        -- toplevel binding can never be redundant
+        let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
           liftEIO $ print $ Logging.warn
             s!"Partial pattern matching, \

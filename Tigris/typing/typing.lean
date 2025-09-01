@@ -224,6 +224,11 @@ partial def infer1 (E : Env) : (Subst × (MLType -> MLType)) -> Expr -> Infer σ
 partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
   | Var x => x ∈ₑ E
 
+  | Ascribe e ty => do
+    let (s₁, t₁) <- infer E e
+    let s₂ <- unify (apply s₁ t₁) ty
+    pure (s₂ ∪' s₁, apply s₂ ty)
+
   | Fun x e => do
     let tv          <- fresh
     let {E, tyDecl} := E
@@ -292,14 +297,19 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
         return (s, some $ apply s rt, expected)
       else return (Sb, tbody, expected)
 
-    let exp := exp.map $ apply s
-    let ex := Exhaustive.exhaustWitness E exp discr
+    letI exp := exp.map $ apply s
+    let (ex, mat, ty) := Exhaustive.exhaustWitness E exp discr
     let msg :=
       if let some ex := ex then
         Logging.warn
           s!"Partial pattern matching, \
              possible cases such as {ex.map (·.render)} are ignored\n"
-      else ""
+      else -- we only perform redundant check if case analysis is exhaustive
+        let red := Exhaustive.redundantRows E ty mat
+        if red.isEmpty then "" else 
+          letI br := red.foldl (init := "") fun a i =>
+            s!"{a}\n  {i + 1})  {discr[i]!.1.map (·.render)}"
+          Logging.warn s!"Found redundant cases at{br}\n"
     modify fun (n, l) => (n, l ++ msg)
 
     pure (s, res?.get!)
