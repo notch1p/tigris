@@ -168,10 +168,78 @@ partial def uncover
                 else
                   some (PCtor missingName (List.replicate ar PWild |>.toArray) :: us)
 
-def exhaustWitness (env : Env) (colTypes : Array MLType) (rows : Array (Array Pattern × Expr)) : Option 𝓥 :=
-  let lookup (s : Symbol) := env.tyDecl.get? s
-  let M : 𝓜 := rows.foldr (init := []) fun (pat, _) a => pat.toList :: a
+open FinDom in
+partial def useful
+  (lookup : Symbol -> Option TyDecl)
+  (tys : List MLType)
+  (M : 𝓜)
+  (row : 𝓥)
+  : Bool :=
+  match tys, row with
+  | [], [] => M.isEmpty
+  | τ :: σ, p :: ps =>
+    match τ with
+    | t₁ ×'' t₂ =>
+      match p with
+      | PProd' p1 p2 => useful lookup (t₁ :: t₂ :: σ) (𝒮ₚ M) (p1 :: p2 :: ps)
+      | PVar _ | PWild =>
+        useful lookup (t₁ :: t₂ :: σ) (𝒮ₚ M) (PWild :: PWild :: ps)
+      | _ => false
+    | _ =>
+      match headFinDom τ with
+      | some d =>
+        match p with
+        | PConst k => useful lookup σ (𝒮ₖ k M) ps
+        | PVar _ | PWild =>
+          constsOf d |>.any (fun k => useful lookup σ (𝒮ₖ k M) ps)
+        | _ => false
+      | none =>
+        match headTyconArgs τ with
+        | some (tycon, tyArgs) =>
+          match lookup tycon with
+          | some td =>
+            match p with
+            | PCtor cname args =>
+              match ctorFieldTypes td cname tyArgs with
+              | some fts => useful lookup (fts ++ σ) (𝒮 cname args.size M) (args.toList ++ ps)
+              | none     => false
+            | PVar _ | PWild =>
+              td.ctors.any (fun (cname, fts) =>
+                let ar := fts.length
+                useful lookup (fts ++ σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps))
+            | _ => false
+          | none =>
+            -- unknown type: fall back to default
+            match p with
+            | PVar _ | PWild => useful lookup σ (𝒟 M) ps
+            | PConst k       => useful lookup σ (FinDom.𝒮ₖ k M) ps
+            | _              => useful lookup σ (𝒟 M) ps
+        | none =>
+          -- not a product/finite/data head: default
+          match p with
+          | PVar _ | PWild => useful lookup σ (𝒟 M) ps
+          | PConst k       => useful lookup σ (FinDom.𝒮ₖ k M) ps
+          | _              => useful lookup σ (𝒟 M) ps
+  | _, _ => false
+
+def exhaustWitness
+  (env : Env)
+  (colTypes : Array MLType)
+  (rows : Array (Array Pattern × Expr)) : Option 𝓥 × 𝓜 × List MLType :=
+  letI lookup := env.tyDecl.get?
+  let M : 𝓜 := rows.foldr (List.cons ∘ Array.toList ∘ Prod.fst) []
   let tys := colTypes.toList
-  uncover lookup tys M
+  (uncover lookup tys M, M, tys)
+
+def redundantRows
+  (env : Env)
+  (colTypes : List MLType)
+  (rows : 𝓜) : Array Nat :=
+  letI lookup := env.tyDecl.get?
+  Prod.snd ∘ Prod.snd <| rows.foldl (init := (0, [], #[])) fun (i, prevM, acc) s =>
+    letI useful? := useful lookup colTypes prevM s
+    ( i + 1
+    , s :: prevM
+    , if useful? then acc else acc.push i)
 
 end Exhaustive

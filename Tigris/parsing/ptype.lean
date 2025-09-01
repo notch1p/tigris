@@ -49,7 +49,7 @@ partial def tyApps (mt : Bool) (param : Array String) : TParser σ MLType := wit
       let s <- takeMany $ tyAtom mt param
       if s.isEmpty then
         return TApp h arg.toList
-      else 
+      else
         error s!"type {Logging.magenta h} arity mismatch, \
               expected {k} but received {k + s.size}\n"
         throwUnexpected
@@ -81,6 +81,9 @@ def tyEmpty : TParser σ $ Binding ⊕ TyDecl := do
   TYPE let tycon <- ID let param <- takeMany ID;
   return .inr {tycon, param, ctors := #[]}
 
+@[inline]
+def tyExp : TParser σ MLType := tyArrow false #[]
+
 def tyDecl (mt : Bool) : TParser σ $ Binding ⊕ TyDecl := withErrorMessage "TyDecl" do
   TYPE let tycon <- ID
   if isUpperInit tycon then
@@ -89,7 +92,7 @@ def tyDecl (mt : Bool) : TParser σ $ Binding ⊕ TyDecl := withErrorMessage "Ty
     let hd <- (optional BAR *> ctor mt param)
     let tl <- takeMany (BAR *> ctor mt param)
     return .inr {tycon, param, ctors := #[hd] ++ tl}
-  else 
+  else
     error "type constructor must begin with uppercase letter\n"
     throwUnexpected
 where

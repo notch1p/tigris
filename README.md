@@ -116,7 +116,7 @@ proving those functions terminates.
 
 ### what about (...)
 
-#### Exhaustiveness check
+#### Exhaustiveness/Redundant check
 
 - [x] Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1], just like OCaml.
 

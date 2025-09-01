@@ -35,7 +35,8 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
   , (";;", ";;")
   , ("=>", "=>")
   , (",", ",")
-  , ("_", "_")]
+  , ("_", "_")
+  , (":", ":")]
 
 def reserved :=
   #[ "mutual","infixl" , "infixr", "match"
@@ -106,6 +107,7 @@ abbrev ARROW: TParser σ Unit := spaces *>
 abbrev COMMA: TParser σ Unit := kwOpExact ","
 abbrev EQ   : TParser σ Unit := kwOpNoExtend "=" (fun c => c == '>' || c == '=')
 abbrev END  : TParser σ Unit := kwOpExact ";;"
+abbrev COLON: TParser σ Unit := kwOpExact ":"
 abbrev UNDERSCORE : TParser σ Unit := kwOpExact "_"
 
 abbrev ADD   := "+"

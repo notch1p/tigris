@@ -16,7 +16,7 @@ def main : IO Unit := do
   let stdin <- getStdin
   let E <- mkRef defaultE
   let VE <- mkRef defaultVE
-  let PE <- mkRef Parsing.initState
+  let PE <- mkRef initState
   letI motd := "A basic language using Hindley-Milner type system\n\
                with a naive (term-rewriting) interpreted implementation.\n\
                For language specifications see source.\n\
@@ -42,7 +42,7 @@ def main : IO Unit := do
     if buf.startsWith "#h" then
       print $ tabulate (mkBoldBlackWhite "Commands") {align := alignH} helpMsg
     else if buf.startsWith "#f" then
-      PE.set Parsing.initState *> VE.set defaultVE *> E.set defaultE
+      PE.set initState *> VE.set defaultVE *> E.set defaultE
       println! Logging.note "REPL environment has been flushed"
     else if buf.startsWith "#e" then
       let fp := buf.dropRightWhile (fun c => c.isWhitespace || c == ';') |>.splitOn " " |>.tail
