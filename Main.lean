@@ -96,4 +96,3 @@ def main : IO Unit := do
 
     buf := ""
     prompt := "> "
-
