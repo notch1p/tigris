@@ -52,7 +52,9 @@ def main : IO Unit := do
         let p <- Process.spawn {cmd := editor, args := fp.toArray}
         () <$ p.wait
       catch e => println! Logging.error $ toString e
-    else if buf.startsWith "#c" || buf.startsWith "#t" then
+    else if buf.startsWith "#c" then
+      CPS.compile1 (buf.dropWhile $ not ∘ Char.isWhitespace) pe e
+    else if buf.startsWith "#t" then
       try
         let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
         let (s, l) <- MLType.runInfer1 exp e |> ofExcept

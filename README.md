@@ -116,9 +116,23 @@ proving those functions terminates.
 
 ### what about (...)
 
+#### IR/Backends
+
+- [ ] Frankly I'm not very familiar with backends, Even If I were to do it,
+      it would most likely be a example of compiling with continuations,
+      with optional ANF transformation, closure conversion (already done),
+      and defunctionalization.
+
+- there is a experimental IR at [core](Tigris/core)
+  that uses flat CFG inside functions and closure-passing
+  style for functions/continuations. Not flat yet.
+
+- no codegen
+
 #### Exhaustiveness/Redundant check
 
-- [x] Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1], just like OCaml.
+- [x] Planned, if I'm going to do it then it would be very similar to \[Maranget2007\][^1]
+      , just like OCaml.
 
 Has done the very barebone.
 It's an almost one-to-one implementation of the algorithm described in the paper above.
