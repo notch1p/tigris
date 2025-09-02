@@ -61,6 +61,9 @@ def ς (M : 𝓜) : Std.HashSet (Symbol × Nat) :=
     | PCtor n args :: _ => acc.insert (n, args.size)
     | _ => acc
 
+def completeData (td : TyDecl) (sig : Std.HashSet (Symbol × Nat)) : Bool :=
+  td.ctors.all (fun (n, fts) => sig.contains (n, fts.length))
+
 def inς (td : TyDecl) (sig : Std.HashSet (Symbol × Nat)) : Option (Symbol × Nat) :=
   td.ctors.findSome? fun (n, fts) =>
     let key := (n, fts.length)
@@ -188,10 +191,16 @@ partial def useful
     | _ =>
       match headFinDom τ with
       | some d =>
+        let sig := ςₖ d M
+        let all := constsOf d
+        let complete := all.all (fun k => sig.contains k)
         match p with
         | PConst k => useful lookup σ (𝒮ₖ k M) ps
         | PVar _ | PWild =>
-          constsOf d |>.any (fun k => useful lookup σ (𝒮ₖ k M) ps)
+          if complete then
+            all.any (fun k => useful lookup σ (𝒮ₖ k M) ps)
+          else
+            useful lookup σ (𝒟 M) ps
         | _ => false
       | none =>
         match headTyconArgs τ with
@@ -204,9 +213,14 @@ partial def useful
               | some fts => useful lookup (fts ++ σ) (𝒮 cname args.size M) (args.toList ++ ps)
               | none     => false
             | PVar _ | PWild =>
-              td.ctors.any (fun (cname, fts) =>
-                let ar := fts.length
-                useful lookup (fts ++ σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps))
+              let sig := ς M
+              let complete := completeData td sig
+              if complete then
+                td.ctors.toList.any (fun (cname, fts) =>
+                  let ar := fts.length
+                  useful lookup (fts ++ σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps))
+              else
+                useful lookup σ (𝒟 M) ps
             | _ => false
           | none =>
             -- unknown type: fall back to default

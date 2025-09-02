@@ -14,4 +14,9 @@ import Tigris.interpreter.entrypoint
 import Tigris.interpreter.types
 import Tigris.interpreter.app
 import Tigris.table
+import Tigris.core.ir
+import Tigris.core.transform
+import Tigris.core.matchApp
+import Tigris.core.anf
+import Tigris.core.opt
 import PP
