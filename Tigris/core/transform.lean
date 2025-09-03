@@ -90,6 +90,8 @@ def captureList (fv : Std.HashSet String) (exclude : Std.HashSet String) (ρ : E
     (init := #[])
     (fun acc k v => if fv.contains k && !exclude.contains k then acc.push (k, v) else acc)
 
+abbrev Cont := Label × Array Atom
+
 mutual
 -- lifting closure
 partial def emitFunction
@@ -98,19 +100,19 @@ partial def emitFunction
   (argName : String)
   (selfName? : Option String)
   (body : Expr)
-  (kSite : Name)
+  (kSite : Cont)
   : BuildM σ Unit := do
   let capFormalNames : Array Name := caps.map (fun (n, _) => s!"env_{n}")
   let argFormal : Name := s!"{argName}"
-  let kFormal   : Name := s!"k"
   let entryLbl  <- liftSig <| freshLbl (fid ++ "_entry")
+  let retBridge <- liftSig <| freshLbl (fid ++ "_ret")
 
   let initInner : FunBuilder :=
     { fid := fid
-    , params := capFormalNames ++ #[argFormal, kFormal]
+    , params := capFormalNames ++ #[argFormal]
     , entry := entryLbl
     , curLbl := entryLbl
-    , curParams := capFormalNames ++ #[argFormal, kFormal]
+    , curParams := capFormalNames ++ #[argFormal]
     , curBody := #[]
     , blocks := #[]
     , funs := #[]}
@@ -120,94 +122,96 @@ partial def emitFunction
     have : sz <= capFormalNames.size := Nat.min_le_left ..
     have : sz <= caps.size := Nat.min_le_right ..
     let rhoBody :=
-      (sz.fold (init := (∅ : Env)) fun i h (a : Env) =>
+      (sz.fold (init := (∅ : Env)) fun i _ (a : Env) =>
         a.insert caps[i].1 capFormalNames[i]).insert argName argFormal
     let rhoBody <-
       match selfName? with
       | some selfN =>
+        -- self closure for recursion (env are the cap formals)
         let selfValName <- bindRhs (.mkClosure fid capFormalNames) "self"
         pure $ rhoBody.insert selfN selfValName
       | none => pure rhoBody
 
-    compileWithEnv body rhoBody kFormal
+    compileWithEnv body rhoBody (retBridge, #[])
+    newBlock retBridge #[]
+    let rv <- liftSig <| fresh "ret"
+    modify fun (b : FunBuilder) => { b with curParams := #[rv] }
+    let (kLbl, kAs) := kSite
+    endBlock (.goto kLbl (kAs.push (.var rv)))
   ).run initInner
 
   modify fun (b : FunBuilder) =>
     let f : Fun :=
-        { fid    := fid
+        { fid := fid
         , params := inner.params
         , blocks := inner.blocks
-        , entry  := inner.entry}
+        , entry := inner.entry}
     {b with funs := b.funs ++ inner.funs.push f}
 
   -- materialize the closure with actual captured values and pass to kSite.
   let envActuals : Array Name := caps.map (·.2)
   let clo <- bindRhs (.mkClosure fid envActuals) "clo"
-  endBlock (.appCont kSite (.var clo))
+  let (kLbl, kAs) := kSite
+  endBlock (.goto kLbl (kAs.push (.var clo)))
 
-partial def compileWithEnv (e : Expr) (ρ : Env) (k : Name) : BuildM σ Unit := do
+partial def compileWithEnv
+  (e : Expr) (ρ : Env) (kCont : Cont) : BuildM σ Unit := do
+  let (kLbl, kAs) := kCont
   match e with
-  | .Var x => endBlock (.appCont k (.var (ρ.getD x x)))
+  | .Var x =>
+    endBlock (.goto kLbl (kAs.push (.var (ρ.getD x x))))
 
-  | .CI i => endBlock (.appCont k (.cst (.int i)))
-  | .CB b => endBlock (.appCont k (.cst (.bool b)))
-  | .CS s => endBlock (.appCont k (.cst (.str s)))
-  | .CUnit => endBlock (.appCont k (.cst .unit))
+  | .CI i    => endBlock (.goto kLbl (kAs.push (.cst (.int i))))
+  | .CB b    => endBlock (.goto kLbl (kAs.push (.cst (.bool b))))
+  | .CS s    => endBlock (.goto kLbl (kAs.push (.cst (.str s))))
+  | .CUnit   => endBlock (.goto kLbl (kAs.push (.cst .unit)))
 
   | .App (.Var fv) (.Var av) =>
     let f := ρ.getD fv fv
     let a := ρ.getD av av
-    endBlock (.appFun f a k)
+    endBlock (.appFun f a kLbl kAs)
 
   | .App f a => do
-    let lblF <- liftSig <| freshLbl "KF"
-    let kF   <- bindRhs (.mkKont lblF #[]) "kF"
-    compileWithEnv f ρ kF
-    newBlock lblF #[]
-    let vparam <- liftSig <| fresh "vf"
-    modify fun b => {b with curParams := #[vparam]}
-    let lblA <- liftSig <| freshLbl "KA"
-    let kA   <- bindRhs (.mkKont lblA #[]) "kA"
-    compileWithEnv a ρ kA
-    newBlock lblA #[]
-    let aparam <- liftSig <| fresh "va"
-    modify fun b => {b with curParams := #[aparam]}
-    endBlock (.appFun vparam aparam k)
+    let lF <- liftSig <| freshLbl "KF"
+    let lA <- liftSig <| freshLbl "KA"
+    compileWithEnv f ρ (lF, #[])
+    newBlock lF #[]
+    let vparam <- liftSig <| fresh "vf"; modify fun b => { b with curParams := #[vparam] }
+    compileWithEnv a ρ (lA, #[])
+    newBlock lA #[]
+    let aparam <- liftSig <| fresh "va"; modify fun b => { b with curParams := #[aparam] }
+    endBlock (.appFun vparam aparam kLbl kAs)
 
   | .Prod' l r => do
-    let lblL <- liftSig <| freshLbl "KL"
-    let kL   <- bindRhs (.mkKont lblL #[]) "kL"
-    compileWithEnv l ρ kL
-    newBlock lblL #[]
-    let lv <- liftSig <| fresh "lv"; modify fun b => {b with curParams := #[lv]}
-    let lblR <- liftSig <| freshLbl "KR"
-    let kR   <- bindRhs (.mkKont lblR #[]) "kR"
-    compileWithEnv r ρ kR
-    newBlock lblR #[]
-    let rv <- liftSig <| fresh "rv"; modify fun b => {b with curParams := #[rv]}
+    let lL <- liftSig <| freshLbl "KL"
+    let rL <- liftSig <| freshLbl "KR"
+    compileWithEnv l ρ (lL, #[])
+    newBlock lL #[]
+    let lv <- liftSig <| fresh "lv"; modify fun b => { b with curParams := #[lv] }
+    compileWithEnv r ρ (rL, #[])
+    newBlock rL #[]
+    let rv <- liftSig <| fresh "rv"; modify fun b => { b with curParams := #[rv] }
     let p <- bindRhs (.mkPair lv rv) "p"
-    endBlock (.appCont k (.var p))
+    endBlock (.goto kLbl (kAs.push (.var p)))
 
   | .Let x e₁ e₂ => do
-    let lbl <- liftSig <| freshLbl "let"
-    let k1  <- bindRhs (.mkKont lbl #[]) "k1"
-    compileWithEnv e₁ ρ k1
-    newBlock lbl #[x]
-    compileWithEnv e₂ (ρ.insert x x) k
+    let l <- liftSig <| freshLbl "let"
+    compileWithEnv e₁ ρ (l, #[])
+    newBlock l #[x]
+    compileWithEnv e₂ (ρ.insert x x) (kLbl, kAs)
 
   | .Cond c t e' => do
-    let lblC <- liftSig <| freshLbl "KC"
-    let kC   <- bindRhs (.mkKont lblC #[]) "kC"
-    compileWithEnv c ρ kC
-    newBlock lblC #[]
-    let cv <- liftSig <| fresh "cv"; modify fun b => {b with curParams := #[cv]}
+    let lc <- liftSig <| freshLbl "KC"
+    compileWithEnv c ρ (lc, #[])
+    newBlock lc #[]
+    let cv <- liftSig <| fresh "cv"; modify fun b => { b with curParams := #[cv] }
     let lt <- liftSig <| freshLbl "then"
     let le <- liftSig <| freshLbl "else"
     endBlock (.ifGoto cv lt le)
     newBlock lt #[]
-    compileWithEnv t ρ k
+    compileWithEnv t ρ (kLbl, kAs)
     newBlock le #[]
-    compileWithEnv e' ρ k
+    compileWithEnv e' ρ (kLbl, kAs)
 
   | .Fix (.Fun fname fbody) | .Fixcomb (.Fun fname fbody) =>
     let fv := fvs ∅ e
@@ -216,12 +220,12 @@ partial def compileWithEnv (e : Expr) (ρ : Env) (k : Name) : BuildM σ Unit := 
     match fbody with
     | .Fun x body =>
       emitFunction (fid := fname) (caps := caps) (argName := x) (selfName? := some fname)
-                   (body := body) (kSite := k)
+                   (body := body) (kSite := (kLbl, kAs))
     | _ =>
       emitFunction (fid := fname) (caps := caps) (argName := "arg") (selfName? := some fname)
-                   (body := fbody) (kSite := k)
+                   (body := fbody) (kSite := (kLbl, kAs))
   | .Fix e | .Fixcomb e =>
-    compileWithEnv e ρ k
+    compileWithEnv e ρ (kLbl, kAs)
 
   | .Fun x body =>
     let fv := fvs ∅ e
@@ -229,137 +233,229 @@ partial def compileWithEnv (e : Expr) (ρ : Env) (k : Name) : BuildM σ Unit := 
     let caps := captureList fv exclude ρ
     let fid  <- liftSig <| freshFun "lam"
     emitFunction (fid := fid) (caps := caps) (argName := x) (selfName? := none)
-                 (body := body) (kSite := k)
+                 (body := body) (kSite := (kLbl, kAs))
 
   | .Ascribe e _ =>
-    compileWithEnv e ρ k
+    compileWithEnv e ρ (kLbl, kAs)
 
   | .Match es rows =>
-    compileMatchDT es rows ρ k
-partial def compileMatchDT (es : Array Expr) (rows : Array (Array Pattern × Expr)) (ρ : Env) (k : Name) : BuildM σ Unit := do
-  let mut scrs : Array Name := #[]
-  for e in es do
+    -- BT for simple backtracking automata; DT for decision tree
+    compileMatchBT es rows ρ (kLbl, kAs)
+
+partial def compileMatchBT
+  (es : Array Expr)
+  (rows : Array (Array Pattern × Expr))
+  (ρ : Env) (kCont : Cont) : BuildM σ Unit := do
+
+  let scrs <- es.foldlM (init := #[]) fun scrs e => do
     let lbl <- liftSig <| freshLbl "KS"
-    let kS  <- bindRhs (.mkKont lbl #[]) "kS"
-    compileWithEnv e ρ kS
+    compileWithEnv e ρ (lbl, #[])
     newBlock lbl #[]
     let v <- liftSig <| fresh "s"
     modify fun b => {b with curParams := #[v]}
-    scrs := scrs.push v
-  let cols : Array Sel := Array.ofFn (Sel.base ∘ Fin.toNat (n := scrs.size))
+    return scrs.push v
 
-  let rws : Array RowState :=
-    rows.map (fun (ps, rhs) => RowState.mk ps rhs #[])
+  let baseCols : Array Sel := Array.ofFn (Sel.base ∘ Fin.toNat (n := scrs.size))
 
-  let dt := buildTree cols rws
-  lowerTree dt scrs cols ρ k
+  let dispatch <- liftSig $ freshLbl "match_dispatch"
+  endBlock (.goto dispatch $ scrs.map Atom.var)
 
-partial def lowerTree (t : DTree) (roots : Array Name) (cols : Array Sel) (ρ : Env) (k : Name) : BuildM σ Unit := do
-  match t with
-  | .fail =>
-    endBlock (.appCont k (.cst .unit))
-  | .leaf row =>
-    (compileWithEnv row.rhs · k) =<< row.binds.foldlM (init := ρ) fun ρ (x, s) =>
-      ρ.insert x <$> realizeSel roots s
+  let (dP, dPA) <- liftSig $
+    scrs.size.foldM (init := (#[], #[])) fun _ _ (dP, dPA) =>
+      fresh "s" >>= fun s => return (dP.push s, dPA.push (Atom.var s))
 
-  | .splitProd j next =>
-    let s := cols[j]!
-    let cols' := cols[0:j] ++ #[Sel.field s 0, Sel.field s 1] ++ cols[j+1:]
-    lowerTree next roots cols' ρ k
+  let failLbl <- liftSig <| freshLbl "match_fail"
+  let (kLbl, kAs) := kCont
 
-  | .testConst j branches defs? =>
-    let sv <- realizeSel roots cols[j]!
-    let rec go (i : Nat) : BuildM σ Unit := do
-      if h : i < branches.size then
-        let (tc, sub) := branches[i]
-        let (op, atom) :=
-          match tc with
-          | .PInt n  => (PrimOp.eqInt, Atom.cst (.int n))
-          | .PBool b => (PrimOp.eqBool, Atom.cst (.bool b))
-          | .PStr s  => (PrimOp.eqStr, Atom.cst (.str s))
-          | .PUnit   => (PrimOp.eqInt, Atom.cst (.int 0))
-        let c <- bindRhs (.prim op #[.var sv, atom]) "cmp"
-        let lthen <- liftSig <| freshLbl "k_then"
-        let lelse <- liftSig <| freshLbl "k_else"
-        endBlock (.ifGoto c lthen lelse)
-        newBlock lthen #[]
-        let cols' := cols.eraseIdx! j
-        lowerTree sub roots cols' ρ k
-        newBlock lelse #[]
-        go (i+1)
-      else
-        match defs? with
-        | some defsub =>
-          let cols' := cols.eraseIdx! j
-          lowerTree defsub roots cols' ρ k
-        | none =>
-          -- fallthrough fail
-          let d <- bindRhs (.prim .add #[.cst (.int 0), .cst (.int 0)]) "dead"
-          endBlock (.appCont k (.cst .unit))
-    go 0
+  let (_, firstRowLbl?) <-
+    rows.size.foldRevM (init := (failLbl, none)) fun i _ (nextFail, firstRowLbl?) => do
+      let thisLbl <- liftSig <| freshLbl s!"row_{i}"
+      let rowParams <- liftSig $
+        scrs.size.foldM (init := #[]) fun _ _ a => a.push <$> fresh "s"
+      newBlock thisLbl rowParams
+      let (pats, rhs) := rows[i]
+      matchRowBT rowParams baseCols pats ρ nextFail (kLbl, kAs) rhs
+      return (thisLbl, some thisLbl)
 
-  | .testCtor j branches defs? =>
-    let sv <- realizeSel roots cols[j]!
-    let (alts, caseWork) <- branches.foldlM (init := (#[], #[]))
-      fun ( (alts : Array (Name × Nat × Label × Array Name))
-          , (caseWork : Array (Label × (BuildM σ Unit))))
-          (cname, ar, subtree) => do
-        let lbl <- liftSig <| freshLbl s!"case_{cname}"
-        letI cols' :=
-          cols[0:j]
-          ++ Array.ofFn (Sel.field cols[j]! ∘ Fin.toNat (n := ar))
-          ++ cols[j+1:]
-        pure
-          ( alts.push (cname, ar, lbl, #[])
-          , caseWork.push (lbl, lowerTree subtree roots cols' ρ k))
-    let defLbl? <-
-      match defs? with
-      | some subtree =>
-        let lbl <- liftSig <| freshLbl "case_default"
-        let cols' := cols.eraseIdx! j
-        let work := lowerTree subtree roots cols' ρ k
-        pure (some (lbl, work))
-      | none => pure none
-    let defTerm? :=
-      defLbl?.map fun (l, _) => (l, #[])
-    endBlock (.switchCtor sv alts defTerm?)
-    for (lbl, work) in caseWork do
-      newBlock lbl #[]
-      work
-    match defLbl? with
-    | some (lbl, work) =>
-      newBlock lbl #[]
-      work
-    | none => pure ()
+  newBlock dispatch dP
+  match firstRowLbl? with
+  | some l => endBlock (.goto l dPA)
+  | none   => endBlock (.goto failLbl #[])
+
+  newBlock failLbl #[]
+  endBlock (.goto kLbl (kAs.push (.cst .unit)))
+
+partial def matchRowBT
+  (roots : Array Name)
+  (cols  : Array Sel)
+  (pats  : Array Pattern)
+  (ρ     : Env)
+  (onFail : Label)
+  (kCont : Cont)
+  (rhs    : Expr)
+  : BuildM σ Unit := do
+
+  if pats.isEmpty then
+    compileWithEnv rhs ρ kCont
+  else
+    let j := 0
+    match pats[0]! with
+    | .PWild =>
+      let cols' := cols.eraseIdx! j
+      let pats' := pats.eraseIdx! j
+      matchRowBT roots cols' pats' ρ onFail kCont rhs
+    | .PVar x =>
+      let v <- realizeSel roots cols[0]!
+      let ρ' := ρ.insert x v
+      let cols' := cols.eraseIdx! j
+      let pats' := pats.eraseIdx! j
+      matchRowBT roots cols' pats' ρ' onFail kCont rhs
+    | .PConst tc =>
+      let sv <- realizeSel roots cols[0]!
+      let (op, atom) :=
+        match tc with
+        | .PInt n  => (PrimOp.eqInt,  Atom.cst (.int n))
+        | .PBool b => (PrimOp.eqBool, Atom.cst (.bool b))
+        | .PStr s  => (PrimOp.eqStr,  Atom.cst (.str s))
+        | .PUnit   => (PrimOp.eqInt,  Atom.cst (.int 0))
+      let c <- bindRhs (.prim op #[.var sv, atom]) "cmp"
+      let thenLbl <- liftSig <| freshLbl "bt_then"
+      endBlock (.ifGoto c thenLbl onFail roots roots)
+      newBlock thenLbl roots
+      let cols' := cols.eraseIdx! j
+      let pats' := pats.eraseIdx! j
+      matchRowBT roots cols' pats' ρ onFail kCont rhs
+    | .PProd' p1 p2 =>
+      let s := cols[0]!
+      let cols' := #[Sel.field s 0, Sel.field s 1] ++ cols[1:]
+      let pats' := #[p1, p2] ++ pats[1:]
+      matchRowBT roots cols' pats' ρ onFail kCont rhs
+    | .PCtor c args =>
+      let sv <- realizeSel roots cols[0]!
+      let contLbl <- liftSig <| freshLbl s!"bt_ctor_{c}"
+      let alts : Array (Name × Nat × Label × Array Name) :=
+        #[(c, args.size, contLbl, roots)]
+      endBlock (.switchCtor sv alts (some (onFail, roots)))
+      newBlock contLbl roots
+      let cols' :=
+        Array.ofFn (Sel.field cols[0]! ∘ Fin.toNat (n := args.size)) ++ cols[1:]
+      let pats' := args ++ pats[1:]
+      matchRowBT roots cols' pats' ρ onFail kCont rhs
 
 end
+
+private def collectTopPatBinds (p : Pattern) (s : Sel) : Array (String × Sel) :=
+  go p s where
+  go : Pattern -> Sel -> Array (String × Sel)
+  | .PVar x, sel      => #[(x, sel)]
+  | .PWild, _         => #[]
+  | .PConst _, _      => #[]
+  | .PProd' p q, sel  => go p (.field sel 0) ++ go q (.field sel 1)
+  | .PCtor _ as, sel  =>
+      as.size.fold (init := #[]) fun i _ acc =>
+        acc ++ go as[i] (.field sel i)
+
+partial def lowerTopPatBind
+  (scr : Name)                      -- the evaluated RHS value
+  (pat : Pattern)
+  (succLbl : Label)                 -- success continuation label
+  (succParams : Array Name)
+  (failLbl : Label)                 -- failure label
+  : BuildM σ Unit := do
+  let roots := #[scr]
+  let binds := collectTopPatBinds pat (.base 0)
+
+  let rec go (work : List (Sel × Pattern)) : BuildM σ Unit := do
+    match work with
+    | [] =>
+      let args <- binds.foldlM (init := #[]) fun a (_, sel) =>
+        (a.push ∘ .var) <$> realizeSel roots sel
+      endBlock (.goto succLbl args)
+    | (sel, p) :: rest =>
+      match p with
+      | .PWild =>
+        go rest
+      | .PVar _ =>
+        go rest
+      | .PConst tc =>
+        let sv <- realizeSel roots sel
+        let (op, k) :=
+          match tc with
+          | .PInt n  => (PrimOp.eqInt,  Atom.cst (.int n))
+          | .PBool b => (PrimOp.eqBool, Atom.cst (.bool b))
+          | .PStr s  => (PrimOp.eqStr,  Atom.cst (.str s))
+          | .PUnit   => (PrimOp.eqInt,  Atom.cst (.int 0))
+        let c <- bindRhs (.prim op #[.var sv, k]) "cmp"
+        let thenLbl <- liftSig <| freshLbl "top_then"
+        endBlock (.ifGoto c thenLbl failLbl)
+        newBlock thenLbl succParams
+        go rest
+      | .PProd' p q =>
+        go ((Sel.field sel 0, p) :: (Sel.field sel 1, q) :: rest)
+      | .PCtor cn as =>
+        let sv <- realizeSel roots sel
+        let contLbl <- liftSig <| freshLbl s!"top_ctor_{cn}"
+        let alts : Array (Name × Nat × Label × Array Name) :=
+          #[(cn, as.size, contLbl, #[])]
+        endBlock (.switchCtor sv alts (some (failLbl, #[])))
+        newBlock contLbl succParams
+        let rest' :=
+          as.size.foldRev (init := [])
+            (fun i _ a => (Sel.field sel i, as[i]) :: a)
+          ++ rest
+--          (List.range as.size |>.map (fun i => (Sel.field sel i, as[i]!))) ++ rest
+        go rest'
+
+  go [(Sel.base 0, pat)]
+
+private def emitTopBinding
+  (lhsPat : Pattern) (rhs : Expr)
+  (ρr : ST.Ref σ Env) (lblH : Label) : BuildM σ Unit := do
+  let eANF := runST fun _ => ANF.normalize rhs |>.run' 0
+  let ρ <- ρr.get
+  let evalLbl <- liftSig <| freshLbl "top_eval"
+  compileWithEnv eANF ρ (evalLbl, #[])
+  newBlock evalLbl #[]
+  let scr <- liftSig <| fresh "s"
+  modify fun b => { b with curParams := #[scr] }
+
+  let failLbl <- liftSig <| freshLbl "bind_fail"
+
+  let binds := collectTopPatBinds lhsPat (.base 0)
+  let succParams : Array Name := binds.map (fun (x, _) => x)
+  let succLbl <- liftSig <| freshLbl "bind_ok"
+
+  lowerTopPatBind scr lhsPat succLbl succParams failLbl
+
+  newBlock failLbl #[]
+  endBlock (.goto lblH #[Atom.cst .unit])
+
+  newBlock succLbl succParams
+  ρr.modify fun ρ =>
+    succParams.foldl (init := ρ) (fun acc x => acc.insert x x)
 
 def compileToMain (e : Expr) : M σ Module := do
   let e := runST fun _ => ANF.normalize e |>.run' 0
   let entry <- freshLbl "main_entry"
-  let k <- fresh "k"
   let init : FunBuilder :=
     { fid := "main"
-    , params := #[k]
+    , params := #[]
     , entry := entry
     , curLbl := entry
-    , curParams := #[k]
+    , curParams := #[]
     , curBody := #[]
     , blocks := #[]
     , funs := #[]}
-  let (_, st) <-
-    (do
-      let lblH <- liftSig <| freshLbl "haltK"
-      let kH   <- bindRhs (.mkKont lblH #[]) "kH"
-      compileWithEnv e ∅ kH
-      newBlock lblH #[]
-      let r <- liftSig <| fresh "res";
-      modify fun (b : FunBuilder) => {b with curParams := #[r]}
-      endBlock (.halt r)
-    ).run init
+  let (_, st) <- StateRefT'.run (s := init) do
+    let lblH <- liftSig <| freshLbl "haltK"
+    compileWithEnv e ∅ (lblH, #[])
+    newBlock lblH #[]
+    let r <- liftSig <| fresh "res"
+    modify fun (b : FunBuilder) => { b with curParams := #[r] }
+    endBlock (.halt r)
 
   let mainFun := { fid := "main"
-                 , params := #[k]
+                 , params := #[]
                  , blocks := st.blocks
                  , entry := entry}
   pure (optModule ⟨st.funs, mainFun⟩)
@@ -370,47 +466,54 @@ def compile1 (s : String) (PE : PEnv) (E : _root_.Env) : IO Unit := do
     let (_, l) <- IO.ofExcept $ MLType.runInfer1 e E
     let (m, _) := runST fun _ => compileToMain e |>.run 0
     IO.print l
-    IO.println $ (Std.Format.pretty ∘ fmtModule) m
+    IO.println $ (Std.Format.pretty (width := 80) ∘ fmtModule) m
   catch e => IO.println (Logging.error $ toString e)
 
 end CPS
 open CPS in
-def compileTop (decls : Array Parsing.TopDecl) : M σ Module := do
+def compileTop (decls : Array TopDecl) : M σ Module := do
   let entry <- freshLbl "main_entry"
-  let k <- fresh "k"
   let init : FunBuilder :=
     { fid := "main"
-    , params := #[k]
+    , params := #[]
     , entry := entry
     , curLbl := entry
-    , curParams := #[k]
+    , curParams := #[]
     , curBody := #[]
     , blocks := #[]
-    , funs := #[] }
-  let (_, {funs, blocks,..}) <- StateRefT'.run (s := init) $ show BuildM σ Unit from do
-    let lblH <- liftSig $ freshLbl "haltK"
-    let kH <- bindRhs (.mkKont lblH #[]) "kH"
-    let (ρ, lastName?) <- decls.foldlM (init := show CPS.Env × Option Name from (∅, none))
-      fun a@(ρ, _) d => do
-        match d with
-        | .inr _ => return a
-        | .inl (id, e) =>
+    , funs := #[]}
+
+  let (_, st) <- StateRefT'.run (s := init) do
+    let lblH <- liftSig <| freshLbl "haltK" -- final label
+
+    -- Thread an environment of top-level bound names
+    let ρ : ST.Ref σ CPS.Env <- .mkRef ∅
+    let lastName? : ST.Ref σ (Option Name) <- .mkRef none
+
+    for d in decls do
+      match d with
+      | .tyBind _ => pure ()
+      | .patBind (pat, e) => emitTopBinding pat e ρ lblH
+      | .idBind (id, e) =>
+        if !id.startsWith "(" then
           let eANF := runST fun _ => ANF.normalize e |>.run' 0
-          let lbl <- liftSig $ freshLbl s!"top_{id}"
-          let kTop <- bindRhs (.mkKont lbl #[]) s!"k_{id}"
-          compileWithEnv eANF ρ kTop
+          let lbl <- liftSig <| freshLbl s!"top_{id}"
+          (compileWithEnv eANF · (lbl, #[])) =<< ρ.get
           newBlock lbl #[]
-          modify fun b => {b with curParams := #[id]}
-          return (ρ.insert id id, some id)
-    if let some v := ρ.get? "main" <|> lastName? then
-      endBlock (.appCont kH (.var v))
-    else endBlock (.appCont kH (.cst .unit))
+          modify fun (b : FunBuilder) => {b with curParams := #[id]}
+          ρ.modify fun ρ => ρ.insert id id
+          lastName?.set $ some id
+    let ρ <- ρ.get
+    let lastName? <- lastName?.get
+    match ρ.get? "main" <|> lastName? with
+    | some v => endBlock (.goto lblH #[Atom.var v])
+    | none   => endBlock (.goto lblH #[Atom.cst .unit])
 
     newBlock lblH #[]
-    let r <- liftSig $ fresh "res"
-    modify fun b => {b with curParams := #[r]}
+    let r <- liftSig <| fresh "res"
+    modify fun (b : FunBuilder) => {b with curParams := #[r]}
     endBlock (.halt r)
 
   let mainFun : Fun :=
-    {fid := "main", params := #[k], blocks, entry}
-  return (optModule ⟨funs, mainFun⟩)
+    {fid := "main", params := #[], blocks := st.blocks, entry := entry}
+  pure (optModule ⟨st.funs, mainFun⟩)

@@ -16,9 +16,10 @@ it looks like a hybrid of OCaml & Haskell & Lean,
 thanks to
 
 - actual currying,
-- pattern matching is $\mathcal{O}(mn)$ for pattern matrices of shape $m\times n$, no decision tree
+- pattern matching is worst case $\mathcal{O}(mn)$ for pattern matrices of shape $m\times n$,
+- ~~no decision tree~~ (technically there is one in [matchApp](Tigris/core/matchApp.lean), but not used)
 - ~~no exhaustiveness check~~
-- zero optimization for maximum ease of reason,
+- ~~zero optimization~~ (IR has some optimization, interpreter no) for maximum ease of reason,
 - various canonical but inefficient translations of certain constructs
 - and a naive term-rewriting interpreter.
 

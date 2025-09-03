@@ -306,7 +306,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
              possible cases such as {ex.map (·.render)} are ignored\n"
       else -- we only perform redundant check if case analysis is exhaustive
         let red := Exhaustive.redundantRows E ty mat
-        if red.isEmpty then "" else 
+        if red.isEmpty then "" else
           letI br := red.foldl (init := "") fun a i =>
             s!"{a}\n  {i + 1})  {discr[i]!.1.map (·.render)}"
           Logging.warn s!"Found redundant cases at{br}\n"
@@ -327,8 +327,27 @@ def runInfer1 (e : Expr) (E : Env) : Except TypingError $ Scheme × Logger :=
   | .error e => throw e
   | .ok  (res, _, log) => pure (closed res, log)
 
-def inferToplevel (b : Array Binding) (E : Env) : Except TypingError Env :=
-  b.foldlM (init := E) fun E (id, expr) =>
-    runInfer1 expr E <&> fun e => ⟨E.1.insert id e.1, E.2⟩
+def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Logger) :=
+  b.foldlM (init := (E, "")) fun (E, L) b =>
+    match b with
+    | .idBind (id, expr) =>
+      runInfer1 expr E <&> fun (e, l) => (⟨E.1.insert id e, E.2⟩, L ++ l)
+    | .tyBind ty@{ctors, tycon, param} =>
+      return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields) =>
+        letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
+        ⟨E.insert cname s, tyDecl.insert tycon ty⟩
+    | .patBind (pat, expr) => do
+      let (.Forall _ te, l₁) <- runInfer1 expr E
+
+      let ((_, _, E), _, l₂) <- runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")
+      -- toplevel binding can never be redundant
+      let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
+      let l₃ :=
+        if let some ex := ex then
+          Logging.warn
+            s!"Partial pattern matching, \
+               possible cases such as {ex.map Pattern.render} are ignored\n"
+        else ""
+      return (E, l₁ ++ l₂ ++ l₃)
 
 end MLType

@@ -12,7 +12,7 @@ structure RowState where
   rhs  : Expr
   binds: Array (String × Sel) := #[]
 deriving Repr, Inhabited
-
+/-
 inductive DTree where
   | fail
   | leaf (row : RowState)
@@ -159,5 +159,5 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
               let rows' := specDefault cols j rows
               let cols' := cols.eraseIdx! j
               buildTree cols' rows'
-
+-/
 end CPS
