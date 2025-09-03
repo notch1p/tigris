@@ -77,21 +77,21 @@ partial def tyAtom (mt : Bool) (param : Array String) : TParser σ MLType :=
   tyCtor param <|> parenthesized (tyArrow mt param)
 end
 
-def tyEmpty : TParser σ $ Binding ⊕ TyDecl := do
+def tyEmpty : TParser σ TyDecl := do
   TYPE let tycon <- ID let param <- takeMany ID;
-  return .inr {tycon, param, ctors := #[]}
+  return {tycon, param, ctors := #[]}
 
 @[inline]
 def tyExp : TParser σ MLType := tyArrow false #[]
 
-def tyDecl (mt : Bool) : TParser σ $ Binding ⊕ TyDecl := withErrorMessage "TyDecl" do
+def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
   TYPE let tycon <- ID
   if isUpperInit tycon then
     let param <- takeMany ID; EQ
     registerTy tycon param.size mt
     let hd <- (optional BAR *> ctor mt param)
     let tl <- takeMany (BAR *> ctor mt param)
-    return .inr {tycon, param, ctors := #[hd] ++ tl}
+    return {tycon, param, ctors := #[hd] ++ tl}
   else
     error "type constructor must begin with uppercase letter\n"
     throwUnexpected

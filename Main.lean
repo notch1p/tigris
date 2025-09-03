@@ -21,7 +21,7 @@ def main : IO Unit := do
                with a naive (term-rewriting) interpreted implementation.\n\
                For language specifications see source.\n\
                Type #help;; to check available commands.\n\
-               To exit press <C-d> (Unix) or <C-z> if on Windows."
+               Exit with <C-c>/<C-d> or <C-z-Ret> (Windows)."
   println! motd
 
   repeat do

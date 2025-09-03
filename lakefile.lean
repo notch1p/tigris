@@ -7,7 +7,7 @@ package "tigris" where
 @[default_target]
 lean_exe "tigris" where
   root := `Main
-
+@[default_target]
 lean_exe "tigrisc" where
   root := `Tigrisc
 

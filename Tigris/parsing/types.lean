@@ -137,3 +137,15 @@ structure PEnv where
 --abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT Substring Char
                   $ StateRefT (PEnv × String) (ST σ)
+
+structure TyDecl where
+  tycon : String
+  param : Array String
+  ctors : Array $ Symbol × List MLType
+deriving Repr
+
+inductive TopDecl
+  | idBind : Binding -> TopDecl
+  | patBind : Pattern × Expr -> TopDecl
+  | tyBind : TyDecl -> TopDecl
+deriving Repr
