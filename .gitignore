@@ -1,3 +1,4 @@
 /.lake
 /compile_commands.json
 /.cache
+/*.ir
