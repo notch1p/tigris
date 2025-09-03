@@ -12,7 +12,7 @@ structure RowState where
   rhs  : Expr
   binds: Array (String × Sel) := #[]
 deriving Repr, Inhabited
-
+/-
 inductive DTree where
   | fail
   | leaf (row : RowState)
@@ -24,7 +24,7 @@ deriving Repr, Inhabited
 def specDefault (cols : Array Sel) (j : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
-    let rest := (r.pats.extract 0 j) ++ (r.pats.extract j.succ r.pats.size)
+    let rest := r.pats.eraseIdx! j
     match p with
     | .PVar x =>
       let b := r.binds.push (x, cols[j]!)
@@ -36,7 +36,7 @@ def specDefault (cols : Array Sel) (j : Nat) (rows : Array RowState) : Array Row
 def specCtor (cols : Array Sel) (j : Nat) (c : Name) (ar : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
-    let rest := (r.pats.extract 0 j) ++ (r.pats.extract (j+1) r.pats.size)
+    let rest := r.pats.eraseIdx! j
     match p with
     | .PCtor c' args =>
       if c' == c && args.size == ar then
@@ -53,7 +53,7 @@ def specCtor (cols : Array Sel) (j : Nat) (c : Name) (ar : Nat) (rows : Array Ro
 def specProd (j : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
-    let rest := (r.pats.extract 0 j) ++ (r.pats.extract j.succ r.pats.size)
+    let rest := r.pats.eraseIdx! j
     match p with
     | .PProd' p1 p2 =>
       acc.push {r with pats := #[p1, p2] ++ rest}
@@ -64,7 +64,7 @@ def specProd (j : Nat) (rows : Array RowState) : Array RowState :=
 def specConst (cols : Array Sel) (j : Nat) (k : TConst) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
-    let rest := (r.pats.extract 0 j) ++ (r.pats.extract j.succ r.pats.size)
+    let rest := r.pats.eraseIdx! j
     match p with
     | .PConst k' =>
       if k' == k then acc.push {r with pats := rest} else acc
@@ -96,21 +96,22 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
     else
       match pickColumn rows with
       | none =>
-        let rec dropAll (cols : Array Sel) (rows : Array RowState) :=
+        let rec dropAll (cols : Subarray Sel) (rows : Array RowState) :=
           if cols.isEmpty then rows
           else
             let rows' := specDefault cols 0 rows
-            let cols' := cols.extract 1 cols.size
+            let cols' := cols[1:]
             dropAll cols' rows'
-        let rows' := dropAll cols rows
+        let rows' := dropAll cols.toSubarray rows
         if rows'.isEmpty then .fail else .leaf rows'[0]!
       | some j =>
         let hasProd := rows.any (fun r => match r.pats[j]! with | .PProd' .. => true | _ => false)
         if hasProd then
-          .splitProd j (buildTree (let s := cols[j]!
-                                   let cols' := (cols.extract 0 j) ++ #[Sel.field s 0, Sel.field s 1] ++ (cols.extract (j+1) cols.size)
-                                   cols')
-                                 (specProd j rows))
+          .splitProd j $ buildTree
+            (let s := cols[j]!
+             let cols' := cols[0:j] ++ #[Sel.field s 0, Sel.field s 1] ++ cols[j+1:]
+             cols')
+            (specProd j rows)
         else
           let ctors : Std.HashSet (Name × Nat) :=
             rows.foldl (init := ∅) fun acc r =>
@@ -124,40 +125,39 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
               | _ => acc
           if !ctors.isEmpty then
             let cases :=
-              ctors.toList.map (fun (c, ar) =>
-                let cols' := (cols.extract 0 j) ++
-                             Array.ofFn (fun (i : Fin ar) => Sel.field cols[j]! i) ++
-                             (cols.extract (j+1) cols.size)
+              ctors.fold (init := #[]) fun a (c, ar) =>
+                let cols' :=
+                  cols[0:j]
+                  ++ Array.ofFn (Sel.field cols[j]! ∘ Fin.toNat (n := ar))
+                  ++ cols[j+1:]
                 let rows' := specCtor cols j c ar rows
-                (c, ar, buildTree cols' rows'))
-                |>.toArray
+                a.push (c, ar, buildTree cols' rows')
             let haveDefault := rows.any (fun r => match r.pats[j]! with | .PVar _ | .PWild => true | _ => false)
             let defTree? :=
               if haveDefault then
                 let rows' := specDefault cols j rows
-                let cols' := (cols.extract 0 j) ++ (cols.extract (j+1) cols.size)
+                let cols' := cols.eraseIdx! j
                 some (buildTree cols' rows')
               else none
             .testCtor j cases defTree?
           else
             if !consts.isEmpty then
               let cases :=
-                consts.toList.map (fun k =>
-                  let cols' := (cols.extract 0 j) ++ (cols.extract (j+1) cols.size)
+                consts.fold (init := #[]) fun a k =>
+                  let cols' := cols.eraseIdx! j
                   let rows' := specConst cols j k rows
-                  (k, buildTree cols' rows'))
-                  |>.toArray
+                  a.push (k, buildTree cols' rows')
               let haveDefault := rows.any (fun r => match r.pats[j]! with | .PVar _ | .PWild => true | _ => false)
               let defTree? :=
                 if haveDefault then
                   let rows' := specDefault cols j rows
-                  let cols' := (cols.extract 0 j) ++ (cols.extract (j+1) cols.size)
+                  let cols' := cols.eraseIdx! j
                   some (buildTree cols' rows')
                 else none
               .testConst j cases defTree?
             else
               let rows' := specDefault cols j rows
-              let cols' := (cols.extract 0 j) ++ (cols.extract (j+1) cols.size)
+              let cols' := cols.eraseIdx! j
               buildTree cols' rows'
-
+-/
 end CPS

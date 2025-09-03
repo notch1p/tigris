@@ -1,12 +1,5 @@
 import Tigris.utils
 
-
-structure TyDecl where
-  tycon : String
-  param : Array String
-  ctors : Array $ Symbol × List MLType
-deriving Repr
-
 def dummyTyDecl : TyDecl := ⟨"__dummy", #[], #[]⟩
 
 instance : Inhabited TyDecl := ⟨dummyTyDecl⟩

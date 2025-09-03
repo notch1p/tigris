@@ -7,6 +7,9 @@ package "tigris" where
 @[default_target]
 lean_exe "tigris" where
   root := `Main
+@[default_target]
+lean_exe "tigrisc" where
+  root := `Tigrisc
 
 input_file ffi.c where
   path := "c" / "ffi.c"

@@ -1,6 +1,7 @@
 /.lake
 /compile_commands.json
 /.cache
+/*.ir
 dist
 dist-*
 cabal-dev

@@ -15,12 +15,12 @@ let foldr f z xs = xs z (fun x acc => f x acc)
 let sx = inl 1
 let sy = inr 2
 
-infixr 80 " :: " => cons
+infixr 67 " :: " => cons
 
 let sum_plus1 = case sx (1 + _) (10 + _)
 let ox = some 41
 let oy = none
 
 let getOrElse o d = option_case o (const d) id
-let l123 = cons 1 (cons 2 (cons 3 nil))
+let l123 = 1 :: 2 :: 3 :: nil
 let sumList = foldr (_ + _) 0 l123

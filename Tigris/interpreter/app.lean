@@ -4,25 +4,13 @@ open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter IO Std.T
 
 namespace Parsing open Lexing Parser PType
 
-def lpOrMod : TParser σ (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Decl" $
-  first' #[.inr <$> declaration, .inl <$> letPatDecl] simpErrorCombine
-
-def lpOrModOrMut : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := do
-  if <- test MUTUAL then
-    mutTyDecl <* END
-  else Array.singleton <$> lpOrMod
-
-def toplevel : TParser σ $ Array (Pattern × Expr ⊕ TopDecl) := withErrorMessage "Toplevel" $ do
-  let hd <- lpOrModOrMut <* optional END
-  foldl (· ++ ·) hd (lpOrModOrMut <* optional END)
-
 def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEnv × Env × VEnv) :=
   match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ xs, (PE, l)) => do
     liftEIO (print l)
     xs.foldlM (init := (PE, E, VE)) fun (PE, E, VE) decl => do
       match decl with
-      | .inl (pat, e) =>
+      | .patBind (pat, e) =>
         let (.Forall _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
         liftEIO (print l)
 
@@ -42,16 +30,14 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
             liftEIO $ println $ templateREPL sym (format val) (format ty)
           return (PE, E, VE)
         | none => throw $ NoMatch #[e] (format v).pretty #[(#[pat], Expr.CUnit)] |> toString
-      | .inr b =>
-        match b with
-        | .inl (id, expr) =>
-          let (ty, l) <- ofExcept $ runInfer1 expr E |>.mapError toString
-          liftEIO (print l)
-          let v <- ofExcept $ eval VE expr |>.mapError toString
-          liftEIO $ println $ templateREPL id (format v) (format ty)
-          return (PE, ⟨E.1.insert id ty, E.2⟩, ⟨VE.env.insert id v⟩)
-        | .inr tydecl =>
-          (PE, ·) <$> registerData E VE tydecl
+      | .idBind (id, expr) =>
+        let (ty, l) <- ofExcept $ runInfer1 expr E |>.mapError toString
+        liftEIO (print l)
+        let v <- ofExcept $ eval VE expr |>.mapError toString
+        liftEIO $ println $ templateREPL id (format v) (format ty)
+        return (PE, ⟨E.1.insert id ty, E.2⟩, ⟨VE.env.insert id v⟩)
+      | .tyBind tydecl =>
+        (PE, ·) <$> registerData E VE tydecl
   | (.error _ e, (_, l)) => liftEIO (print l) *> throw (toString e)
 
 end Parsing

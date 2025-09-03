@@ -11,8 +11,16 @@ def strExp      : TParser σ Expr := CS <$> (spaces *> strLit)
 
 def transMatch (pat : Array Pattern) (e : Expr) : Expr :=
   if pat.isEmpty then e else
-  let hd := Match (pat.mapIdx fun i _ => Var $ hole i) #[(pat, e)]
-  pat.size.foldRev (init := hd) fun i _ a => Fun (hole i) a
+    let (ep, pat', _) :=
+      pat.foldl (init := (#[], #[], 0)) fun (ep, pat', i) s =>
+        match s with
+        | PVar _ | PWild => (ep, pat', i + 1)
+        | p => (ep.push (Var $ hole i), pat'.push p, i + 1)
+
+    let hd := if ep.isEmpty then e else Match ep #[(pat', e)]
+    pat.size.foldRev (init := hd) fun i _ a =>
+      if let PVar s := pat[i] then Fun s a
+      else Fun (hole i) a
 
 def pointedExp (discr : Array $ Array Pattern × Expr) : Expr :=
   if h : discr.size = 0 then CUnit
