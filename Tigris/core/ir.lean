@@ -5,10 +5,10 @@ abbrev Name := String
 abbrev Label := String
 
 inductive Const | unit | int (_ : Int) | bool (_ : Bool) | str (_ : String)
-deriving BEq, Repr
+deriving BEq, Repr, Inhabited
 
 inductive Atom | var (x : Name) | cst (k : Const)
-deriving BEq, Repr
+deriving BEq, Repr, Inhabited
 
 inductive PrimOp where
   | add | sub | mul | div
@@ -82,7 +82,7 @@ def fmtRhs : Rhs -> Format
   | .proj src i =>
     group $ "π" ++ i.toSubscriptString <> fmtName src
   | .mkPair x y =>
-    group $ "×" <> paren (fmtName x ++ "," ++ fmtName y)
+    group $ "×" <> paren (fmtName x ++ comma ++ fmtName y)
   | .mkConstr c as =>
     group $ fmtName c <> paren (joinSep (as.foldr (List.cons ∘ fmtName) []) comma)
   | .isConstr src c a =>
@@ -97,22 +97,22 @@ def fmtTerm : Term -> Format
   | .appFun f a k as =>
     group $ "CALL"
       <> fmtName f
-      <> paren (fmtName a ++ "," ++ fmtName k)
-      <> if as.isEmpty then .nil else " "
-      <> sbracket (joinSep (as.foldr (List.cons ∘ fmtAtom) []) comma)
+      <> paren (fmtName a ++ comma ++ fmtName k)
+      <> if as.isEmpty then .nil else
+          sbracket (joinSep (as.foldr (List.cons ∘ fmtAtom) []) comma)
   | .appKnown fid env a k as =>
     group $ "CALLKNOWN"
       <> fmtName fid
       <> sbracket (joinSep (env.foldr (List.cons ∘ fmtName) []) comma)
-      <> paren (fmtName a ++ "," ++ fmtName k)
-      <> if as.isEmpty then Format.nil else " "
-      <> sbracket (joinSep (as.foldr (List.cons ∘ fmtAtom) []) comma)
+      <> paren (fmtName a ++ comma ++ fmtName k)
+      <> if as.isEmpty then Format.nil else
+          sbracket (joinSep (as.foldr (List.cons ∘ fmtAtom) []) comma)
   | .ifGoto c t e argst argse =>
     group $
-      "IF" <> fmtName c <+> "THEN" <> fmtName t
-      <> paren (joinSep (argst.foldr (List.cons ∘ fmtName) []) comma)
-      <+> "ELSE" <> fmtName e
-      <> paren (joinSep (argse.foldr (List.cons ∘ fmtName) []) comma)
+      "COND" <> fmtName c ++ "\n" ++ nestD (fmtName t
+      <> paren (joinSep (argst.foldr (List.cons ∘ fmtName) []) comma))
+      ++ "\n" ++ nestD (fmtName e
+      <> paren (joinSep (argse.foldr (List.cons ∘ fmtName) []) comma))
   | .switchCtor s alts defs? =>
     let fa
       | (c, ar, l, as) =>
