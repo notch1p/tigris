@@ -20,10 +20,12 @@ private def countRhs (m : UseMap) : Rhs -> UseMap
   | .mkClosure _ e => m.bumpMany e
 
 private def countTerm (m : UseMap) : Term -> UseMap
-  | .appFun f arg _ retAs =>
-      (retAs.foldl UseMap.bumpAtom ((m.bump f).bump arg))
-  | .appKnown _ env arg _ retAs =>
-      (retAs.foldl UseMap.bumpAtom ((m.bump arg).bumpMany env))
+  | .appFun f arg k =>
+      (m.bump f).bump arg |>.bump k
+  | .appKnown _ env arg k =>
+      (m.bumpMany env).bump arg |>.bump k
+  | .ret k v =>
+      (m.bump k).bump v
   | .ifGoto cond _ _ t e =>
       (m.bump cond).bumpMany t |>.bumpMany e
   | .switchCtor scrut alts defs? =>
@@ -52,9 +54,9 @@ def collectClosures (f : Fun) : CloMap :=
 
 def rewriteKnownFun (cm : CloMap) (b : Block) : Block :=
   match b.term with
-  | .appFun f arg k as =>
+  | .appFun f arg k =>
     match cm.get? f with
-    | some (fid, env) => {b with term := .appKnown fid env arg k as}
+    | some (fid, env) => {b with term := .appKnown fid env arg k}
     | none => b
   | _ => b
 
@@ -96,10 +98,11 @@ partial def resolveTramp (tm : TrampMap) (l : Label) : Label :=
   | none => l
 
 def remapLabelsInTerm (tm : TrampMap) : Term -> Term
-  | .appFun f arg k as =>
-      .appFun f arg (resolveTramp tm k) as
-  | .appKnown fid env arg k as =>
-      .appKnown fid env arg (resolveTramp tm k) as
+  | .appFun f arg k =>
+      .appFun f arg k
+  | .appKnown fid env arg k =>
+      .appKnown fid env arg k
+  | .ret k v => .ret k v
   | .ifGoto c t e athen aelse =>
       .ifGoto c (resolveTramp tm t) (resolveTramp tm e) athen aelse
   | .switchCtor s alts d? =>
@@ -145,16 +148,11 @@ def mergeEmptyGotoGlobal (m : Module) : Module :=
     let main := dropTrampsInFun tm main1
     {funs, main}
 
-
-/-- Full function optimization in flat CPS:
+/--
   1. Rewrite CALL f ⋯ to CALLKNOWN ⋯ if f := mkClosure ⋯
   2. DCE
   3. Merge empty GOTO trampolines (per-fun)
   4. DCE
-  5. Merge empty GOTO trampolines (per-module)
-    5.1. build module tramp map BEFORE (3); then proceed with (3).
-    5.2. Remap labels using the global map; then drop those tramps
-    5.3. DCE
 -/
 def optFun (f : Fun) : Fun :=
   let cm := collectClosures f
