@@ -20,10 +20,12 @@ private def countRhs (m : UseMap) : Rhs -> UseMap
   | .mkClosure _ e => m.bumpMany e
 
 private def countTerm (m : UseMap) : Term -> UseMap
-  | .appFun f arg _ retAs =>
-      (retAs.foldl UseMap.bumpAtom ((m.bump f).bump arg))
-  | .appKnown _ env arg _ retAs =>
-      (retAs.foldl UseMap.bumpAtom ((m.bump arg).bumpMany env))
+  | .appFun f arg k =>
+      (m.bump f).bump arg |>.bump k
+  | .appKnown _ env arg k =>
+      (m.bumpMany env).bump arg |>.bump k
+  | .ret k v =>
+      (m.bump k).bump v
   | .ifGoto cond _ _ t e =>
       (m.bump cond).bumpMany t |>.bumpMany e
   | .switchCtor scrut alts defs? =>
@@ -52,9 +54,9 @@ def collectClosures (f : Fun) : CloMap :=
 
 def rewriteKnownFun (cm : CloMap) (b : Block) : Block :=
   match b.term with
-  | .appFun f arg k as =>
+  | .appFun f arg k =>
     match cm.get? f with
-    | some (fid, env) => {b with term := .appKnown fid env arg k as}
+    | some (fid, env) => {b with term := .appKnown fid env arg k}
     | none => b
   | _ => b
 
@@ -62,9 +64,9 @@ partial def dceFun (f : Fun) : Fun :=
   let u := usesOfFun f
   let blocks' :=
     f.blocks.map (fun b =>
-      let body' := b.body.filter (fun | .let1 x _ => u.getD x 0 > 0)
-      { b with body := body' })
-  let f' : Fun := { f with blocks := blocks' }
+      let body' := b.body.filter (fun (.let1 x _) => u.getD x 0 > 0)
+      {b with body := body'})
+  letI f' := {f with blocks := blocks'}
   if f'.blocks == f.blocks then f else dceFun f'
 
 abbrev TrampMap := HashMap Label Label
@@ -81,7 +83,7 @@ def argsAreParams (args : Array Atom) (params : Array Name) : Bool :=
 
 def buildTramp (f : Fun) : TrampMap :=
   let labelSet : Std.HashSet Label :=
-    f.blocks.foldl (init := (∅ : Std.HashSet Label)) (fun s b => s.insert b.label)
+    f.blocks.foldl (·.insert ∘ Block.label) ∅
   f.blocks.foldl (init := (∅ : TrampMap)) fun m {body, label, params, term} =>
     match body.isEmpty, term with
     | true, .goto l args =>
@@ -96,10 +98,11 @@ partial def resolveTramp (tm : TrampMap) (l : Label) : Label :=
   | none => l
 
 def remapLabelsInTerm (tm : TrampMap) : Term -> Term
-  | .appFun f arg k as =>
-      .appFun f arg (resolveTramp tm k) as
-  | .appKnown fid env arg k as =>
-      .appKnown fid env arg (resolveTramp tm k) as
+  | .appFun f arg k =>
+      .appFun f arg k
+  | .appKnown fid env arg k =>
+      .appKnown fid env arg k
+  | .ret k v => .ret k v
   | .ifGoto c t e athen aelse =>
       .ifGoto c (resolveTramp tm t) (resolveTramp tm e) athen aelse
   | .switchCtor s alts d? =>
@@ -118,17 +121,38 @@ def mergeEmptyGoto (f : Fun) : Fun :=
         let body := b.body
         let term := remapLabelsInTerm tm b.term
         {b with body, term})
-    -- Update function entry to the resolved label
     let newEntry := resolveTramp tm f.entry
-    -- Drop trampoline blocks
-    let keep := blocks1.filter (fun b => tm.get? b.label |>.isNone)
+    let keep := blocks1.filter (·.label ∉ tm)
     {f with blocks := keep, entry := newEntry}
 
-/-- Full function optimization in flat CPS:
-    1) Rewrite CALL f … -> CALLKNOWN when f = mkClosure fid env anywhere
-    2) DCE
-    3) Merge empty GOTO trampolines
-    4) DCE again
+@[inline] def combineTramp (a b : TrampMap) : TrampMap :=
+  b.fold HashMap.insert a
+@[inline] def buildGlobalTramp (m : Module) : TrampMap :=
+  m.funs.foldl (combineTramp · $ buildTramp ·) (buildTramp m.main)
+@[inline] def remapLabelsInBlock (tm : TrampMap) (b : Block) : Block :=
+  {b with term := remapLabelsInTerm tm b.term}
+
+def remapLabelsInFun (tm : TrampMap) (f : Fun) : Fun :=
+  letI blocks := f.blocks.map (remapLabelsInBlock tm)
+  letI entry  := resolveTramp tm f.entry
+  {f with blocks, entry}
+def dropTrampsInFun (tm : TrampMap) (f : Fun) : Fun :=
+  letI blocks := f.blocks.filter (·.label ∉ tm)
+  {f with blocks}
+def mergeEmptyGotoGlobal (m : Module) : Module :=
+  let tm := buildGlobalTramp m
+  if tm.isEmpty then m else
+    let funs1 := m.funs.map (remapLabelsInFun tm)
+    let main1 := remapLabelsInFun tm m.main
+    let funs := funs1.map (dropTrampsInFun tm)
+    let main := dropTrampsInFun tm main1
+    {funs, main}
+
+/--
+  1. Rewrite CALL f ⋯ to CALLKNOWN ⋯ if f := mkClosure ⋯
+  2. DCE
+  3. Merge empty GOTO trampolines (per-fun)
+  4. DCE
 -/
 def optFun (f : Fun) : Fun :=
   let cm := collectClosures f
@@ -138,6 +162,15 @@ def optFun (f : Fun) : Fun :=
   dceFun f4
 
 @[inherit_doc optFun] def optModule (m : Module) : Module :=
-  {funs := m.funs.map optFun, main := optFun m.main}
+  let tm0 := buildGlobalTramp m
+  let m1 : Module := ⟨m.funs.map optFun, optFun m.main⟩
+  let m2 :=
+    if tm0.isEmpty then m1 else
+      letI funs1 := m1.funs.map (remapLabelsInFun tm0)
+      letI main1 := remapLabelsInFun tm0 m1.main
+      letI funs2 := funs1.map (dropTrampsInFun tm0)
+      letI main2 := dropTrampsInFun tm0 main1
+      {funs := funs2, main := main2}
+  ⟨m2.funs.map dceFun, dceFun m2.main⟩
 
 end CPS

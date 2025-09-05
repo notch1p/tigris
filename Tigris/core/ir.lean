@@ -5,10 +5,10 @@ abbrev Name := String
 abbrev Label := String
 
 inductive Const | unit | int (_ : Int) | bool (_ : Bool) | str (_ : String)
-deriving BEq, Repr
+deriving BEq, Repr, Inhabited
 
 inductive Atom | var (x : Name) | cst (k : Const)
-deriving BEq, Repr
+deriving BEq, Repr, Inhabited
 
 inductive PrimOp where
   | add | sub | mul | div
@@ -28,8 +28,9 @@ inductive Stmt where
   | let1 (x : Name) (rhs : Rhs)
 deriving Repr, BEq, Inhabited
 inductive Term where
-  | appFun     (f : Name) (arg : Name) (retLbl : Label) (retArgs : Array Atom := #[])
-  | appKnown   (fid : Name) (env : Array Name) (arg : Name) (retLbl : Label) (retArgs : Array Atom := #[])
+  | appFun     (f : Name) (arg : Name) (k : Name)
+  | appKnown   (fid : Name) (env : Array Name) (arg : Name) (k : Name)
+  | ret        (k : Name) (v : Name)
   | ifGoto     (cond : Name) (thenLbl : Label) (elseLbl : Label)
                (argsThen : Array Name := #[])
                (argsElse : Array Name := #[])
@@ -82,7 +83,7 @@ def fmtRhs : Rhs -> Format
   | .proj src i =>
     group $ "π" ++ i.toSubscriptString <> fmtName src
   | .mkPair x y =>
-    group $ "×" <> paren (fmtName x ++ "," ++ fmtName y)
+    group $ "×" <> paren (fmtName x ++ comma ++ fmtName y)
   | .mkConstr c as =>
     group $ fmtName c <> paren (joinSep (as.foldr (List.cons ∘ fmtName) []) comma)
   | .isConstr src c a =>
@@ -94,25 +95,23 @@ def fmtRhs : Rhs -> Format
   | .let1 x rhs => group $ fmtName x <> ":=" <> fmtRhs rhs
 
 def fmtTerm : Term -> Format
-  | .appFun f a k as =>
+  | .appFun f a k =>
     group $ "CALL"
       <> fmtName f
-      <> paren (fmtName a ++ "," ++ fmtName k)
-      <> if as.isEmpty then .nil else " "
-      <> sbracket (joinSep (as.foldr (List.cons ∘ fmtAtom) []) comma)
-  | .appKnown fid env a k as =>
+      <> paren (fmtName a ++ comma ++ fmtName k)
+  | .appKnown fid env a k =>
     group $ "CALLKNOWN"
       <> fmtName fid
       <> sbracket (joinSep (env.foldr (List.cons ∘ fmtName) []) comma)
-      <> paren (fmtName a ++ "," ++ fmtName k)
-      <> if as.isEmpty then Format.nil else " "
-      <> sbracket (joinSep (as.foldr (List.cons ∘ fmtAtom) []) comma)
+      <> paren (fmtName a ++ comma ++ fmtName k)
+  | .ret k v =>
+    group $ "RET" <> paren (fmtName k ++ comma ++ fmtName v)
   | .ifGoto c t e argst argse =>
     group $
-      "IF" <> fmtName c <+> "THEN" <> fmtName t
-      <> paren (joinSep (argst.foldr (List.cons ∘ fmtName) []) comma)
-      <+> "ELSE" <> fmtName e
-      <> paren (joinSep (argse.foldr (List.cons ∘ fmtName) []) comma)
+      "COND" <> fmtName c ++ "\n" ++ nestD (fmtName t
+      <> paren (joinSep (argst.foldr (List.cons ∘ fmtName) []) comma))
+      ++ "\n" ++ nestD (fmtName e
+      <> paren (joinSep (argse.foldr (List.cons ∘ fmtName) []) comma))
   | .switchCtor s alts defs? =>
     let fa
       | (c, ar, l, as) =>
@@ -130,7 +129,7 @@ def fmtTerm : Term -> Format
 
 def fmtBlock : Block -> Format
   | {label, params, body, term} =>
-    let hd := fmtName label <> paren (joinSep (params.foldr (List.cons ∘ fmtName) []) comma) <> ":"
+    let hd := fmtName label <> paren (joinSep (params.foldr (List.cons ∘ fmtName) []) comma) <> ":-"
     let stmts := body.foldr (List.cons ∘ fmtStmt) [] |> (joinSep · line)
     let term := nestD $ fmtTerm term
     let content := if body.isEmpty then term else stmts <+> term

@@ -1,7 +1,6 @@
 import Tigris.parsing.types
-import Tigris.core.ir
+import Tigris.coreL.lam
 
-namespace CPS
 inductive Sel where
   | base (idx : Nat)
   | field (s : Sel) (idx : Nat)
@@ -12,7 +11,8 @@ structure RowState where
   rhs  : Expr
   binds: Array (String × Sel) := #[]
 deriving Repr, Inhabited
-/-
+
+
 inductive DTree where
   | fail
   | leaf (row : RowState)
@@ -21,7 +21,7 @@ inductive DTree where
   | splitProd (j : Nat) (next : DTree)
 deriving Repr, Inhabited
 
-def specDefault (cols : Array Sel) (j : Nat) (rows : Array RowState) : Array RowState :=
+def specDefault (cols : Subarray Sel) (j : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
     let rest := r.pats.eraseIdx! j
@@ -33,7 +33,7 @@ def specDefault (cols : Array Sel) (j : Nat) (rows : Array RowState) : Array Row
       acc.push {r with pats := rest}
     | _ => acc
 
-def specCtor (cols : Array Sel) (j : Nat) (c : Name) (ar : Nat) (rows : Array RowState) : Array RowState :=
+def specCtor (cols : Subarray Sel) (j : Nat) (c : Name) (ar : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
     let rest := r.pats.eraseIdx! j
@@ -61,7 +61,7 @@ def specProd (j : Nat) (rows : Array RowState) : Array RowState :=
       acc.push {r with pats := #[Pattern.PWild, Pattern.PWild] ++ rest}
     | _ => acc
 
-def specConst (cols : Array Sel) (j : Nat) (k : TConst) (rows : Array RowState) : Array RowState :=
+def specConst (cols : Subarray Sel) (j : Nat) (k : TConst) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
     let rest := r.pats.eraseIdx! j
@@ -105,7 +105,8 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
         let rows' := dropAll cols.toSubarray rows
         if rows'.isEmpty then .fail else .leaf rows'[0]!
       | some j =>
-        let hasProd := rows.any (fun r => match r.pats[j]! with | .PProd' .. => true | _ => false)
+        let hasProd := rows.any fun r => match r.pats[j]! with
+                                         | .PProd' .. => true | _ => false
         if hasProd then
           .splitProd j $ buildTree
             (let s := cols[j]!
@@ -128,14 +129,16 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
               ctors.fold (init := #[]) fun a (c, ar) =>
                 let cols' :=
                   cols[0:j]
-                  ++ Array.ofFn (Sel.field cols[j]! ∘ Fin.toNat (n := ar))
+                  ++ Array.ofFn (Sel.field cols[j]! ∘ @Fin.toNat ar)
                   ++ cols[j+1:]
-                let rows' := specCtor cols j c ar rows
+                let rows' := specCtor cols.toSubarray j c ar rows
                 a.push (c, ar, buildTree cols' rows')
-            let haveDefault := rows.any (fun r => match r.pats[j]! with | .PVar _ | .PWild => true | _ => false)
+            let haveDefault := rows.any fun r => match r.pats[j]! with
+                                                 | .PVar _ | .PWild => true
+                                                 | _ => false
             let defTree? :=
               if haveDefault then
-                let rows' := specDefault cols j rows
+                let rows' := specDefault cols.toSubarray j rows
                 let cols' := cols.eraseIdx! j
                 some (buildTree cols' rows')
               else none
@@ -145,19 +148,19 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
               let cases :=
                 consts.fold (init := #[]) fun a k =>
                   let cols' := cols.eraseIdx! j
-                  let rows' := specConst cols j k rows
+                  let rows' := specConst cols.toSubarray j k rows
                   a.push (k, buildTree cols' rows')
-              let haveDefault := rows.any (fun r => match r.pats[j]! with | .PVar _ | .PWild => true | _ => false)
+              let haveDefault := rows.any fun r => match r.pats[j]! with
+                                                   | .PVar _ | .PWild => true
+                                                   | _ => false
               let defTree? :=
                 if haveDefault then
-                  let rows' := specDefault cols j rows
+                  let rows' := specDefault cols.toSubarray j rows
                   let cols' := cols.eraseIdx! j
                   some (buildTree cols' rows')
                 else none
               .testConst j cases defTree?
             else
-              let rows' := specDefault cols j rows
+              let rows' := specDefault cols.toSubarray j rows
               let cols' := cols.eraseIdx! j
               buildTree cols' rows'
--/
-end CPS

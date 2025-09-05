@@ -302,14 +302,14 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
     let msg :=
       if let some ex := ex then
         Logging.warn
-          s!"Partial pattern matching, \
-             possible cases such as {ex.map (·.render)} are ignored\n"
+          s!"Partial pattern matching, an unmatched candidate is\
+             \n  {ex.map (·.render)}\n"
       else -- we only perform redundant check if case analysis is exhaustive
         let red := Exhaustive.redundantRows E ty mat
         if red.isEmpty then "" else
           letI br := red.foldl (init := "") fun a i =>
             s!"{a}\n  {i + 1})  {discr[i]!.1.map (·.render)}"
-          Logging.warn s!"Found redundant cases at{br}\n"
+          Logging.warn s!"Found redundant alternatives at{br}\n"
     modify fun (n, l) => (n, l ++ msg)
 
     pure (s, res?.get!)
