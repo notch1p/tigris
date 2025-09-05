@@ -2,7 +2,11 @@ name: Lean Action CI
 
 on:
   push:
+    branches:
+      - pratt
   pull_request:
+    branches:
+      - pratt
   workflow_dispatch:
 
 jobs:
@@ -20,7 +24,6 @@ jobs:
           path: .lake/build
           name: tigris-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           compression-level: 9
-
 #  build-win32:
 #    strategy:
 #      matrix:
@@ -34,7 +37,7 @@ jobs:
 #      - uses: rlalik/setup-cpp-compiler@master
 #        with:
 #          compiler: latest
-#      - run: | 
+#      - run: |
 #          echo "CC=C:/ProgramData/mingw64/mingw64/bin/cc" >> $GITHUB_ENV
 #      - uses: actions/checkout@v4
 #      - uses: leanprover/lean-action@v1
