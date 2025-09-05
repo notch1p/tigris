@@ -19,4 +19,7 @@ import Tigris.core.transform
 import Tigris.core.matchApp
 import Tigris.core.anf
 import Tigris.core.opt
+import Tigris.coreL.lam
+import Tigris.coreL.transform
+import Tigris.coreL.opt
 import PP

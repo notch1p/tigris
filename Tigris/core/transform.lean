@@ -430,7 +430,7 @@ partial def compileMatchBT
   let (kParams, _) :=
     (varsFromKAs ++ namesFromRows).foldl
       (init := (#[], (∅ : Std.HashSet Name)))
-      fun (acc, seen) n => 
+      fun (acc, seen) n =>
         if seen.contains n then (acc, seen) else (acc.push n, seen.insert n)
 
   let kArgAtoms := kParams.map Atom.var
@@ -684,7 +684,7 @@ def compileTop (decls : Array TopDecl) : M σ Module := do
 
     -- Thread an environment of top-level bound names
     let ρ : ST.Ref σ CPS.Env <- .mkRef ∅
-    let lastName? : ST.Ref σ (Option Name) <- .mkRef none
+    let lastName? : ST.Ref σ (Option CPS.Name) <- .mkRef none
 
     for d in decls do
       match d with
