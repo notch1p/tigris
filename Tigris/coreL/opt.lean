@@ -71,15 +71,15 @@ partial def fvTail : Tail -> Std.HashSet Name
   | .app f a    => ({f} : Std.HashSet Name).insert a
   | .cond c t e => fvExpr t ∪ fvExpr e |>.insert c
   | .switchConst s cases d? =>
-      let acc := cases.foldl (· ∪ fvExpr ·.2) {s}
-      match d? with
-      | some b => acc ∪ fvExpr b
-      | none   => acc
+    let acc := cases.foldl (· ∪ fvExpr ·.2) {s}
+    match d? with
+    | some b => acc ∪ fvExpr b
+    | none   => acc
   | .switchCtor s cases d? =>
-      let acc := cases.foldl (· ∪ fvExpr ·.2.2) {s}
-      match d? with
-      | some b => acc ∪ fvExpr b
-      | none   => acc
+    let acc := cases.foldl (· ∪ fvExpr ·.2.2) {s}
+    match d? with
+    | some b => acc ∪ fvExpr b
+    | none   => acc
 
 partial def fvExpr : LExpr -> Std.HashSet Name
   | .letVal x v b =>
@@ -104,7 +104,7 @@ partial def fvExpr : LExpr -> Std.HashSet Name
 end
 
 def applyBinds (bs : Array Stmt) (e : LExpr) : LExpr :=
-  bs.foldr (init := e) fun | .let1 x rhs, acc => .letRhs x rhs acc
+  bs.foldr (init := e) fun (.let1 x rhs) acc => .letRhs x rhs acc
 
 def evalPrim (op : PrimOp) (args : Array Const) : Option Const :=
   match op, args.toList with
@@ -195,20 +195,20 @@ partial def cfTail (env : KEnv) : Tail -> Tail
   | .ret x => .ret (chase env x)
   | .app f a => .app (chase env f) (chase env a)
   | .cond c t e =>
-      letI c' := chase env c
-      letI t' := cfExpr env t
-      letI e' := cfExpr env e
-      .cond c' t' e'
+    letI c' := chase env c
+    letI t' := cfExpr env t
+    letI e' := cfExpr env e
+    .cond c' t' e'
   | .switchConst s cases d? =>
-      letI s' := chase env s
-      letI cases' := cases.map fun (k, b) => (k, cfExpr env b)
-      letI d' := d? |>.map (cfExpr env)
-      .switchConst s' cases' d'
+    letI s' := chase env s
+    letI cases' := cases.map fun (k, b) => (k, cfExpr env b)
+    letI d' := d? |>.map (cfExpr env)
+    .switchConst s' cases' d'
   | .switchCtor s cases d? =>
-      letI s' := chase env s
-      letI cases' := cases.map fun (c, ar, b) => (c, ar, cfExpr env b)
-      letI d' := d? |>.map (cfExpr env)
-      .switchCtor s' cases' d'
+    letI s' := chase env s
+    letI cases' := cases.map fun (c, ar, b) => (c, ar, cfExpr env b)
+    letI d' := d? |>.map (cfExpr env)
+    .switchCtor s' cases' d'
 
 partial def cfExpr (env : KEnv) : LExpr -> LExpr
   | .letVal x v body =>
@@ -395,15 +395,15 @@ def bindsArePureNoUse (x : Name) (binds : Array Stmt) : Bool :=
 
 def peelAfterCall (x : Name) : LExpr -> Option (Array Stmt)
   | .seq binds (Tail.ret y) =>
-      if y == x && bindsArePureNoUse x binds then some binds else none
+    if y == x && bindsArePureNoUse x binds then some binds else none
   | .letRhs _ rhs rest =>
-      if isPureRhs rhs && !(fvRhs rhs).contains x then
-        peelAfterCall x rest
-      else none
+    if isPureRhs rhs && !(fvRhs rhs).contains x then
+      peelAfterCall x rest
+    else none
   | .letVal _ v rest =>
-      if !(fvValue v).contains x then
-        peelAfterCall x rest
-      else none
+    if !(fvValue v).contains x then
+      peelAfterCall x rest
+    else none
   | _ => none
 
 /-- Tailcall opt, eligible for
@@ -419,26 +419,29 @@ partial def tailcallify : LExpr -> LExpr := fun e =>
   | .letVal x v body => .letVal x v (tailcallify body)
 
   | .letRhs x (.call f a) body =>
-      let body' := tailcallify body
-      match peelAfterCall x body' with
-      | some _ =>
-        .seq #[] (.app f a)
-      | none   =>
-        .letRhs x (.call f a) body'
+    let body' := tailcallify body
+    match peelAfterCall x body' with
+    | some _ =>
+      .seq #[] (.app f a)
+    | none   =>
+      .letRhs x (.call f a) body'
 
   | .letRhs x rhs body =>
-      .letRhs x rhs (tailcallify body)
+    .letRhs x rhs (tailcallify body)
 
   | .letRec funs body =>
-      letI funs' := funs.map fun (fid, p, b) => (fid, p, tailcallify b)
-      .letRec funs' (tailcallify body)
+    letI funs' := funs.map fun (fid, p, b) => (fid, p, tailcallify b)
+    .letRec funs' (tailcallify body)
 
   | .seq binds tail =>
-      let tail' :=
-        match tail with
-        | .cond c t e => .cond c (tailcallify t) (tailcallify e)
-        | t => t
-      .seq binds tail'
+    .seq binds $
+      match tail with
+      | .cond c t e => .cond c (tailcallify t) (tailcallify e)
+      | .switchConst s c d =>
+        .switchConst s (c.map (·.map id tailcallify)) (tailcallify <$> d)
+      | .switchCtor s c d =>
+        .switchCtor s (c.map fun (n, a, e) => (n, a, tailcallify e)) (tailcallify <$> d)
+      | t => t
 
 /--
   1. constant folding
