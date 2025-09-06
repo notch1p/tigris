@@ -96,7 +96,7 @@ section PP open Std Format
 @[inline] def fmtName (s : Name) : Format := format s
 
 def fmtConst : Const -> Format
-  | .unit => "()₁"
+  | .unit => "()"
   | .int i => format i
   | .bool b => format b
   | .str s => reprStr s
@@ -109,23 +109,22 @@ mutual
 partial def fmtValue : Value -> Format
     | .var x       => fmtName x
     | .cst k       => fmtConst k
-    | .tuple xs    => paren (joinSep (xs.toList.map fmtName) comma)
+    | .tuple xs    => paren (joinSep (xs.foldr (List.cons ∘ fmtName) []) comma)
     | .constr t fs =>
-      group $ fmtName t <> paren (joinSep (fs.toList.map fmtName) comma)
+      group $ fmtName t <> paren (joinSep (fs.foldr (List.cons ∘ fmtName) []) comma)
     | .lam p b     =>
       group $ "λ" <> fmtName p <> "↦" ++ indentD (fmtLExpr b)
 
 partial def fmtRhs : Rhs -> Format
     | .prim op args =>
-      fmtPrim op <> paren (joinSep (args.toList.map fmtName) comma)
-    | .proj src i =>
-      "π" ++ i.toSubscriptString <> fmtName src
+      fmtPrim op ++ paren (joinSep (args.toList.map fmtName) comma)
+    | .proj src i => fmtName src ++ sbracket (format i)
     | .mkPair a b =>
-      "⟨" ++ (fmtName a ++ comma ++ fmtName b) ++ "⟩"
+      bracket "⟨" (fmtName a ++ comma ++ fmtName b) "⟩"
     | .mkConstr t fs =>
-      fmtName s!"«{t}»" <> paren (joinSep (fs.toList.map fmtName) comma)
+      fmtName t <> bracket "⟦" (joinSep (fs.toList.map fmtName) comma) "⟧"
     | .isConstr s t ar =>
-      "IS" <> fmtName s!"«{t}»" <> (sbracket ∘ format) ar <> fmtName s
+      "IS" <> fmtName s!"«{t}/{ar}»" <> fmtName s
     | .call f a =>
       fmtName f ++ paren (fmtName a)
 
@@ -136,57 +135,58 @@ partial def fmtStmt : Stmt -> Format
 partial def fmtTail : Tail -> Format
     | .ret x => "RET" <> (fmtName x)
     | .app f a =>
-      fmtName f ++ "ᵀ" ++ paren (fmtName a)
+      fmtName f ++ paren (fmtName a) ++ "ᵀ"
     | .cond c t e =>
       "if" <> fmtName c <> "then" ++ indentD
       (fmtLExpr t) <+> "else" ++ indentD (fmtLExpr e)
     | .switchConst s cases d? =>
-      "caseᶜ" <> fmtName s <> "of" <+>
+      "caseᶜ" <> fmtName s <> "of" ++ indentD
         (joinSep (cases.foldr (List.cons ∘ nestD ∘ one) (defF d?)) line)
     | .switchCtor s cases d? =>
-      "case" <> fmtName s <> "of" <+>
+      "case" <> fmtName s <> "of" ++ indentD
         (joinSep (cases.foldr (List.cons ∘ nestD ∘ one') (defF d?)) line)
 where
-  one kb := let (k, b) := kb; "|" <> fmtConst k <> "→" <+> fmtLExpr b
-  one' cab := let (c, ar, b) := cab; "|" <> s!"«{fmtName c}/{format ar}»" <> "→" <+> (fmtLExpr b)
-  defF d? :=
-    if let some b := d? then [nestD ("| ∅ →" <+> fmtLExpr b)] else []
+  one kb   := let (k, b) := kb; (fmtConst k <> "→") <+> fmtLExpr b
+  one' cab := let (c, ar, b) := cab; (s!"«{fmtName c}/{format ar}»" <> "→") <+> (fmtLExpr b)
+  defF d?  := if let some b := d? then [nestD ("∅ →" <+> fmtLExpr b)] else []
 
 partial def fmtLExpr : LExpr -> Format
     | .seq binds tail =>
       if binds.isEmpty then fmtTail tail
-      else
-        let bs := joinSep (binds.toList.map fmtStmt) line
-        group $ bs <+> fmtTail tail
+      else group $ joinSep
+        (binds.foldr (List.cons ∘ nestD ∘ fmtStmt) [fmtTail tail]) "\n"
     | .letVal x v b =>
-      group $
-        "letι" <> group (fmtName x <> "=" ++ indentD (fmtValue v) <+> "in") ++ "\n" ++
-        (fmtLExpr b)
+      group $ "letι"
+        <> group (fmtName x <> "=" ++ indentD (fmtValue v))
+          ++ "\n"
+          ++ (fmtLExpr b)
     | .letRhs x r b =>
-      group $
-        "let" <> group (fmtName x <> "=" ++ indentD (fmtRhs r) <+> "in") ++ "\n" ++
-        (fmtLExpr b)
+      group $ "let"
+        <> group (fmtName x <> "=" ++ indentD (fmtRhs r))
+          ++ "\n"
+          ++ (fmtLExpr b)
     | .letRec funs b =>
       let ffmt
         | (fid, p, body) =>
           group $
-            fmtName fid <> "=" ++
-            indentD ("label" <> p ++ ":" ++ indentD (fmtLExpr body))
-      group $
-        "letω" <> group ((joinSep (funs.foldr (List.cons ∘ nestD ∘ ffmt) []) (line ++ line))
-        <+> "in") ++ "\n" ++ (fmtLExpr b)
+            indentD ("label" <> fid ++ paren p ++ ":" ++ indentD (fmtLExpr body))
+      group $ "letω"
+        <> group ((joinSep (funs.foldr (List.cons ∘ ffmt) []) (line ++ line)) <+> "in")
+          ++ "\n"
+          ++ (fmtLExpr b)
 end
 
 def fmtFun : LFun -> Std.Format
   | {fid, param, body} =>
-    group $
-      (fmtName fid <> paren (fmtName param)) <+> "{"
-      ++ line ++ nestD (fmtLExpr body) ++ line ++ "}"
+    group $ (fmtName fid <> paren (fmtName param))
+      <> "{" ++ (indentD (fmtLExpr body) ++ line) ++ "}"
 
 def fmtModule : LModule -> Std.Format
   | {funs, main} =>
-    let fs := funs.toList.map fmtFun
-    group $ joinSep fs (line ++ line) ++ (if funs.isEmpty then .nil else line ++ line) ++ fmtFun main
+    let fs := funs.foldr (List.cons ∘ fmtFun) []
+    group $ joinSep fs (line ++ line)
+      ++ (if funs.isEmpty then .nil else line ++ line)
+      ++ fmtFun main
 end PP
 
 abbrev M σ := StateRefT Nat (ST σ)

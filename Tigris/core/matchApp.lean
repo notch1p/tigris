@@ -12,6 +12,8 @@ structure RowState where
   binds: Array (String × Sel) := #[]
 deriving Repr, Inhabited
 
+@[inline] private def Array.replaceAt (xs : Array α) (j : Nat) (ys : Array α) : Array α :=
+  xs[0:j] ++ ys ++ xs[j+1:]
 
 inductive DTree where
   | fail
@@ -36,29 +38,27 @@ def specDefault (cols : Subarray Sel) (j : Nat) (rows : Array RowState) : Array 
 def specCtor (cols : Subarray Sel) (j : Nat) (c : Name) (ar : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
-    let rest := r.pats.eraseIdx! j
     match p with
     | .PCtor c' args =>
       if c' == c && args.size == ar then
-        acc.push {r with pats := args ++ rest}
+        acc.push {r with pats := r.pats.replaceAt j args}
       else acc
     | .PVar x =>
-      let shaped := (Array.replicate ar Pattern.PWild) ++ rest
-      acc.push {r with pats := shaped, binds := r.binds.push (x, cols[j]!)}
+      let shaped := Array.replicate ar Pattern.PWild
+      acc.push {r with pats := r.pats.replaceAt j shaped, binds := r.binds.push (x, cols[j]!)}
     | .PWild =>
-      let shaped := (Array.replicate ar Pattern.PWild) ++ rest
-      acc.push {r with pats := shaped}
+      let shaped := Array.replicate ar Pattern.PWild
+      acc.push {r with pats := r.pats.replaceAt j shaped}
     | _ => acc
 
 def specProd (j : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
-    let rest := r.pats.eraseIdx! j
     match p with
-    | .PProd' p1 p2 =>
-      acc.push {r with pats := #[p1, p2] ++ rest}
+    | .PProd' p q =>
+      acc.push {r with pats := r.pats.replaceAt j #[p, q]}
     | .PVar _ | .PWild =>
-      acc.push {r with pats := #[Pattern.PWild, Pattern.PWild] ++ rest}
+      acc.push {r with pats := r.pats.replaceAt j #[Pattern.PWild, Pattern.PWild]}
     | _ => acc
 
 def specConst (cols : Subarray Sel) (j : Nat) (k : TConst) (rows : Array RowState) : Array RowState :=
@@ -109,9 +109,7 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
                                          | .PProd' .. => true | _ => false
         if hasProd then
           .splitProd j $ buildTree
-            (let s := cols[j]!
-             let cols' := cols[0:j] ++ #[Sel.field s 0, Sel.field s 1] ++ cols[j+1:]
-             cols')
+            (let s := cols[j]!; cols.replaceAt j #[.field s 0, .field s 1])
             (specProd j rows)
         else
           let ctors : Std.HashSet (Name × Nat) :=
@@ -127,10 +125,7 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
           if !ctors.isEmpty then
             let cases :=
               ctors.fold (init := #[]) fun a (c, ar) =>
-                let cols' :=
-                  cols[0:j]
-                  ++ Array.ofFn (Sel.field cols[j]! ∘ @Fin.toNat ar)
-                  ++ cols[j+1:]
+                let cols' := cols.replaceAt j (.ofFn $ Sel.field cols[j]! ∘ @Fin.toNat ar)
                 let rows' := specCtor cols.toSubarray j c ar rows
                 a.push (c, ar, buildTree cols' rows')
             let haveDefault := rows.any fun r => match r.pats[j]! with

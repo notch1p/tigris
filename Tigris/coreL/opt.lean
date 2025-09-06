@@ -6,8 +6,11 @@ import Tigris.coreL.lam
 - Copy propagation + DCE
 - Tailcallify, turn
   - `let r := call f a in return r`
-  - `let r := call f a in seq [e] (ret r)` where `e ∉ fv e`
-  into `tailcall f a`
+  - `let r := call f a in pe* seq [e] (ret r)`
+    where
+    - `pe := <pure-letVal/letRhs>`
+    - `r ∉ fv e ∧ r ∉ fv pe`
+  into `fᵀ a`
 -/
 
 namespace IR
@@ -62,9 +65,7 @@ partial def fvValue : Value -> Std.HashSet Name
   | .cst _       => ∅
   | .tuple xs    => xs.foldl (init := ∅) (·.insert ·)
   | .constr _ fs => fs.foldl (init := ∅) (·.insert ·)
-  | .lam p b     =>
-    let s := fvExpr b
-    s.erase p
+  | .lam p b     => fvExpr b |>.erase p
 
 partial def fvTail : Tail -> Std.HashSet Name
   | .ret x      => {x}
@@ -245,6 +246,19 @@ partial def cfExpr (env : KEnv) : LExpr -> LExpr
                     | some b => applyBinds binds b
                     | none   => .seq binds (.switchConst s cases d?)
       | none => .seq binds (.switchConst s cases d?)
+    | .switchCtor s cases d? =>
+      -- NEW: choose a constructor case if scrutinee is known
+      match getConstr env s with
+      | some (tag, fs) =>
+        let c := cases.findSome? fun (c, ar, b) =>
+          if c == tag && ar == fs.size then some b else none
+        match c with
+        | some b => applyBinds binds b
+        | none   =>
+          match d? with
+          | some b => applyBinds binds b
+          | none   => .seq binds (.switchCtor s cases d?)
+      | none => .seq binds (.switchCtor s cases d?)
     | tail => .seq binds tail
 
 end
@@ -256,13 +270,36 @@ end
 abbrev UMap := Std.HashMap Name Nat
 
 @[inline] def bump (m : UMap) (x : Name) : UMap :=
-  m.alter x
-    fun
-    | some x => some $ x + 1
-    | none => some 1
+  m.alter x fun
+            | some x => some $ x + 1
+            | none => some 1
 
 @[inline] def bumpMany (m : UMap) (xs : Array Name) : UMap :=
   xs.foldl bump m
+
+@[inline] def dec (m : UMap) (x : Name) : UMap :=
+  m.alter x fun
+            | t@(some 0) => t
+            | some n => some $ n - 1
+            | none   => some 0
+
+@[inline] def decMany (m : UMap) (xs : Array Name) : UMap :=
+  xs.foldl dec m
+
+@[inline] def decByValue (m : UMap) : Value -> UMap
+  | .var y        => dec m y
+  | .cst _        => m
+  | .tuple xs     => decMany m xs
+  | .constr _ fs  => decMany m fs
+  | .lam _ _      => m
+
+@[inline] def decByRhs (m : UMap) : Rhs -> UMap
+  | .prim _ args     => decMany m args
+  | .proj s _        => dec m s
+  | .mkPair a b      => dec (dec m a) b
+  | .mkConstr _ fs   => decMany m fs
+  | .isConstr s ..   => dec m s
+  | .call f a        => dec (dec m f) a
 
 mutual
 partial def countValue : Value -> UMap -> UMap
@@ -290,7 +327,7 @@ partial def countTail : Tail -> UMap -> UMap
     let m := cases.foldl (init := bump m s) fun a (_, b) => countExpr b a
     match d? with | some b => countExpr b m | none => m
   | .switchCtor s cases d?, m =>
-    let m := cases.foldl (init := bump m s) (fun a (_, _, b) => countExpr b a)
+    let m := cases.foldl (init := bump m s) fun a (_, _, b) => countExpr b a
     match d? with | some b => countExpr b m | none => m
 partial def countExpr : LExpr -> UMap -> UMap
   | .letVal _ v b, m  => countExpr b (countValue v m)
@@ -306,7 +343,7 @@ end
 @[inline] def UMap.ofExpr (e : LExpr) : UMap :=
   countExpr e ∅
 
-/-- copy-prop -/
+/-- copy-prop-dce -/
 abbrev AEnv := Std.HashMap Name Name
 
 @[inline] partial def aChase (env : AEnv) (x : Name) : Name :=
@@ -325,65 +362,76 @@ def rwRhs (env : AEnv) : Rhs -> Rhs
   | .isConstr s t ar  => .isConstr (rwName env s) t ar
   | .call f a         => .call (rwName env f) (rwName env a)
 
+def ηLam? : Value -> Option Value
+  | .lam p (.seq #[] (.app g a)) =>
+      if a == p then some (.var g) else none
+  | _ => none
+
 mutual
-partial def rwValue (env : AEnv) (ue : UMap) : Value -> Value
+partial def rwValue (env : AEnv) : Value -> Value
   | .var x       => .var (rwName env x)
   | .cst k       => .cst k
   | .tuple xs    => .tuple (rwArgs env xs)
   | .constr t fs => .constr t (rwArgs env fs)
-  | .lam p b     => .lam p (cpdce (env.erase p) ue b)
+  | .lam p b     => .lam p (cpdce (env.erase p) ∅ b)
 
 partial def cpdce (env : AEnv) (uses : UMap) : LExpr -> LExpr
   | .letVal x v body =>
+    let v := ηLam? v |>.getD v
+    let body' := cpdce (env.erase x) uses body
+    let used := (fvExpr body').contains x
     match v with
     | .var y =>
-      let y' := rwName env y
-      if uses.getD x 0 == 0 then
-        cpdce env uses body
+      if used then
+        .letVal x (.var (rwName env y)) body'
       else
-        let env' := env.insert x y'
-        cpdce env' uses body
+        cpdce env (dec uses (rwName env y)) body'
     | _ =>
-      let v' := rwValue env uses v
-      if uses.getD x 0 == 0 then
-        cpdce env uses body
+      let v' := rwValue env v
+      if used then
+        .letVal x v' body'
       else
-        .letVal x v' (cpdce (env.erase x) uses body)
+        cpdce env (decByValue uses v') body'
 
   | .letRhs x rhs body =>
+    let body' := cpdce (env.erase x) uses body
     let rhs' := rwRhs env rhs
-    if isPureRhs rhs' && uses.getD x 0 == 0 then
-      cpdce env uses body
-    else
-      .letRhs x rhs' (cpdce (env.erase x) uses body)
+    let used := (fvExpr body').contains x
+    if !used && isPureRhs rhs' then
+      cpdce env (decByRhs uses rhs') body'
+    else .letRhs x rhs' body'
 
   | .letRec funs body =>
-    let funs' := funs.map (fun (fid, p, b) =>
-      (fid, p, cpdce (env.erase fid |>.erase p) uses b))
+    let funs' := funs.map fun (fid, p, b) =>
+      (fid, p, cpdce (env.erase fid |>.erase p) uses b)
     let body' := cpdce env uses body
-    let anyUsed := funs.any (fun (fid, _, _) => uses.getD fid 0 > 0)
-    if anyUsed then .letRec funs' body' else body'
+    let keep := funs'.any fun (fid, _, _) => (fvExpr body').contains fid
+    if keep then .letRec funs' body'
+    else body'
 
   | .seq binds tail =>
-    let binds' :=
-      binds.filterMap (fun
-        | .let1 y rhs =>
-          let rhs' := rwRhs env rhs
-          if isPureRhs rhs' && uses.getD y 0 == 0 then none
-          else some (.let1 y rhs'))
     let tail' :=
       match tail with
       | .ret x      => .ret (rwName env x)
       | .app f a    => .app (rwName env f) (rwName env a)
       | .cond c t e => .cond (rwName env c) (cpdce env uses t) (cpdce env uses e)
       | .switchConst s cases d? =>
-        .switchConst (rwName env s)
-          (cases.map fun (k, b) => (k, cpdce env uses b))
+        .switchConst
+          (rwName env s)
+          (cases.map (fun (k, b) => (k, cpdce env uses b)))
           (d? |>.map (cpdce env uses))
       | .switchCtor s cases d? =>
-        .switchCtor (rwName env s)
-          (cases.map fun (c, ar, b) => (c, ar, cpdce env uses b))
+        .switchCtor
+          (rwName env s)
+          (cases.map (fun (c, ar, b) => (c, ar, cpdce env uses b)))
           (d? |>.map (cpdce env uses))
+    let (_ , binds') :=
+      binds.foldl (init := (uses, (#[] : Array Stmt))) fun (u, acc) (.let1 y rhs) =>
+        let rhs' := rwRhs env rhs
+        if isPureRhs rhs' && u.getD y 0 == 0 then
+          (decByRhs u rhs', acc)
+        else
+          (u, acc.push (.let1 y rhs'))
     .seq binds' tail'
 end
 
@@ -391,7 +439,7 @@ end
   cpdce (∅ : AEnv) (.ofExpr e) e
 
 def bindsArePureNoUse (x : Name) (binds : Array Stmt) : Bool :=
-  binds.all (fun | .let1 _ rhs => isPureRhs rhs && !(fvRhs rhs).contains x)
+  binds.all fun (.let1 _ rhs) => isPureRhs rhs && !(fvRhs rhs).contains x
 
 def peelAfterCall (x : Name) : LExpr -> Option (Array Stmt)
   | .seq binds (Tail.ret y) =>
@@ -445,7 +493,7 @@ partial def tailcallify : LExpr -> LExpr := fun e =>
 
 /--
   1. constant folding
-  2. copy-prop-DCE
+  2. copy-prop-DCE (needed for tailcallify)
   3. tailcall
   4. copy-prop-DCE again
 -/

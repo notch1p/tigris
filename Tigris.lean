@@ -22,4 +22,5 @@ import Tigris.core.opt
 import Tigris.coreL.lam
 import Tigris.coreL.transform
 import Tigris.coreL.opt
+import Tigris.coreL.lift
 import PP

@@ -53,11 +53,16 @@ def main : IO Unit := do
         () <$ p.wait
       catch e => println! Logging.error $ toString e
     else if buf.startsWith "#lam" then
+      let sbuf := buf.extract ⟨4⟩ buf.endPos
+      let runner :=
+        if sbuf.startsWith "+raw" then IR.fmtLExpr ∘ IR.toLam1
+        else if sbuf.startsWith "+cc" then IR.fmtModule ∘ IR.toLamModule1
+        else IR.fmtLExpr ∘ IR.toLam1O
       try
-        let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
+        let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
         let (_, l) <- MLType.runInfer1 exp e |> ofExcept
         print l
-        IR.cmpIR exp |> IO.println
+        runner exp |> IO.println
       catch e => println! Logging.error $ toString e
 --      CPS.compile1 (buf.dropWhile $ not ∘ Char.isWhitespace) pe e
     else if buf.startsWith "#t" then
