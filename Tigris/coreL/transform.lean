@@ -1,5 +1,6 @@
 import Tigris.coreL.lam
 import Tigris.coreL.opt
+import Tigris.coreL.lift
 import Tigris.interpreter.entrypoint
 import Tigris.core.matchApp
 import Tigris.typing.exhaust
@@ -26,9 +27,11 @@ def primOfName (s : String) : Option PrimOp :=
   | "sub"   => some .sub
   | "mul"   => some .mul
   | "div"   => some .div
-  | "eqInt" => some .eqInt
-  | "eqBool"=> some .eqBool
-  | "eqStr" => some .eqStr
+  | "eq"    => some .eqInt -- `eq` is polymorphic in the interpreter,
+                           -- default to eqInt here for now.
+--  | "eqInt" => some .eqInt
+--  | "eqBool"=> some .eqBool
+--  | "eqStr" => some .eqStr
   | _ => none
 
 def matchBinaryPrim : Expr -> Option (PrimOp × Expr × Expr)
@@ -41,8 +44,8 @@ def decomposeLamChain : Expr -> Option (String × Array String × Expr)
       match e with
       | .Fun q b' => collect b' (acc.push q)
       | other     => (acc, other)
-    let (ps, core) := collect b #[p]
-    if h : ps.size > 0 then some (ps[0], ps, core) else none
+    let (ps, core) := collect b #[]
+    some (p, ps, core)
   | _ => none
 
 def realizeSel (roots : Array Name) : Sel -> (Name -> M σ LExpr) -> M σ LExpr
@@ -96,7 +99,18 @@ def refineTypesForCtor
     | none => none
   | none => none
 
+def collectTopPatBinds (p : Pattern) (s : Sel) : Array (String × Sel) := go p s where
+  go
+  | .PVar x, sel      => #[(x, sel)]
+  | .PWild, _         => #[]
+  | .PConst _, _      => #[]
+  | .PProd' p q, sel  => go p (.field sel 0) ++ go q (.field sel 1)
+  | .PCtor _ as, sel  =>
+    as.size.fold (init := #[]) fun i _ acc =>
+      acc ++ go as[i] (.field sel i)
+
 end Helper
+
 open Function (uncurry) in
 open Helper in
 mutual
@@ -171,15 +185,14 @@ partial def lowerE (e : Expr) (ρ : Env) (k : Name -> M σ LExpr) : M σ LExpr :
 
     | .Fix lam | .Fixcomb lam =>
       match decomposeLamChain lam with
-      | some (selfN, params, core) =>
+      | some (selfN, params, core) => do
         let fname <- fresh "f"
         let funIR <- lowerRecFun fname selfN params core ρ
         let r <- fresh "r"
-        letI ret := .seq #[] (.ret r)
-        letI body := .letVal r (.var fname) ret
-        return .letRec #[(fname, funIR.param, funIR.body)] body
-      | none =>
-        lower lam ρ
+        let cont <- k r
+        return .letRec #[(fname, funIR.param, funIR.body)]
+               (.letVal r (.var fname) cont)
+      | none => lowerE lam ρ k
 
     | .Match scrs rows =>
       lowerMany scrs ρ fun svars => do
@@ -276,16 +289,119 @@ partial def lowerMatchDT
   lowerDT cols scrs dt ρ (fun x => pure (.seq #[] (.ret x))) fallback
 
 end
+open Helper in
+mutual
+
+partial def lowerTopPatBind
+  (scr : Name)
+  (pat : Pattern)
+  (ρ   : Env)
+  (onOk : Env -> M σ LExpr)
+  (onFail : M σ LExpr)
+  : M σ LExpr :=
+
+  let roots := #[scr]
+  let binds := collectTopPatBinds pat (.base 0)
+
+  let rec bindAll (i : Nat) (ρ' : Env) (k : Env -> M σ LExpr) : M σ LExpr := do
+    if h : i < binds.size then
+      let (x, sel) := binds[i]
+      realizeSel roots sel fun v =>
+        .letVal x (.var v) <$> bindAll (i+1) (ρ'.insert x x) k
+    else
+      k ρ'
+
+  let rec go (work : List (Sel × Pattern)) : M σ LExpr := do
+    match work with
+    | [] => bindAll 0 ρ onOk
+    | (sel, p) :: rest =>
+      match p with
+      | .PWild | .PVar _ => go rest
+      | .PConst tc =>
+        realizeSel roots sel fun sv => do
+          let (ck, op) := constOf tc
+          let c <- fresh "c"
+          let cmp <- fresh "cmp"
+          let tBranch <- go rest
+          let eBranch <- onFail
+          return .letVal c (.cst ck) $
+                 .letRhs cmp (.prim op #[sv, c]) $
+                 .seq #[] (.cond cmp tBranch eBranch)
+      | .PProd' p q =>
+        go $ (Sel.field sel 0, p) :: (Sel.field sel 1, q) :: rest
+      | .PCtor cname args =>
+        realizeSel roots sel fun sv => do
+          let flag <- fresh "is"
+          let ar := args.size
+          let tBranch <- go $
+            args.size.foldRev (init := rest)
+              fun i _ acc => (Sel.field sel i, args[i]) :: acc
+          let eBranch <- onFail
+          return .letRhs flag (.isConstr sv cname ar) $
+                 .seq #[] (.cond flag tBranch eBranch)
+
+  go [(Sel.base 0, pat)]
+
+partial def lowerModule (decls : Array TopDecl) : M σ LModule := do
+  -- not used yet.
+  let tyEnvRef : ST.Ref σ (Std.HashMap String TyDecl) <- ST.mkRef ∅
+
+  let rec build (i : Nat) (ρ : Env) (last? : Option Name) : M σ LExpr := do
+    if h : i < decls.size then
+      match decls[i] with
+      | .tyBind td =>
+        tyEnvRef.modify fun m => m.insert td.tycon td
+        build (i + 1) ρ last?
+
+      | .idBind (x, e) =>
+        if x.startsWith "(" then
+          build (i + 1) ρ last?
+        else
+          lowerE e ρ fun v =>
+            .letVal x (.var v) <$> build (i + 1) (ρ.insert x x) (some x)
+
+      | .patBind (pat, e) =>
+        lowerE e ρ fun scr => do
+          let onOk (ρ' : Env) := build (i + 1) ρ' last?
+          let onFail := do
+            let u <- fresh "u"
+            pure (.letVal u (.cst .unit) (.seq #[] (.ret u)))
+          lowerTopPatBind scr pat ρ onOk onFail
+    else
+      match ρ.get? "main" <|> last? with
+      | some v => pure (.seq #[] (.ret v))
+      | none   =>
+        let u <- fresh "u"
+        pure (.letVal u (.cst .unit) (.seq #[] (.ret u)))
+
+  -- Create main function
+  let fid := "main"
+  let param := "arg"
+  let body <- optimizeLam <$> build 0 ∅ none
+  let main : LFun := {fid, param, body}
+  return runST fun _ => (IR.closureConvert ⟨#[], main⟩).run' 1000
+
+end
+
+@[inline] def toLamModule (decls : Array TopDecl) : LModule :=
+  runST fun _ => IR.lowerModule decls |>.run' 0
+
+def toLamModule1 e :=
+    let e := optimizeLam $ runST fun _ => lower e |>.run' 0
+    runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
+
+@[inline] def dumpLamModule (decls : Array TopDecl) : Std.Format :=
+  fmtModule $ toLamModule decls
 
 @[inline] def toLam1 e := runST fun _ => lower e |>.run' 0
 @[inline] def toLam1O e := optimizeLam (toLam1 e)
-def dumpLam1 s :=
+def dumpLam1 s := IO.println $
   Std.Format.pretty (width := 80) $
   let e := Parsing.parse s initState
   match e with
   | .ok e => fmtLExpr $ runST fun _ => lower e |>.run' 0
   | .error e => e
-def dumpLam1O s :=
+def dumpLam1O s := IO.println $
   Std.Format.pretty (width := 80) $
   let e := Parsing.parse s initState
   match e with
@@ -308,3 +424,13 @@ def cmpIR e :=
   letI ole := optimizeLam le
   .group (mkBoldBlackWhite "unoptimized:" ++ Std.Format.indentD (fmtLExpr le)) <+>
   .group (mkBoldBlackWhite "optimized:" ++ Std.Format.indentD (fmtLExpr ole))
+
+def ccExpr s := IO.println $
+  Std.Format.pretty (width := 80) $
+  let e := Parsing.parse s initState
+  match e with
+  | .ok e =>
+    let e := optimizeLam $ runST fun _ => lower e |>.run' 0
+    let c := runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
+    fmtModule c
+  | .error e => e
