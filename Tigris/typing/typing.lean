@@ -205,7 +205,7 @@ mutual
 partial def inferLetGroup
   (E : Env)
   (ae : Array (Symbol × Expr))
-  (body : Expr) : Infer σ ((Env × Array (Symbol × Scheme)) × Subst × MLType) := do
+  (body : Expr) : Infer σ (Array (Symbol × Scheme) × Subst × MLType) := do
   let (Eassume, tvs) <-
     ae.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
       let tv <- fresh
@@ -231,7 +231,7 @@ partial def inferLetGroup
     Efinal := {Efinal with E := Efinal.E.insert x sch}
     scheme := scheme.push (x, sch)
   let (sb, tb) <- infer Efinal body
-  pure ((Efinal, scheme), sb ∪' sAll, tb)
+  pure (scheme, sb ∪' sAll, tb)
 
 /-- Infer a vector of expressions left-to-right, composing substitutions. -/
 partial def inferExprs (E : Env) (es : Array Expr) : Infer σ (Subst × Array MLType) :=
@@ -354,7 +354,13 @@ def runInfer1 (e : Expr) (E : Env) : Except TypingError $ Scheme × Logger :=
 @[inline] def inferGroup
   (b : Array Binding) (E : Env) (L : Logger)
   : Except TypingError (Array (Symbol × Scheme) × Env × Logger) := do
-  let (((E, ES), _, _), _, l) <- runEST fun _ => inferLetGroup E b CUnit |>.run (0, "")
+  let ((ES, _, _), _, l) <- runEST fun _ => inferLetGroup E b CUnit |>.run (0, "")
+  let (E, ES) :=
+    let ⟨E, T⟩ := E
+    Prod.map (Env.mk · T) id $
+      ES.foldl (init := (E, #[])) fun (E, ES) (id, s) =>
+        let s := normalize s
+        (E.insert id s, ES.push (id, s))
   return (ES, E, L ++ l)
 
 def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Logger) :=
@@ -378,5 +384,4 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
                possible cases such as {ex.map Pattern.render} are ignored\n"
         else ""
       return (E, l₁ ++ l₂ ++ l₃)
-
 end MLType
