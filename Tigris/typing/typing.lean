@@ -357,7 +357,7 @@ def runInfer1 (e : Expr) (E : Env) : Except TypingError $ Scheme × Logger :=
   let ((ES, _, _), _, l) <- runEST fun _ => inferLetGroup E b CUnit |>.run (0, "")
   let (E, ES) :=
     let ⟨E, T⟩ := E
-    Prod.map (Env.mk · T) id  $
+    Prod.map (Env.mk · T) id $
       ES.foldl (init := (E, #[])) fun (E, ES) (id, s) =>
         let s := normalize s
         (E.insert id s, ES.push (id, s))
