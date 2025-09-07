@@ -63,7 +63,6 @@ mutual
 partial def fvValue : Value -> Std.HashSet Name
   | .var x       => {x}
   | .cst _       => ∅
-  | .tuple xs    => xs.foldl (init := ∅) (·.insert ·)
   | .constr _ fs => fs.foldl (init := ∅) (·.insert ·)
   | .lam p b     => fvExpr b |>.erase p
 
@@ -123,7 +122,6 @@ mutual
 partial def cfValue (env : KEnv) : Value -> Value
   | .var x => .var (chase env x)
   | .cst k => .cst k
-  | .tuple xs => .tuple (xs.map (chase env))
   | .constr t fs => .constr t (fs.map (chase env))
   | .lam p b => .lam p (cfExpr (env.erase p) b)
 
@@ -219,7 +217,7 @@ partial def cfExpr (env : KEnv) : LExpr -> LExpr
       | .var y => env.insert x (.alia (chase env y))
       | .cst k => env.insert x (.cst k)
       | .lam p _ => env.erase x |>.erase p -- shadowing
-      | .tuple _ | .constr _ _ => env.erase x
+      | .constr _ _ => env.erase x
     let b' := cfExpr env' body
     .letVal x v' b'
   | .letRhs x rhs body =>
@@ -289,7 +287,6 @@ abbrev UMap := Std.HashMap Name Nat
 @[inline] def decByValue (m : UMap) : Value -> UMap
   | .var y        => dec m y
   | .cst _        => m
-  | .tuple xs     => decMany m xs
   | .constr _ fs  => decMany m fs
   | .lam _ _      => m
 
@@ -305,7 +302,6 @@ mutual
 partial def countValue : Value -> UMap -> UMap
   | .var x, m       => bump m x
   | .cst _, m       => m
-  | .tuple xs, m    => bumpMany m xs
   | .constr _ fs, m => bumpMany m fs
   | .lam _ b, m     => countExpr b m
 
@@ -371,7 +367,6 @@ mutual
 partial def rwValue (env : AEnv) : Value -> Value
   | .var x       => .var (rwName env x)
   | .cst k       => .cst k
-  | .tuple xs    => .tuple (rwArgs env xs)
   | .constr t fs => .constr t (rwArgs env fs)
   | .lam p b     => .lam p (cpdce (env.erase p) ∅ b)
 
