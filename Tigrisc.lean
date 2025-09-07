@@ -1,4 +1,4 @@
-import Tigris.core.transform
+import Tigris.oldcore.transform
 
 def main (fp : List String) : IO Unit :=
   let PE := initState

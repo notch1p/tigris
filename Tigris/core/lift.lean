@@ -1,5 +1,5 @@
-import Tigris.coreL.lam
-import Tigris.coreL.opt
+import Tigris.core.lam
+import Tigris.core.opt
 
 namespace IR
 
@@ -384,13 +384,13 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     -- Possibly mutual group
     let ids := funs.map (·.1)
     let fvBodies :=
-      funs.foldl (init := (∅ : Std.HashSet Name)) fun acc (_, p, b) =>
+      funs.foldl (init := (∅ : Std.HashSet Name)) fun acc ⟨_, p, b⟩ =>
         acc ∪ (fvExpr b).erase p
     let capsSet := ids.foldl (·.erase) fvBodies
     let capVars := sortedNames capsSet
     let codeSet : CodeSet := ids.foldl (·.insert) ∅
     -- Convert each function to payload convention
-    let funs' : Array LFun <- funs.flatMapM fun (fid, p, b) => do
+    let funs' : Array LFun <- funs.flatMapM fun ⟨fid, p, b⟩ => do
         let payload := "payload"
         let (body', fs) <- ccLiftedFunBodyM gCodes fid payload p capVars codeSet none b
         pure $ #[⟨fid, payload, body'⟩] ++ fs

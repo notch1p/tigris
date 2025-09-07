@@ -1,4 +1,4 @@
-import Tigris.coreL.transform
+import Tigris.core.transform
 import Tigris.table
 
 def validate args := do
@@ -34,9 +34,9 @@ def main (fp : List String) : IO Unit := do
           let (ir, cc) := IR.dumpLamModule decls
 
           if ir? then
-            h.putStrLn "NB. == Optimized IR =="
+            h.putStrLn "NB. == Optimized IR ==\n"
             h.putStrLn $ Std.Format.pretty (width := 80) $ ir
-            h.putStrLn "NB. == Above CC'd =="
+            h.putStrLn "\nNB. == Above CC'd =="
 
           h.putStrLn $ Std.Format.pretty (width := 80) $ cc
       catch e => println! Logging.error (toString e)

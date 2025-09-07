@@ -202,6 +202,37 @@ def metavariable? : MLType -> Bool
   | _ => false
 
 mutual
+partial def inferLetGroup
+  (E : Env)
+  (ae : Array (Symbol × Expr))
+  (body : Expr) : Infer σ ((Env × Array (Symbol × Scheme)) × Subst × MLType) := do
+  let (Eassume, tvs) <-
+    ae.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
+      let tv <- fresh
+      let (n, e) := ae[i]
+      return ({acc with E := acc.E.insert n (.Forall [] tv)}, tvs.push tv)
+
+  let mut sAll := ∅
+  let mut tvs := tvs
+  for (x, rhs) in ae, tv in tvs do
+    let Ei := apply sAll Eassume
+    let (si, ti) <- infer Ei rhs
+    let tvi := apply si tv
+    let su <- unify tvi ti
+    let si := su ∪' si
+    sAll := si ∪' sAll
+    tvs := tvs.map (apply si)
+
+  let Egen := apply sAll E
+  let mut Efinal := Egen
+  let mut scheme := #[]
+  for (x, _) in ae, tv in tvs do
+    let sch := generalize Egen tv
+    Efinal := {Efinal with E := Efinal.E.insert x sch}
+    scheme := scheme.push (x, sch)
+  let (sb, tb) <- infer Efinal body
+  pure ((Efinal, scheme), sb ∪' sAll, tb)
+
 /-- Infer a vector of expressions left-to-right, composing substitutions. -/
 partial def inferExprs (E : Env) (es : Array Expr) : Infer σ (Subst × Array MLType) :=
   es.foldlM (init := (∅, #[])) fun (s, ts) i => do
@@ -260,13 +291,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
     let s₃       <- unify (apply s₂ t₁) (t₂ ->' tv)
     pure (s₃ ∪' s₂ ∪' s₁, apply s₃ tv)
 
-  | Let x e₁ e₂ => do
-    let (s₁, t₁)    <- infer E e₁
-    let E           := apply s₁ E
-    let t'          := generalize E t₁
-    let {E, tyDecl} := E
-    let (s₂, t₂)    <- infer ⟨E.insert x t', tyDecl⟩ e₂
-    pure (s₂ ∪' s₁, t₂)
+  | Let ae e₂ => Prod.snd <$> inferLetGroup E ae e₂
 
   | Cond c t e => do
     let tv         <- fresh
@@ -319,19 +344,23 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 end
 
 def closed : Subst × MLType -> Scheme
-  | (sub, ty) =>
-    generalize ∅ (apply sub ty) |> normalize
+  | (sub, ty) => generalize ∅ (apply sub ty) |> normalize
 
 def runInfer1 (e : Expr) (E : Env) : Except TypingError $ Scheme × Logger :=
   match runEST fun _ => infer E e |>.run (0, "") with
   | .error e => throw e
   | .ok  (res, _, log) => pure (closed res, log)
 
+@[inline] def inferGroup
+  (b : Array Binding) (E : Env) (L : Logger)
+  : Except TypingError (Array (Symbol × Scheme) × Env × Logger) := do
+  let (((E, ES), _, _), _, l) <- runEST fun _ => inferLetGroup E b CUnit |>.run (0, "")
+  return (ES, E, L ++ l)
+
 def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Logger) :=
   b.foldlM (init := (E, "")) fun (E, L) b =>
     match b with
-    | .idBind (id, expr) =>
-      runInfer1 expr E <&> fun (e, l) => (⟨E.1.insert id e, E.2⟩, L ++ l)
+    | .idBind group => inferGroup group E L <&> Prod.snd
     | .tyBind ty@{ctors, tycon, param} =>
       return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields) =>
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields

@@ -30,12 +30,15 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
             liftEIO $ println $ templateREPL sym (format val) (format ty)
           return (PE, E, VE)
         | none => throw $ NoMatch #[e] (format v).pretty #[(#[pat], Expr.CUnit)] |> toString
-      | .idBind (id, expr) =>
-        let (ty, l) <- ofExcept $ runInfer1 expr E |>.mapError toString
+      | .idBind group =>
+        let (ty, E, l) <- ofExcept $ inferGroup group E "" |>.mapError toString
         liftEIO (print l)
-        let v <- ofExcept $ eval VE expr |>.mapError toString
-        liftEIO $ println $ templateREPL id (format v) (format ty)
-        return (PE, ⟨E.1.insert id ty, E.2⟩, ⟨VE.env.insert id v⟩)
+        let vs <- group.mapM fun (id, expr) =>
+          (id, ·) <$> (EIO.ofExcept $ eval VE expr |>.mapError toString)
+        for (id, ty) in ty, (_, v) in vs do
+          liftEIO $ println $ templateREPL id (format v) (format ty)
+        let VE := vs.foldl (init := VE.env) fun acc (id, v) => acc.insert id v
+        return (PE, E, ⟨VE⟩)
       | .tyBind tydecl =>
         (PE, ·) <$> registerData E VE tydecl
   | (.error _ e, (_, l)) => liftEIO (print l) *> throw (toString e)

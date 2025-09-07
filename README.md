@@ -160,6 +160,57 @@ But This is unlikely to be done because I've decided it's too elaborate and meta
 
 See source.
 
+## Evolution
+
+This project is a pain in the ass to develop and has undergone multiple refactors (but ultimately sloppy) because of my shortsighted project planning.
+
+1. Somewhere during pre-historic times, I decided to try out Lean as a programming language
+   , besides having prior experiences with it only as a theorem prover. (also familiar with Coq at that time).
+2. a handwritten parser for a tiny ML-like langauge + Hindley-Milner type system implementation
+   (w/ Algorithm W) became one of my earliest actual projects written in Lean.
+3. Someone developed a parser combinator
+   (nice work [fgdorais/lean4-parser](https://github.com/fgdorais/lean4-parser)).
+   Switched to it, refactor #1.
+4. Revisiting the project: added a term-rewriting based interpreter, refactor #2.
+5. added recursion
+   ~~(mutual recursion not yet supported to this day, which sadly also requires a huge refactor)~~ Done.
+   , refactor #3
+6. added toplevel declaration, refactor #4.
+7. added pattern matching together with algebraic datatypes, mutual recursive types,
+   also need to support toplevel type binding, refactor #5.
+   - ~~funny how mutual recursion hasn't been added but mutual rectype has.~~ Done.
+8. added toplevel pattern binding, refactor #6.
+   - leaking slopiness: I didn't merge identifier binding with pattern binding (w/ PVar)
+     and these 2 coexists.
+9. added exhaustiveness/redundancy check for pattern matrices.
+10. optimized parser performance with path cutting (`let` variants), better error reporting. refactor #7
+11. added an experimental flat CPS IR, together with a decision tree pattern matching compiler.
+    - directly translates from `Expr`, which performs rather poorly, and is known to be buggy.
+    - There's a misplaced callsite issue due to static continuation and my implementation.
+    - I've switch to a dynamic continaution which pattern matches on them and then dispatch to the correct one.
+    - As expected it sucks performance/maintainability-wise
+    - It is now living in `oldcore` and will always be for the rest of its life.
+12. added a new "lambda" IR as the first half of a 2-stage IR. refactor #8.
+    (like the namesake small language used as an IR for SML from Compiling with Continuation (Appel92))
+    - have done various optimizations. these can be found in [opt.lean](Tigris/core/opt.lean)
+    - Closure Conversion (lambda lifting) is done at the end of this process
+      (also embedded some optimizations).
+    - This IR will then gets compiled to a later-stage CPS IR.
+    - It is now living in `core`.
+    - both `oldcore` `core` have backtracking automata/decision tree implementation of pattern matching:
+      - for `core`: decision tree is used.
+      - for `oldcore`: backtracking automata is used.
+13. from that point we'll do codegen. As for the target, I'm thinking of common lisp (SBCL esp).
+    - which is the second most proficient language I'm in,
+    - besides Lean (which has really become my most proficient and favorite language.), OCaml and Haskell.
+14. but before that, I'm also tempting to add new features like typeclass and ~~mutual recursion (highest priority)~~ (I literally supported it after writing down this README)
+    - which, sadly, will require another refactor at both
+      - `Expr` (because I'll need a letrec group), and subsequently, everything relating to it (basically the entire project)
+      - typechecker. While it is possible to add new layers on the existing Algorithm W to achieve constraints,
+        it is not very maintainer-friendly to do so. Ultimately I'm afraid we'll have to switch to a constraint-solving based implementation.
+
+- Bonus: There's a _DTigris_ variant in development with Haskell which uses dependent type (single universe unfortunately).
+
 ## History
 
 - 25/08/10 taken out of [notch1p/Playbook](https://github.com/notch1p/lean-snippets)
