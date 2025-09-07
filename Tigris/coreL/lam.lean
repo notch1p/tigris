@@ -113,7 +113,7 @@ partial def fmtValue : Value -> Format
     | .constr t fs =>
       group $ fmtName t <> paren (joinSep (fs.foldr (List.cons ∘ fmtName) []) comma)
     | .lam p b     =>
-      group $ "λ" <> fmtName p <> "↦" ++ indentD (fmtLExpr b)
+      group $ "fun" <> fmtName p <> "↦" ++ indentD (fmtLExpr b)
 
 partial def fmtRhs : Rhs -> Format
     | .prim op args =>
@@ -122,7 +122,7 @@ partial def fmtRhs : Rhs -> Format
     | .mkPair a b =>
       bracket "⟨" (fmtName a ++ comma ++ fmtName b) "⟩"
     | .mkConstr t fs =>
-      fmtName t <> bracket "⟦" (joinSep (fs.toList.map fmtName) comma) "⟧"
+      fmtName t ++ bracket "⟦" (joinSep (fs.toList.map fmtName) comma) "⟧"
     | .isConstr s t ar =>
       "IS" <> fmtName s!"«{t}/{ar}»" <> fmtName s
     | .call f a =>
