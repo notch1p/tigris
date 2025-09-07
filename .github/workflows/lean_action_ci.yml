@@ -21,7 +21,7 @@ jobs:
       - uses: leanprover/lean-action@v1
       - uses: actions/upload-artifact@v4
         with:
-          path: .lake/build
+          path: .lake/build/bin
           name: tigris-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           compression-level: 9
 #  build-win32:
