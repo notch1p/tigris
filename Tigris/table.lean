@@ -59,3 +59,12 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .blu "+opt: default, w/ optimizations;")
    , (.str ""                 , .blu "+cc: w/ lambda lifting, implies +opt")
    , (.str ""                 , .byl "+cc compiles to main function")]
+
+def tiglHelpMsg : TableOf HelpHeader :=
+  #[ (.str "-l, --lam"  , .str "prepend CC'd IR with its source IR")
+   , (.str "<ifiles>"   , .str "a list of input files read from")
+   , (.str "-o <ofiles>", .str "a list of output files written to")
+   , (.str ""           , .byl "must match or be smaller than input list")
+   , (.str ""           , .str "unmatched inputs use default naming convention")
+   , (.str ""           , .blu "i.e. 'file.tig' renames to 'file.tig.ir'")
+   , (.str "-h, --help" , .str "show this help string")]
