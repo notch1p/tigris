@@ -1,5 +1,4 @@
 import Tigris.parsing.types
-import Tigris.coreL.lam
 
 inductive Sel where
   | base (idx : Nat)
@@ -19,7 +18,7 @@ inductive DTree where
   | fail
   | leaf (row : RowState)
   | testConst (j : Nat) (branches : Array (TConst × DTree)) (default? : Option DTree)
-  | testCtor  (j : Nat) (branches : Array (Name × Nat × DTree)) (default? : Option DTree)
+  | testCtor  (j : Nat) (branches : Array (String × Nat × DTree)) (default? : Option DTree)
   | splitProd (j : Nat) (next : DTree)
 deriving Repr, Inhabited
 
@@ -35,7 +34,7 @@ def specDefault (cols : Subarray Sel) (j : Nat) (rows : Array RowState) : Array 
       acc.push {r with pats := rest}
     | _ => acc
 
-def specCtor (cols : Subarray Sel) (j : Nat) (c : Name) (ar : Nat) (rows : Array RowState) : Array RowState :=
+def specCtor (cols : Subarray Sel) (j : Nat) (c : String) (ar : Nat) (rows : Array RowState) : Array RowState :=
   rows.foldl (init := #[]) fun acc r =>
     let p := r.pats[j]!
     match p with
@@ -112,7 +111,7 @@ partial def buildTree (cols : Array Sel) (rows : Array RowState) : DTree :=
             (let s := cols[j]!; cols.replaceAt j #[.field s 0, .field s 1])
             (specProd j rows)
         else
-          let ctors : Std.HashSet (Name × Nat) :=
+          let ctors : Std.HashSet (String × Nat) :=
             rows.foldl (init := ∅) fun acc r =>
               match r.pats[j]! with
               | .PCtor c as => acc.insert (c, as.size)

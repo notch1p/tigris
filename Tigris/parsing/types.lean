@@ -90,7 +90,7 @@ deriving Repr, BEq, Ord, Inhabited
 
 inductive Expr where
   | CI (i : Int)       | CS (s : String)        | CB (b : Bool) | CUnit
-  | App (e₁ e₂ : Expr) | Cond (e₁ e₂ e₃ : Expr) | Let (a : Symbol) (e₁ e₂ : Expr)
+  | App (e₁ e₂ : Expr) | Cond (e₁ e₂ e₃ : Expr) | Let (ae : Array $ Symbol × Expr) (e₂ : Expr)
   | Fix (e : Expr)     | Fixcomb (e : Expr)
   | Var (s : Symbol)   | Fun (a : Symbol) (e : Expr)
   | Prod' (e₁ e₂ : Expr)
@@ -145,7 +145,7 @@ structure TyDecl where
 deriving Repr
 
 inductive TopDecl
-  | idBind : Binding -> TopDecl
+  | idBind : Array Binding -> TopDecl
   | patBind : Pattern × Expr -> TopDecl
   | tyBind : TyDecl -> TopDecl
 deriving Repr

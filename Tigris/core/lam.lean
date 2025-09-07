@@ -27,7 +27,6 @@ The "Lambda" language similar to that described in CWC for SML.
 inductive Value where
   | var    (x : Name)
   | cst    (k : Const)
-  | tuple  (xs : Array Name)
   | constr (tag : Name) (fields : Array Name)
   | lam    (param : Name) (body : LExpr)   -- single-argument lambdas; multi-arg via tuples
 deriving Repr, Inhabited
@@ -63,22 +62,24 @@ inductive LExpr where
   /-- Nested let Rhs bindings. -/
   | letRhs (x : Name) (rhs : Rhs) (body : LExpr)
   /--
-  Recursive function bindings:
-  (although only per-function recursion is supported i.e. no mutual recursion.)
+    - Recursive function bindings.
+    `LFun` here doesn't mean that `funs` have to be toplevel. We use LFun instead
+    of Name × Name × LExpr is simply because of compatible representation.
+    Which saves some conversions.
   -/
-  | letRec (funs : Array (Name × Name × LExpr)) (body : LExpr)
-
+  | letRec (funs : Array LFun) (body : LExpr)
 deriving Repr, Inhabited, BEq
-end
 
-attribute [inherit_doc Value] Rhs Stmt Tail LExpr
-
-/-- A top-level function in the Lambda IR. Multiple parameters can be encoded via tuples. -/
+/-- A top-level function in the Lambda IR. -/
 structure LFun where
   fid    : Name
   param  : Name
   body   : LExpr
 deriving Repr, Inhabited
+
+end
+
+attribute [inherit_doc Value] Rhs Stmt Tail LExpr
 
 /-- A module holds a set of functions and the designated main. -/
 structure LModule where
@@ -86,10 +87,6 @@ structure LModule where
   main : LFun
 deriving Repr, Inhabited
 
-/-
-Pretty printer (human-readable). We keep it compact and close to a direct-style
-functional syntax with explicit lets and tail positions.
--/
 section PP open Std Format
 
 @[always_inline, inline] def comma := "," ++ line
@@ -109,7 +106,6 @@ mutual
 partial def fmtValue : Value -> Format
     | .var x       => fmtName x
     | .cst k       => fmtConst k
-    | .tuple xs    => paren (joinSep (xs.foldr (List.cons ∘ fmtName) []) comma)
     | .constr t fs =>
       group $ fmtName t <> paren (joinSep (fs.foldr (List.cons ∘ fmtName) []) comma)
     | .lam p b     =>
@@ -167,11 +163,11 @@ partial def fmtLExpr : LExpr -> Format
           ++ (fmtLExpr b)
     | .letRec funs b =>
       let ffmt
-        | (fid, p, body) =>
+        | ⟨fid, p, body⟩ =>
           group $
             indentD ("label" <> fid ++ paren p ++ ":" ++ indentD (fmtLExpr body))
       group $ "letω"
-        <> group ((joinSep (funs.foldr (List.cons ∘ ffmt) []) (line ++ line)) <+> "in")
+        <> group ((joinSep (funs.foldr (List.cons ∘ ffmt) []) line) <+> "in")
           ++ "\n"
           ++ (fmtLExpr b)
 end

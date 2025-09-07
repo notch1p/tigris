@@ -9,10 +9,10 @@ namespace Parsing open Lexing Parser PType TopDecl
 def declaration : TParser σ TopDecl := first'
   #[ tyBind <$> tyDecl false
    , tyBind <$> tyEmpty
-   , idBind <$> value parseExpr
+   , (idBind ∘ Array.singleton) <$> value parseExpr
    , idBind <$> letDeclDispatch
-   , idBind <$> infixlDecl
-   , idBind <$> infixrDecl
+   , (idBind ∘ Array.singleton) <$> infixlDecl
+   , (idBind ∘ Array.singleton) <$> infixrDecl
    ]
   simpErrorCombine
 
