@@ -342,7 +342,7 @@ partial def lowerTopPatBind
 
   go [(Sel.base 0, pat)]
 
-partial def lowerModule (decls : Array TopDecl) : M σ LModule := do
+partial def lowerModule (decls : Array TopDecl) : M σ (LModule × LModule) := do
   -- not used yet.
   let tyEnvRef : ST.Ref σ (Std.HashMap String TyDecl) <- ST.mkRef ∅
 
@@ -379,19 +379,20 @@ partial def lowerModule (decls : Array TopDecl) : M σ LModule := do
   let param := "arg"
   let body <- optimizeLam <$> build 0 ∅ none
   let main : LFun := {fid, param, body}
-  return runST fun _ => (IR.closureConvert ⟨#[], main⟩).run' 1000
+  let mod := ⟨#[], main⟩
+  return Prod.mk mod (runST fun _ => (IR.closureConvert mod).run' 1000)
 
 end
 
-@[inline] def toLamModule (decls : Array TopDecl) : LModule :=
+@[inline] def toLamModule (decls : Array TopDecl) : LModule × LModule :=
   runST fun _ => IR.lowerModule decls |>.run' 0
 
 def toLamModule1 e :=
-    let e := optimizeLam $ runST fun _ => lower e |>.run' 0
-    runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
+  let e := optimizeLam $ runST fun _ => lower e |>.run' 0
+  runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
 
-@[inline] def dumpLamModule (decls : Array TopDecl) : Std.Format :=
-  fmtModule $ toLamModule decls
+@[inline] def dumpLamModule (decls : Array TopDecl) : Std.Format × Std.Format :=
+  toLamModule decls |>.map fmtModule fmtModule
 
 @[inline] def toLam1 e := runST fun _ => lower e |>.run' 0
 @[inline] def toLam1O e := optimizeLam (toLam1 e)

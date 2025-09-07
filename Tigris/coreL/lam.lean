@@ -27,7 +27,6 @@ The "Lambda" language similar to that described in CWC for SML.
 inductive Value where
   | var    (x : Name)
   | cst    (k : Const)
-  | tuple  (xs : Array Name)
   | constr (tag : Name) (fields : Array Name)
   | lam    (param : Name) (body : LExpr)   -- single-argument lambdas; multi-arg via tuples
 deriving Repr, Inhabited
@@ -109,11 +108,10 @@ mutual
 partial def fmtValue : Value -> Format
     | .var x       => fmtName x
     | .cst k       => fmtConst k
-    | .tuple xs    => paren (joinSep (xs.foldr (List.cons ∘ fmtName) []) comma)
     | .constr t fs =>
       group $ fmtName t <> paren (joinSep (fs.foldr (List.cons ∘ fmtName) []) comma)
     | .lam p b     =>
-      group $ "λ" <> fmtName p <> "↦" ++ indentD (fmtLExpr b)
+      group $ "fun" <> fmtName p <> "↦" ++ indentD (fmtLExpr b)
 
 partial def fmtRhs : Rhs -> Format
     | .prim op args =>
@@ -122,7 +120,7 @@ partial def fmtRhs : Rhs -> Format
     | .mkPair a b =>
       bracket "⟨" (fmtName a ++ comma ++ fmtName b) "⟩"
     | .mkConstr t fs =>
-      fmtName t <> bracket "⟦" (joinSep (fs.toList.map fmtName) comma) "⟧"
+      fmtName t ++ bracket "⟦" (joinSep (fs.toList.map fmtName) comma) "⟧"
     | .isConstr s t ar =>
       "IS" <> fmtName s!"«{t}/{ar}»" <> fmtName s
     | .call f a =>
