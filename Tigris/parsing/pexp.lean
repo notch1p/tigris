@@ -34,28 +34,34 @@ def infixrDecl : TParser σ Binding := do
     return (s!"({op})", e)
   | _, _ => pure ("_", CUnit)
 
-def letDeclDispatch : TParser σ $ Binding := do
-  LET; let tr <- test REC; let id <- ID; let pre <- takeMany funBinderID
-  match tr with
-  | false =>
-    match <- test BAR with
-    | true =>
-      let a <- sepBy1 BAR matchDiscr
-      return (id, transMatch pre $ pointedExp a)
-    | false =>
-      EQ; let a <- parseExpr
-      return (id, transMatch pre a)
+def let1Decl : TParser σ $ Binding := do
+  let id <- ID; let pre <- takeMany funBinderID
+  match <- test BAR with
   | true =>
-    match <- test BAR with
-    | true =>
-      let a <- sepBy1 BAR matchDiscr
-      return (id, Fix $ Fun id $ transMatch pre $ pointedExp a)
-    | false =>
-      EQ let a <- parseExpr
-      if pre.isEmpty && !a matches Fun .. then
-        warn "Use letdecl instead of letrec for nonrecursive definition\n"
-        return (id, transMatch pre a)
-      else return (id, Fix $ Fun id $ transMatch pre a)
+    let a <- sepBy1 BAR matchDiscr
+    return (id, transMatch pre $ pointedExp a)
+  | false =>
+    EQ; let a <- parseExpr
+    return (id, transMatch pre a)
+
+def letrec1Decl : TParser σ $ Binding := do
+  let id <- ID; let pre <- takeMany funBinderID
+  match <- test BAR with
+  | true =>
+    let a <- sepBy1 BAR matchDiscr
+    return (id, Fix $ Fun id $ transMatch pre $ pointedExp a)
+  | false =>
+    EQ let a <- parseExpr
+    if pre.isEmpty && !a matches Fun .. then
+      warn s!"Use letdecl instead of letrec for nonrecursive definition of '{id}'\n"
+      return (id, transMatch pre a)
+    else return (id, Fix $ Fun id $ transMatch pre a)
+
+def letDeclDispatch : TParser σ $ Array Binding := do
+  LET;
+  match <- test REC with
+  | false => sepBy1 AND let1Decl
+  | true => sepBy1 AND letrec1Decl
 
 def letPatDecl : TParser σ (Pattern × Expr) := do
   LET;

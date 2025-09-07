@@ -102,6 +102,10 @@ def callForeign (as' : Value) (n : Nat) : Value :=
 
   | n => .VOpaque n
 
+@[inline] def mergeEnvPreferFront
+  (front back : Std.TreeMap.Raw String Value)
+  : Std.TreeMap.Raw String Value := front.mergeWith (fun _ v₁ _ => v₁) back
+
 partial def eval (E : VEnv) : Expr -> Except TypingError Value
   | CI v => pure $ VI v | CS v => pure $ VS v | CB v => pure $ VB v | CUnit => pure VU
   | Var x => match E.env.get? x with | some x => pure x | none => throw $ Undefined x
@@ -120,12 +124,13 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
     | VOpaque n =>
       let a <- eval E a
       pure $ callForeign a n
-    | self@(VFRec fname fbody E') =>
-      let e <- eval E a
-      let recE := E'.env.insert fname self
+    | self@(VFRec fname fbody Edef) =>
+      let aVal <- eval E a
+      let merged := mergeEnvPreferFront E.env Edef.env
+      let recE := merged.insert fname self
       match fbody with
       | Fun x body =>
-        eval ⟨recE.insert x e⟩ body
+        eval ⟨recE.insert x aVal⟩ body
       | _ => unreachable!
     | .VCtor name ar acc =>
       let v <- eval E a
@@ -134,10 +139,10 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
         pure $ .VConstr name acc'
       else pure $ .VCtor name ar acc'
     | _ => unreachable!
-  | Let x e body => do
-    let e' <- eval E e
-    let E' := E.env.insert x e'
-    eval ⟨E'⟩ body
+  | Let ae body => do
+    let vs <- ae.mapM fun (x, ex) => (x, ·) <$> eval E ex
+    letI env' := vs.foldl (init := E.env) fun acc (x, v) => acc.insert x v
+    eval ⟨env'⟩ body
   | Cond c t e => do
     let e' <- eval E c
     match e' with
@@ -160,9 +165,6 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
     tryDiscriminant discr.size Nat.le.refl
   | Ascribe e _ => eval E e
 
-@[always_inline, inline] def parse! s := parse s initState |>.toOption |>.get!
-@[always_inline, inline] def eval! s (e : VEnv := ⟨∅⟩) := parse! s |> eval e |>.toOption |>.get!
-
 def arityGen (prim : Symbol) (arity : Nat) (primE : VEnv := ⟨∅⟩) : Value :=
   let rec go s
   | 0 => App (Var prim) s
@@ -181,7 +183,7 @@ abbrev ag (prim : Symbol) (arity : {n // n > 1}) (primE : VEnv := ⟨∅⟩) : V
   arityGen prim arity primE
 
 def prim :=
-  [ ("id"   , eval! "fun x => x")
+  [ ("id"   , VF "x" (.Var "x") ⟨∅⟩)
   , ("rec"  , VOpaque 0)
   , ("__add", VOpaque 1)
   , ("__sub", VOpaque 2)
@@ -201,5 +203,9 @@ abbrev defaultVE : VEnv where
      , "mul" of! 2
      , "div" of! 2
      , "eq"  of! 2]
+
+@[always_inline, inline] def parse! s := parse s initState |>.toOption |>.getD (.CUnit)
+@[always_inline, inline] def infer! := runInfer1 (E := defaultE) ∘ parse!
+@[always_inline, inline] def eval! s (e : VEnv := defaultVE) := parse! s |> eval e
 
 end Interpreter

@@ -42,8 +42,8 @@ def reserved :=
   #[ "mutual","infixl" , "infixr", "match"
    , "data"  , "type"  , "with"
    , "else"  , "then"  , "let"
-   , "rec"   , "fun"   , "fn"
-   , "in"    , "if"]
+   , "and"   , "rec"   , "fun"
+   , "fn"    , "in"    , "if"]
 
 open ASCII in private def ID' : TParser σ String :=
   withErrorMessage "identifier" do
@@ -98,6 +98,7 @@ abbrev MATCH  : TParser σ Unit := kw "match"
 abbrev WITH   : TParser σ Unit := kw "with"
 abbrev TYPE   : TParser σ Unit := kw "type" <|> kw "data"
 abbrev MUTUAL : TParser σ Unit := kw "mutual"
+abbrev AND    : TParser σ Unit := kw "and"
 
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
 abbrev ARROW: TParser σ Unit := spaces *>

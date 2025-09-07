@@ -1,5 +1,5 @@
-import Tigris.coreL.lam
-import Tigris.coreL.opt
+import Tigris.core.lam
+import Tigris.core.opt
 
 namespace IR
 
@@ -9,8 +9,8 @@ Closure conversion for the Lambda IR.
 Core ideas:
 - Eliminate Value.lam by lifting to code pointers (functions) that take a single
   "payload" parameter = ⟨arg, env⟩.
-- Environments are explicit values holding captured variables.
-- A closure is a 2-field constructor: (𝓒⟦codePtr, env⟧).
+- Environments (Γ) are explicit values holding captured variables.
+- A closure is a 2-field constructor: (ℂ⟦codePtr, env⟧).
 - Calls through closure variables project (code, env) and pass (arg, env) to the code pointer.
 - letRec groups are converted so each function body projects (arg, env) from payload. For recursion,
   body calls the code pointer with the same env. Mutual recursion is planned: all fns in a group
@@ -36,19 +36,19 @@ def fresh (h := "cc") : M σ Name :=
   modifyGet fun n => (h ++ toString n, n + 1)
 
 def mkEnv (envTag : Name) (fields : Array Name) (kont : Name -> LExpr) : LExpr :=
-  letI envName := "𝐄"
+  letI envName := "Γ"
   .letRhs envName (.mkConstr envTag fields) (kont envName)
 
 def mkClos (code : Name) (envName : Name) (kont : Name -> LExpr) : LExpr :=
-  letI clos := "𝐂"
-  .letRhs clos (.mkConstr "𝓒" #[code, envName]) (kont clos)
+  letI clos := "λ"
+  .letRhs clos (.mkConstr "𝐂" #[code, envName]) (kont clos)
 
 def mkPayload (arg env : Name) (kont : Name -> LExpr) : LExpr :=
-  letI p := "_pl"
+  letI p := "ρ"
   .letRhs p (.mkPair arg env) (kont p)
 
 def proj (src : Name) (i : Nat) (kont : Name -> LExpr) : LExpr :=
-  letI x := "_p" ++ toString i
+  letI x := "π" ++ toString i
   .letRhs x (.proj src i) (kont x)
 
 def projPair (src : Name) (kont : Name -> Name -> LExpr) : LExpr :=
@@ -60,8 +60,8 @@ def freeVars (e : LExpr) : Std.HashSet Name :=
 def tailAppDirect
   (payload : Name) (envVar? : Option Name)
   (f : Name) (a : Name) : (Array Stmt × Tail) :=
-  letI env := "𝐄"
-  letI pl  := "_pl"
+  letI env := "Γ"
+  letI pl  := "ρ"
   if let some e := envVar? then
     (#[.let1 pl (.mkPair a e)], .app f pl)
   else
@@ -69,17 +69,17 @@ def tailAppDirect
 
 def tailAppViaClosure (clos : Name) (a : Name) : (Array Stmt × Tail) :=
   letI code := "_code"
-  letI env  := "𝐄"
-  letI pl   := "_pl"
+  letI env  := "Γ"
+  letI pl   := "ρ"
   ( #[ .let1 code (.proj clos 0)
      , .let1 env  (.proj clos 1)
      , .let1 pl   (.mkPair a env)]
   , Tail.app code pl)
 
 def tailAppGlobal (f : Name) (a : Name) : (Array Stmt × Tail) :=
-  let env := "𝐄₀"
-  let pl  := "_pl"
-  ( #[ .let1 env (.mkConstr "𝓔" #[])
+  let env := "Γ₀"
+  let pl  := "ρ"
+  ( #[ .let1 env (.mkConstr "𝐄" #[])
      , .let1 pl  (.mkPair a env)]
   , Tail.app f pl)
 
@@ -152,7 +152,7 @@ def emitLetCallInCode
   (selfVar? : Option Name) (selfCode : Name)
   (x f a : Name) (k : LExpr) : LExpr :=
   if selfVar?.isEqSome f then
-    let (pl, env) := ("_pl", "𝐄")
+    let (pl, env) := ("ρ", "Γ")
     match envVar? with
     | some e =>
       .letRhs pl (.mkPair a e) $
@@ -162,7 +162,7 @@ def emitLetCallInCode
       .letRhs pl  (.mkPair a env) $
       .letRhs x   (.call selfCode pl) k
   else if codeSet.contains f then
-    let (pl, env) := ("_pl", "𝐄")
+    let (pl, env) := ("ρ", "Γ")
     match envVar? with
     | some e =>
       .letRhs pl (.mkPair a e) $
@@ -172,15 +172,15 @@ def emitLetCallInCode
       .letRhs pl  (.mkPair a env) $
       .letRhs x   (.call f pl) k
   else if gCodes.contains f then
-    let env := "𝐄₀"
-    let pl  := "_pl"
-    .letRhs env (.mkConstr "𝓔" #[]) $
+    let env := "Γ₀"
+    let pl  := "ρ"
+    .letRhs env (.mkConstr "𝐄" #[]) $
     .letRhs pl  (.mkPair a env) $
     .letRhs x   (.call f pl) k
   else
     let code := "_code"
-    let env  := "𝐄"
-    let pl   := "_pl"
+    let env  := "Γ"
+    let pl   := "ρ"
     .letRhs code (.proj f 0) $
     .letRhs env  (.proj f 1) $
     .letRhs pl   (.mkPair a env) $
@@ -192,7 +192,7 @@ def emitLetCallInCode
 def fuseImmediateTailCall (envName x fid : Name) : LExpr -> LExpr
   | .seq binds (Tail.app f a) =>
     if f == x then
-      let pl := "_pl"
+      let pl := "ρ"
       .seq (binds.push (.let1 pl (.mkPair a envName))) (.app fid pl)
     else
       .seq binds (.app f a)
@@ -245,7 +245,7 @@ partial def ccCodeBodyM
         gCodes fid paramPayload origParam
         capVars codeSet selfVar? envVar? body
     let newBody :=
-      mkEnv "𝓔" capVars' fun env =>
+      mkEnv "𝐄" capVars' fun env =>
         mkClos fid' env fun clos =>
           .letVal x (.var clos) body'
     return (newBody, liftedFuns.push funDef ++ fs)
@@ -285,8 +285,8 @@ partial def ccLiftedFunBodyM
   (selfVar? : Option Name := none)
   (body : LExpr)
   : M σ (LExpr × Array LFun) := do
-  let aN    := "_arg"
-  let envN  := "𝐄"
+  let aN    := "α"
+  let envN  := "Γ"
   let (inner, fs) <-
     ccCodeBodyM
       gCodes fid payload origParam
@@ -335,7 +335,7 @@ partial def rewriteTailOutsideM
 
 /--
 Closure-convert an expression (non-code context):
-- Value.lam is lifted to a code pointer and replaced with a closure 𝓒(code, env).
+- Value.lam is lifted to a code pointer and replaced with a closure �(code, env).
 - letRec groups become code pointers with payload; continuation binds closures from a shared env.
 - Calls are rewritten to closure-call form in both letRhs and tails.
 Returns converted expr + any lifted functions to add to the module.
@@ -355,7 +355,7 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     let funDef : LFun := ⟨fid, payload, liftedBody⟩
     let (body', newFuns) <- ccExpr gCodes body
     let newBody :=
-      mkEnv "𝓔" capVars fun env =>
+      mkEnv "𝐄" capVars fun env =>
         mkClos fid env fun clos =>
           .letVal x (.var clos) (fuseImmediateTailCall env x fid body')
     return (newBody, fsL.push funDef ++ newFuns)
@@ -366,8 +366,8 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
 
   | .letRhs x (.call f a) body => do
     let code <- fresh "_code"
-    let env  <- fresh "𝐄"
-    let pl   <- fresh "_pl"
+    let env  <- fresh "Γ"
+    let pl   <- fresh "ρ"
     let (b', fs) <- ccExpr gCodes body
     let e' :=
       .letRhs code (.proj f 0) $
@@ -384,13 +384,13 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     -- Possibly mutual group
     let ids := funs.map (·.1)
     let fvBodies :=
-      funs.foldl (init := (∅ : Std.HashSet Name)) fun acc (_, p, b) =>
+      funs.foldl (init := (∅ : Std.HashSet Name)) fun acc ⟨_, p, b⟩ =>
         acc ∪ (fvExpr b).erase p
     let capsSet := ids.foldl (·.erase) fvBodies
     let capVars := sortedNames capsSet
     let codeSet : CodeSet := ids.foldl (·.insert) ∅
     -- Convert each function to payload convention
-    let funs' : Array LFun <- funs.flatMapM fun (fid, p, b) => do
+    let funs' : Array LFun <- funs.flatMapM fun ⟨fid, p, b⟩ => do
         let payload := "payload"
         let (body', fs) <- ccLiftedFunBodyM gCodes fid payload p capVars codeSet none b
         pure $ #[⟨fid, payload, body'⟩] ++ fs
@@ -403,7 +403,7 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
           .letVal fid (.var clos) (bindClosures (i + 1) envName k)
       else k
     let groupIntro :=
-      mkEnv "𝓔" capVars fun envName => bindClosures 0 envName body'
+      mkEnv "𝐄" capVars fun envName => bindClosures 0 envName body'
     return (groupIntro, funs' ++ tailFuns)
 end
 end CC
