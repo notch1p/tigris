@@ -34,9 +34,17 @@ def parse (s : String) (PE : PEnv) : Except String Expr :=
   | .error _ e => throw (toString e)
 
 def parseModule' (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
-  let liftEIO act := IO.toEIO IO.Error.toString act
   match runST fun _ => module <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
+  | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
+
+def typeExpr (s : String) (PE : PEnv) (E : Env) : EIO String TExpr :=
+  match runST fun _ => parseExpr <* optional END <* spaces <* endOfInput |>.run s |>.run (PE, "") with
+  | (.ok _ t, (_, l))   => do
+    liftEIO (IO.print l)
+    let (te, _, l) <- MLType.runInferT1 t E |>.mapError toString |> EIO.ofExcept
+    liftEIO (IO.print l)
+    return te
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
 def lpOrMod : TParser σ TopDecl := withErrorMessage "Decl" $
@@ -52,7 +60,6 @@ def toplevel : TParser σ $ Array TopDecl := withErrorMessage "Toplevel" $
   (foldl (· ++ ·) · hd) =<< hd
 
 def parseModuleIR (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
-  let liftEIO act := IO.toEIO IO.Error.toString act
   match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)

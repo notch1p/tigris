@@ -39,9 +39,6 @@ where
 instance : ToString MLType := ⟨MLType.toStr⟩
 instance : Std.ToFormat MLType := ⟨MLType.renderFmt⟩
 
-inductive Scheme where
-  | Forall : List TV -> MLType -> Scheme deriving Repr, BEq, Ord
-
 open Std.Format Std.ToFormat in @[always_inline, inline]
 def Scheme.renderFmt : Scheme -> Std.Format
   | Forall _ t' => format t'
@@ -107,3 +104,39 @@ abbrev Logger := String -- This is NOT how one should do logging.
                         -- Lake has something similar, but that's in the build system.
 abbrev Infer σ := StateRefT (Nat × Logger) $ EST MLType.TypingError σ
 abbrev Subst := Std.TreeMap TV MLType
+
+
+class Rewritable (α : Type) where
+  apply : Subst -> α -> α
+  fv    : α -> Std.HashSet TV
+
+namespace Rewritable open MLType
+
+def diff [BEq α] [Hashable α] (s₁ s₂ : Std.HashSet α) :=
+  s₂.fold (fun a s => if s ∈ s₁ then s₁.erase s else a) s₁
+instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨diff⟩
+
+def applyT : Subst -> MLType -> MLType
+  | _, s@(TCon _) => s
+  | s, t@(TVar a) => s.getD a t
+  | s, t₁ ×'' t₂ => applyT s t₁ ×'' applyT s t₂
+  | s, t₁ ->' t₂ => applyT s t₁ ->' applyT s t₂
+  | s, TApp h as => TApp h (as.map (applyT s))
+
+def fvT : MLType -> Std.HashSet TV
+  | TCon _ => ∅ | TVar a => {a}
+  | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
+  | TApp _ as => as.foldl (init := ∅) fun a t => a ∪ fvT t
+
+instance : Rewritable MLType := ⟨applyT, fvT⟩
+instance : Rewritable Scheme where
+  apply s | .Forall as t =>
+            .Forall as $ apply (s.eraseMany as) t
+  fv      | .Forall as t => fv t \ Std.HashSet.ofList as
+instance [Rewritable α] : Rewritable (List α) where
+  apply := List.map ∘ apply
+  fv    := List.foldr ((· ∪ ·) ∘ fv) ∅
+instance : Rewritable Env where
+  apply s e := {e with E := e.E.map fun _ v => apply s v}
+  fv      e := fv e.E.values
+end Rewritable

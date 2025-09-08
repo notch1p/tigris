@@ -1,9 +1,12 @@
-import Tigris.typing.types
+import Tigris.typing.tsyntax
 import Tigris.parsing.types
 import Tigris.typing.exhaust
 import PP.dependentPP
 
-namespace MLType open Expr TV TypingError Pattern
+@[inline] def compRM (f : α -> β -> γ) (g : γ -> δ) : α -> β -> δ
+  | x, y => g $ f x y
+
+namespace MLType open Expr TV TypingError Pattern Rewritable
 
 def curry : MLType -> MLType
   | t₁ ->' t₂ =>
@@ -35,42 +38,6 @@ abbrev defaultE : Env := ⟨.ofList $
     then p :: (sym.drop 2, .Forall c $ curry ty) :: a
     else p :: a
     , ∅⟩
-
-class Rewritable (α : Type) where
-  apply : Subst -> α -> α
-  fv    : α -> Std.HashSet TV
-open Rewritable
-
-namespace Rewritables
-
-def diff [BEq α] [Hashable α] (s₁ s₂ : Std.HashSet α) :=
-  s₂.fold (fun a s => if s ∈ s₁ then s₁.erase s else a) s₁
-instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨diff⟩
-
-def applyT : Subst -> MLType -> MLType
-  | _, s@(TCon _) => s
-  | s, t@(TVar a) => s.getD a t
-  | s, t₁ ×'' t₂ => applyT s t₁ ×'' applyT s t₂
-  | s, t₁ ->' t₂ => applyT s t₁ ->' applyT s t₂
-  | s, TApp h as => TApp h (as.map (applyT s))
-
-def fvT : MLType -> Std.HashSet TV
-  | TCon _ => ∅ | TVar a => {a}
-  | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
-  | TApp _ as => as.foldl (init := ∅) fun a t => a ∪ fvT t
-
-instance : Rewritable MLType := ⟨applyT, fvT⟩
-instance : Rewritable Scheme where
-  apply s | .Forall as t =>
-            .Forall as $ apply (s.eraseMany as) t
-  fv      | .Forall as t => fv t \ Std.HashSet.ofList as
-instance [Rewritable α] : Rewritable (List α) where
-  apply := List.map ∘ apply
-  fv    := List.foldr ((· ∪ ·) ∘ fv) ∅
-instance : Rewritable Env where
-  apply s e := {e with E := e.E.map fun _ v => apply s v}
-  fv      e := fv e.E.values
-end Rewritables
 
 def gensym (n : Nat) : String :=
   let (q, r) := (n / 25, n % 25)
@@ -201,37 +168,275 @@ def metavariable? : MLType -> Bool
   | TVar (.mkTV s) => if s.startsWith "?" then true else false
   | _ => false
 
+def isRecRhs : Expr -> Bool
+  | .Fix _ | .Fixcomb _ => true
+  | _ => false
+
+private def splitLetGroupRec
+  (ae : Array (Symbol × Expr))
+  : Array (Symbol × Expr) × Array (Symbol × Expr) :=
+  ae.foldl (init := (#[], #[])) fun (recs, nonrecs) b =>
+    if isRecRhs b.2 then (recs.push b, nonrecs) else (recs, nonrecs.push b)
+
+/-
+  TYPED INFERENCE (Expr -> TExpr)
+-/
+mutual
+partial def inferTLetGroup
+  (E : Env)
+  (ae : Array (Symbol × Expr))
+  (body : Expr)
+  : Infer σ (Array (Symbol × Scheme × TExpr) × Subst × MLType × TExpr) := do
+  let (recBinds, nonrecBinds) := ae.partition $ isRecRhs ∘ Prod.snd
+
+  let (Eassume, tvs) <-
+    recBinds.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
+      let tv <- fresh
+      let (n, _) := recBinds[i]
+      return ({acc with E := acc.E.insert n (.Forall [] tv)}, tvs.push tv)
+
+  let mut sRec : Subst := ∅
+  let mut tvsRec' := tvs
+  let mut typedRec : Array (Symbol × TExpr) := #[]
+  for (x, rhs) in recBinds, tv in tvs do
+    let Ei := apply sRec Eassume
+    let (si, ti, tri) <- inferT Ei rhs
+    let tvi := apply si tv
+    let su <- unify tvi ti
+    let si' := su ∪' si
+    sRec := si' ∪' sRec
+    tvsRec' := tvsRec'.map (apply si')
+    typedRec := typedRec.push (x, apply sRec tri)
+
+  let EgenRec := apply sRec E
+  let mut bindsRec : Array (Symbol × Scheme × TExpr) := #[]
+  for (x, tr) in typedRec, tv in tvsRec' do
+    let sc := generalize EgenRec tv |> normalize
+    bindsRec := bindsRec.push (x, sc, tr)
+
+  let {E := Emap, tyDecl} := EgenRec
+  let EafterRec : Env :=
+    ⟨bindsRec.foldl (init := Emap) (fun m (x, sc, _) => m.insert x sc), tyDecl⟩
+
+  let mut sNon : Subst := ∅
+  let mut EN : Env := EafterRec
+  let mut bindsNon : Array (Symbol × Scheme × TExpr) := #[]
+  for (x, rhs) in nonrecBinds do
+    let (si, ti, tri) <- inferT (apply sNon EN) rhs
+    sNon := si ∪' sNon
+    let EN' := apply sNon EN
+    let ty := apply sNon ti
+    let te := apply sNon tri
+    let sc := generalize EN' ty |> normalize
+    bindsNon := bindsNon.push (x, sc, te)
+    EN := { EN' with E := EN'.E.insert x sc }
+
+  let (sb, tb, tBody) <- inferT EN body
+  let S := sb ∪' sNon ∪' sRec
+
+--  let lookupBind (name : Symbol) : (Symbol × Scheme × TExpr) :=
+--    match bindsRec.findSome? (fun tup@(n, _, _) => if n == name then some tup else none) with
+--    | some (n, sc, te) => (n, sc, apply S te)
+--    | none   => Option.get! $
+--      bindsNon.findSome? fun (n, sc, te) => if n == name then some (n, sc, apply S te) else none
+
+--  let bindsOrdered := ae.map (fun (n, _) => lookupBind n)
+
+  let tBody := apply S tBody
+  return ( bindsRec ++ bindsNon |>.map fun (n, sc, te) => (n, sc, apply S te)
+         , S
+         , apply S tb
+         , tBody)
+
+partial def inferTExprs (E : Env) (es : Array Expr) : Infer σ (Subst × Array MLType × Array TExpr) :=
+  es.foldlM (init := (∅, #[], #[])) fun (s, ts, tes) e => do
+    let (si, ti, te) <- inferT (apply s E) e
+    let s := si ∪' s
+    pure (s, ts.push (apply s ti), tes.push (apply s te))
+
+partial def inferT (E : Env) : Expr -> Infer σ (Subst × MLType × TExpr)
+  | Var x => do
+    let (_, t) <- x ∈ₑ E
+    pure (∅, t, .Var x t)
+
+  | Ascribe e ty => do
+    let (s₁, t₁, te) <- inferT E e
+    let s₂ <- unify (apply s₁ t₁) ty
+    let ty' := apply s₂ ty
+    pure (s₂ ∪' s₁, ty', .Ascribe (apply (s₂ ∪' s₁) te) ty')
+
+  | Fun x e => do
+    let tv <- fresh
+    let {E, tyDecl} := E
+    let (s₁, t₁, te) <- inferT ⟨E.insert x (.Forall [] tv), tyDecl⟩ e
+    let argTy := apply s₁ tv
+    let funTy := argTy ->' t₁
+    pure (s₁, funTy, .Fun x argTy te funTy)
+
+  | Fixcomb e => do
+    let tv  <- fresh
+    let (s₁, t₁, te) <- inferT E e
+    let s₂ <- unify t₁ (tv ->' tv)
+    let S := s₂ ∪' s₁
+    pure (S, apply S tv, .Fixcomb (apply S te) (apply S tv))
+
+  | Fix (Fun fname fbody) => do
+    let tv <- fresh
+    let {E, tyDecl} := E
+    let (s₁, t₁, tBody) <- inferT ⟨E.insert fname (.Forall [] tv), tyDecl⟩ fbody
+    let s₂ <- unify (apply s₁ tv) t₁
+    let S := s₂ ∪' s₁
+    let argTy := apply S tv
+    let resTy := apply S t₁
+    let funTy := argTy ->' resTy
+    let tFun := .Fun fname argTy (apply S tBody) funTy
+    pure (S, argTy, .Fix tFun argTy)
+
+  | Fix fe => do
+    let (s₁, t₁, te) <- inferT E fe
+    pure (s₁, t₁, .Fix te t₁)
+
+  | App e₁ e₂ => do
+    let tv <- fresh
+    let (s₁, t₁, tE₁) <- inferT E e₁
+    let (s₂, t₂, tE₂) <- inferT (apply s₁ E) e₂
+    let s₃ <- unify (apply s₂ t₁) (t₂ ->' tv)
+    let resTy := apply s₃ tv
+    let S := s₃ ∪' s₂ ∪' s₁
+    pure (S, resTy, .App (apply S tE₁) (apply S tE₂) resTy)
+
+  | Let ae e₂ => do
+    let (binds, s, tb, tBody) <- inferTLetGroup E ae e₂
+    pure (s, tb, .Let binds tBody tb)
+
+  | Cond c t e => do
+    let (s₁, tc, tC) <- inferT E c
+    let sBool <- unify (apply s₁ tc) tBool
+    let S1 := sBool ∪' s₁
+    let (s₂, tt, tT) <- inferT (apply S1 E) t
+    let (s₃, te, tE) <- inferT (apply (s₂ ∪' S1) E) e
+    let sRes <- unify (apply s₃ tt) te
+    let S := sRes ∪' s₃ ∪' s₂ ∪' S1
+    let rty := apply S tt
+    pure (S, rty, .Cond (apply S tC) (apply S tT) (apply S tE) rty)
+
+  | Prod' e₁ e₂ => do
+    let (s₁, t₁, tE₁) <- inferT E e₁
+    let (s₂, t₂, tE₂) <- inferT (apply s₁ E) e₂
+    let S := s₂ ∪' s₁
+    let ty := (apply s₂ t₁) ×'' t₂
+    pure (S, ty, .Prod' (apply S tE₁) (apply S tE₂) ty)
+
+  | Match es discr => do
+    let (s₀, te, tScrs) <- inferTExprs E es
+    let (s, res?, exp, tRows) <-
+      discr.foldlM (init := (s₀, none, te, #[])) fun (s, res?, _, tRows) (ps, body) => do
+        let Eb := apply s E
+        let expected := te.map (apply s)
+        let (spat, Eext) <- checkPat Eb expected ps
+        let (sbody, tbody, tBody) <- inferT (apply spat Eext) body
+        let Sb := sbody ∪' spat ∪' s
+        let tbody := apply Sb tbody
+        let tBody := apply Sb tBody
+        if let some rt := res? then
+          let Sunify <- unify (apply Sb rt) tbody
+          let s' := Sunify ∪' Sb
+          let rt' := apply s' rt
+          pure (s', some rt', expected, tRows.push (ps, tBody))
+        else
+          pure (Sb, some tbody, expected, tRows.push (ps, tBody))
+
+    -- Exhaustiveness and redundancy info
+    let exp' := exp.map (apply s)
+    let (ex, mat, tyCols) := Exhaustive.exhaustWitness E exp' discr
+    let red :=
+      if let some _ := ex then #[] else
+        Exhaustive.redundantRows E tyCols mat
+
+    -- Logging as before
+    let msg :=
+      if let some ex := ex then
+        Logging.warn
+          s!"Partial pattern matching, an unmatched candidate is\
+             \n  {ex.map (·.render)}\n"
+      else
+        if red.isEmpty then "" else
+          letI br := red.foldl (init := "") fun a i =>
+            s!"{a}\n  {i + 1})  {discr[i]!.1.map (·.render)}"
+          Logging.warn s!"Found redundant alternatives at{br}\n"
+    modify fun (n, l) => (n, l ++ msg)
+    let tRows :=
+      if red.isEmpty then tRows else
+        Prod.fst $ tRows.size.fold (init := (#[], red, 0)) fun i _ (acc, red, idx) =>
+          if red.binSearchContains i (fun m n => m < n) idx
+          then (acc, red, idx + 1) else (acc.push tRows[i], red, idx)
+    let retTy := res?.get!
+    let tScrs' := tScrs.map (apply s)
+    pure (s, retTy, .Match tScrs' tRows retTy ex red)
+
+  | CB b => pure (∅, tBool, .CB b tBool)
+  | CI i => pure (∅, tInt,  .CI i tInt)
+  | CS s => pure (∅, tString, .CS s tString)
+  | CUnit => pure (∅, tUnit, .CUnit tUnit)
+end
+
+-- Normal Algorithm W
 mutual
 partial def inferLetGroup
   (E : Env)
   (ae : Array (Symbol × Expr))
   (body : Expr) : Infer σ (Array (Symbol × Scheme) × Subst × MLType) := do
+
+  let (recBinds, nonrecBinds) := ae.partition $ isRecRhs ∘ Prod.snd
   let (Eassume, tvs) <-
-    ae.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
+    recBinds.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
       let tv <- fresh
-      let (n, e) := ae[i]
+      let (n, _) := recBinds[i]
       return ({acc with E := acc.E.insert n (.Forall [] tv)}, tvs.push tv)
 
-  let mut sAll := ∅
-  let mut tvs := tvs
-  for (x, rhs) in ae, tv in tvs do
-    let Ei := apply sAll Eassume
+  let mut sRec : Subst := ∅
+  let mut tvsRec' := tvs
+  for (x, rhs) in recBinds, tv in tvs do
+    let Ei := apply sRec Eassume
     let (si, ti) <- infer Ei rhs
     let tvi := apply si tv
     let su <- unify tvi ti
-    let si := su ∪' si
-    sAll := si ∪' sAll
-    tvs := tvs.map (apply si)
+    let si' := su ∪' si
+    sRec := si' ∪' sRec
+    tvsRec' := tvsRec'.map (apply si')
 
-  let Egen := apply sAll E
-  let mut Efinal := Egen
-  let mut scheme := #[]
-  for (x, _) in ae, tv in tvs do
-    let sch := generalize Egen tv
-    Efinal := {Efinal with E := Efinal.E.insert x sch}
-    scheme := scheme.push (x, sch)
-  let (sb, tb) <- infer Efinal body
-  pure (scheme, sb ∪' sAll, tb)
+  let EgenRec := apply sRec E
+  let mut Ecur := EgenRec
+  let mut schemesRec : Array (Symbol × Scheme) := #[]
+  for (x, _) in recBinds, tv in tvsRec' do
+    let sch := generalize EgenRec tv
+    Ecur := {Ecur with E := Ecur.E.insert x sch}
+    schemesRec := schemesRec.push (x, sch)
+
+  let mut sNon : Subst := ∅
+  let mut schemesNon : Array (Symbol × Scheme) := #[]
+  for (x, rhs) in nonrecBinds do
+    let (si, ti) <- infer (apply sNon Ecur) rhs
+    sNon := si ∪' sNon
+    let E' := apply sNon Ecur
+    let ty := apply sNon ti
+    let sch := generalize E' ty
+    schemesNon := schemesNon.push (x, sch)
+    Ecur := {E' with E := E'.E.insert x sch}
+
+--  let lookupSch (name : Symbol) : (Symbol × Scheme) :=
+--    match
+--      schemesRec.findSome? fun tup@(n, _) => 
+--        if n == name then some tup else none 
+--    with
+--    | some b => b
+--    | none   => Option.get! $
+--      schemesNon.findSome? (fun tup@(n, _) => if n == name then some tup else none)
+
+--  let schemesOrdered := ae.map fun (n, _) => lookupSch n
+
+  let (sb, tb) <- infer Ecur body
+  pure (schemesNon ++ schemesRec, sb ∪' sNon ∪' sRec, tb)
 
 /-- Infer a vector of expressions left-to-right, composing substitutions. -/
 partial def inferExprs (E : Env) (es : Array Expr) : Infer σ (Subst × Array MLType) :=
@@ -351,7 +556,27 @@ def runInfer1 (e : Expr) (E : Env) : Except TypingError $ Scheme × Logger :=
   | .error e => throw e
   | .ok  (res, _, log) => pure (closed res, log)
 
-@[inline] def inferGroup
+def runInferT1 (e : Expr) (E : Env) : Except TypingError (TExpr × Scheme × Logger) :=
+  match runEST fun _ => inferT E e |>.run (0, "") with
+  | .error err => throw err
+  | .ok ((sub, ty, te), _, log) =>
+      let sch := closed (sub, ty)
+      let te := apply sub te
+      pure (te, sch, log)
+
+def inferGroupT
+  (b : Array Binding) (E : Env) (L : Logger)
+  : Except TypingError (TopDeclT × Env × Logger) := do
+  let ((ES, _, _), _, l) <- runEST fun _ => inferTLetGroup E b CUnit |>.run (0, "")
+  let (E, ES) :=
+    let ⟨E, T⟩ := E
+    Prod.map (Env.mk · T) id $
+      ES.foldl (init := (E, #[])) fun (E, ES) (id, s, te) =>
+        let s := normalize s
+        (E.insert id s, ES.push (id, s, te))
+  return (TopDeclT.idBind ES, E, L ++ l)
+
+def inferGroup
   (b : Array Binding) (E : Env) (L : Logger)
   : Except TypingError (Array (Symbol × Scheme) × Env × Logger) := do
   let ((ES, _, _), _, l) <- runEST fun _ => inferLetGroup E b CUnit |>.run (0, "")
@@ -368,7 +593,7 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
     match b with
     | .idBind group => inferGroup group E L <&> Prod.snd
     | .tyBind ty@{ctors, tycon, param} =>
-      return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields) =>
+      return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
         ⟨E.insert cname s, tyDecl.insert tycon ty⟩
     | .patBind (pat, expr) => do
@@ -384,4 +609,29 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
                possible cases such as {ex.map Pattern.render} are ignored\n"
         else ""
       return (E, l₁ ++ l₂ ++ l₃)
+
+def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array TopDeclT × Env × Logger) :=
+  b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
+    match b with
+    | .idBind group =>
+      let (a, E, l) <- inferGroupT group E L
+      return (acc.push a, E, L ++ l)
+    | .tyBind ty@{ctors, tycon, param} =>
+      return (acc.push (.tyBind ty), ·, L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
+        letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
+        ⟨E.insert cname s, tyDecl.insert tycon ty⟩
+    | .patBind (pat, expr) => do
+      let (e,.Forall _ te, l₁) <- runInferT1 expr E
+
+      let ((_, _, E), _, l₂) <- runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")
+      -- toplevel binding can never be redundant
+      let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
+      let l₃ :=
+        if let some ex := ex then
+          Logging.warn
+            s!"Partial pattern matching, \
+               possible cases such as {ex.map Pattern.render} are ignored\n"
+        else ""
+      return (acc.push $ .patBind (pat, e), E, l₁ ++ l₂ ++ l₃)
+
 end MLType

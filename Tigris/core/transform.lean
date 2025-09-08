@@ -3,9 +3,7 @@ import Tigris.core.opt
 import Tigris.core.lift
 import Tigris.interpreter.entrypoint
 import Tigris.oldcore.matchApp
-import Tigris.typing.exhaust
 import PP
-open PrettyPrint.Text (mkBoldBlackWhite)
 @[inline] def Array.replaceAt (xs : Array α) (i : Nat) (elems : Array α) : Array α :=
   xs[0:i] ++ elems ++ xs[i+1:]
 
@@ -21,31 +19,48 @@ def constOf : TConst -> Const × PrimOp
   | .PStr s    => (.str s , .eqStr)
 @[inline] def constOnly := Prod.fst ∘ constOf
 
-def primOfName (s : String) : Option PrimOp :=
-  match s with
-  | "add"   => some .add
-  | "sub"   => some .sub
-  | "mul"   => some .mul
-  | "div"   => some .div
-  | "eq"    => some .eqInt -- `eq` is polymorphic in the interpreter,
-                           -- default to eqInt here for now.
---  | "eqInt" => some .eqInt
---  | "eqBool"=> some .eqBool
---  | "eqStr" => some .eqStr
+def primOfName (s : String) (t₁ t₂ : MLType) : Option PrimOp :=
+  match s, t₁, t₂ with
+  | "add", _, _   => some .add
+  | "sub", _, _   => some .sub
+  | "mul", _, _   => some .mul
+  | "div", _, _   => some .div
+  | "eq" , .TCon "Int", .TCon "Int"
+                  => some .eqInt
+  | "eq" , .TCon "Bool", .TCon "Bool"
+                  => some .eqBool
+  | "eq" , .TCon "String", .TCon "String"
+                  => some .eqStr
+  | _, _, _       => none
+
+def matchBinaryPrim : TExpr -> Option (PrimOp × TExpr × TExpr)
+  | .App (.App (.Var f _) x t₁) y t₂ => (·, x, y) <$> primOfName f t₁ t₂
   | _ => none
 
-def matchBinaryPrim : Expr -> Option (PrimOp × Expr × Expr)
-  | .App (.App (.Var f) x) y => (·, x, y) <$> primOfName f
-  | _ => none
-
-def decomposeLamChain : Expr -> Option (String × Array String × Expr)
-  | .Fun p b =>
-    let rec collect (e : Expr) (acc : Array String) : (Array String × Expr) :=
+def decomposeLamChain : TExpr -> Option (String × Array String × TExpr)
+  | .Fun p _ b _ =>
+    let rec collect (e : TExpr) (acc : Array String) : (Array String × TExpr) :=
       match e with
-      | .Fun q b' => collect b' (acc.push q)
+      | .Fun q _ b' _ => collect b' (acc.push q)
       | other     => (acc, other)
     let (ps, core) := collect b #[]
     some (p, ps, core)
+  | _ => none
+
+def decomposeApp : TExpr -> (TExpr × Array TExpr)
+  | .App f a _ =>
+    let (h, as) := decomposeApp f
+    (h, as.push a)
+  | e => (e, #[])
+
+def matchCtorApp (ctorArity : Std.HashMap String Nat) (e : TExpr)
+  : Option (String × Array TExpr × Nat) :=
+  let (h, args) := decomposeApp e
+  match h with
+  | .Var cname _ =>
+    match ctorArity.get? cname with
+    | some ar => some (cname, args, ar)
+    | none    => none
   | _ => none
 
 def realizeSel (roots : Array Name) : Sel -> (Name -> M σ LExpr) -> M σ LExpr
@@ -54,50 +69,6 @@ def realizeSel (roots : Array Name) : Sel -> (Name -> M σ LExpr) -> M σ LExpr
     let p <- fresh "p"
     let cont <- k p
     return .letRhs p (.proj v i) cont
-
-abbrev TyLookup := String -> Option TyDecl
-
-@[inline] def headFin (τ : MLType) : Option Exhaustive.FinDom :=
-  Exhaustive.FinDom.headFinDom τ
-
-@[inline] def allConsts (d : Exhaustive.FinDom) : List TConst :=
-  Exhaustive.FinDom.constsOf d
-
-def constCasesExhaustive (τ? : Option MLType) (present : Std.HashSet TConst) : Bool :=
-  match τ? with
-  | some τ =>
-    match headFin τ with
-    | some d =>
-      allConsts d |>.all (fun k => present.contains k)
-    | none => false
-  | none => false
-
-def ctorCasesExhaustive
-  (lookup : TyLookup) (τ? : Option MLType) (present : Std.HashSet (String × Nat)) : Bool :=
-  match τ? with
-  | some τ =>
-    match Exhaustive.headTyconArgs τ with
-    | some (tycon, _) =>
-      match lookup tycon with
-      | some td => Exhaustive.completeData td present
-      | none    => false
-    | none => false
-  | none => false
-
-def refineTypesForCtor
-  (lookup : TyLookup) (τ? : Option MLType) (cname : String) : Option (Array MLType) :=
-  match τ? with
-  | some τ =>
-    match Exhaustive.headTyconArgs τ with
-    | some (tycon, tyArgs) =>
-      match lookup tycon with
-      | some td =>
-        match Exhaustive.ctorFieldTypes td cname tyArgs with
-        | some fts => some fts.toArray
-        | none     => none
-      | none => none
-    | none => none
-  | none => none
 
 def collectTopPatBinds (p : Pattern) (s : Sel) : Array (String × Sel) := go p s where
   go
@@ -110,14 +81,14 @@ def collectTopPatBinds (p : Pattern) (s : Sel) : Array (String × Sel) := go p s
       acc ++ go as[i] (.field sel i)
 
 def splitLetGroup
-  (xs : Array (Name × Expr))
+  (xs : Array (Name × Scheme × TExpr))
   -- recs                                      nonrecs
-  : (Array (Name × Name × Array Name × Expr) × Array (Name × Expr)) :=
+  : (Array (Name × Name × Array Name × TExpr) × Array (Name × TExpr)) :=
   xs.foldl
     (init := (#[], #[]))
-    fun (recs, nonrecs) (x, e) =>
+    fun (recs, nonrecs) (x, _, e) =>
       match e with
-      | .Fix lam | .Fixcomb lam =>
+      | .Fix lam _ | .Fixcomb lam _ =>
         match Helper.decomposeLamChain lam with
         | some (selfN, params, core) => (recs.push (x, selfN, params, core), nonrecs)
         | none => (recs, nonrecs.push (x, e))
@@ -129,112 +100,170 @@ open Function (uncurry) in
 open Helper in
 mutual
 partial def lowerNonRecBinds
-  (defs : Subarray (String × Expr)) (ρ : Env) (k : Env -> M σ LExpr) : M σ LExpr := do
+  (defs : Subarray (String × TExpr)) (ρ : Env) (ctors : Std.HashMap String Nat)
+  (k : Env -> M σ LExpr) : M σ LExpr := do
   if h : defs.size = 0 then
     k ρ
   else
     let (x, e) := defs[0]
-    lowerE e ρ fun v =>
-      (.letVal x (.var v) ·) <$> lowerNonRecBinds defs[1:] (ρ.insert x x) k
+    lowerE e ρ ctors fun v =>
+      (.letVal x (.var v) ·) <$> lowerNonRecBinds defs[1:] (ρ.insert x x) ctors k
 
-partial def lowerE (e : Expr) (ρ : Env) (k : Name -> M σ LExpr) : M σ LExpr := do
+partial def lowerCtorApp
+  (cname : String) (args : Array TExpr) (arity : Nat)
+  (ρ : Env) (ctors : Std.HashMap String Nat)
+  (k : Name -> M σ LExpr) : M σ LExpr := do
+  if args.size = arity then
+    lowerMany args ρ ctors fun names => do
+      let r <- fresh "con"
+      let cont <- k r
+      pure (.letRhs r (.mkConstr cname names) cont)
+  else if args.size < arity then
+    lowerMany args ρ ctors fun supplied => do
+      let missing := arity - args.size
+      let rec buildLam (i : Nat) (captured : Array Name) : M σ Value := do
+        let p <- fresh "arg"
+        if i + 1 < missing then
+          let inner <- buildLam (i+1) (captured.push p)
+          let v <- fresh "lam"
+          let body := .letVal v inner (.seq #[] (.ret v))
+          pure (.lam p body)
+        else
+          let res <- fresh "r"
+          let fields := supplied ++ captured.push p
+          let body := .letRhs res (.mkConstr cname fields) (.seq #[] (.ret res))
+          pure (.lam p body)
+      let lamV <- buildLam 0 #[]
+      let out <- fresh "clos"
+      let cont <- k out
+      pure (.letVal out lamV cont)
+  else -- should get blocked by typechecker, unreachable
+    lowerE
+      (args.foldl (init := TExpr.Var cname (MLType.TVar ⟨"?"⟩))
+      (fun f a => TExpr.App f a (MLType.TVar ⟨"?"⟩)))
+      ρ ctors k
+
+partial def lowerE
+  (e : TExpr) (ρ : Env)
+  (ctors : Std.HashMap String Nat) (k : Name -> M σ LExpr) : M σ LExpr := do
+  -- binary prim sugar first
   match matchBinaryPrim e with
   | some (op, x, y) =>
-    lowerE x ρ fun vx =>
-      lowerE y ρ fun vy => do
+    lowerE x ρ ctors fun vx =>
+      lowerE y ρ ctors fun vy => do
         let r <- fresh "p"
         let cont <- k r
         return .letRhs r (.prim op #[vx, vy]) cont
   | none =>
-    match e with
-    | .Ascribe e _ => lowerE e ρ k
-
-    | .Var x =>
-      k (ρ.getD x x)
-    | .CI i =>
-      let v <- fresh "c"
-      let body <- k v
-      return .letVal v (.cst (.int i)) body
-    | .CB b =>
-      let v <- fresh "c"
-      let body <- k v
-      return .letVal v (.cst (.bool b)) body
-    | .CS s =>
-      let v <- fresh "c"
-      let body <- k v
-      return .letVal v (.cst (.str s)) body
-    | .CUnit =>
-      let v <- fresh "c"
-      let body <- k v
-      return .letVal v (.cst .unit) body
-    | .Prod' l r =>
-      lowerE l ρ fun lv =>
-        lowerE r ρ fun rv => do
-          let p <- fresh "p"
-          let body <- k p
-          return .letRhs p (.mkPair lv rv) body
-    | .Fun a body =>
-      let lb <- lower body (ρ.insert a a)
-      let f <- fresh "lam"
-      let kbody <- k f
-      return .letVal f (.lam a lb) kbody
-
-    | .App f a =>
-      lowerE f ρ fun vf =>
-        lowerE a ρ fun va => do
-          let r <- fresh "call"
-          let body <- k r
-          return .letRhs r (.call vf va) body
-
-    | .Cond c t e' =>
-      lowerE c ρ fun cv => do
-        .seq #[] <$>
-          ((.cond cv · ·) <$> lower t ρ <*> lower e' ρ)
-
-    | .Let bs body =>
-      let (recFuns, nonrecs) := splitLetGroup bs
---      let nonrecs := nonrecs.filter (fun (x, _) => !x.startsWith "(")
---      let recFuns := recFuns.filter (fun (fid, _, _, _) => !fid.startsWith "(")
-      lowerNonRecBinds nonrecs.toSubarray ρ fun ρ' => do
-        if recFuns.isEmpty then
-          lower body ρ'
-        else
-          -- build all recursive functions in one letRec
-          let funs <- recFuns.mapM fun (fid, selfN, params, core) =>
-            lowerRecFun fid selfN params core ρ'
-          let ρ'' := recFuns.foldl (init := ρ') fun acc (fid, _, _, _) => acc.insert fid fid
-          let body' <- lower body ρ''
-          return .letRec funs body'
-
-    | .Fix lam | .Fixcomb lam =>
-      match decomposeLamChain lam with
-      | some (selfN, params, core) => do
-        let fname <- fresh "f"
-        let funIR <- lowerRecFun fname selfN params core ρ
-        let r <- fresh "r"
+    -- constructor-headed application?
+    match matchCtorApp ctors e with
+    | some (cname, args, ar) =>
+      if ar == 0 && args.isEmpty then
+        -- nullary ctor as value
+        let r <- fresh "con"
         let cont <- k r
-        return .letRec #[⟨fname, funIR.param, funIR.body⟩]
-               (.letVal r (.var fname) cont)
-      | none => lowerE lam ρ k
+        pure (.letRhs r (.mkConstr cname #[]) cont)
+      else
+        lowerCtorApp cname args ar ρ ctors k
+    | none =>
+      match e with
+      | .Ascribe e _ => lowerE e ρ ctors k
 
-    | .Match scrs rows =>
-      lowerMany scrs ρ fun svars => do
-        lowerMatchDT svars rows ρ k
+      | .Var x _ =>
+        -- treat nullary ctor mentioned as a variable as value
+        match ctors.get? x with
+        | some 0 =>
+          let r <- fresh "con"
+          let cont <- k r
+          pure (.letRhs r (.mkConstr x #[]) cont)
+        | _ => k (ρ.getD x x)
 
-@[inline] partial def lower (e : Expr) (ρ : Env := ∅) : M σ LExpr :=
-  lowerE e ρ $ pure ∘ .seq #[] ∘ .ret
+      | .CI i _ =>
+        let v <- fresh "c"
+        let body <- k v
+        return .letVal v (.cst (.int i)) body
+      | .CB b _ =>
+        let v <- fresh "c"
+        let body <- k v
+        return .letVal v (.cst (.bool b)) body
+      | .CS s _ =>
+        let v <- fresh "c"
+        let body <- k v
+        return .letVal v (.cst (.str s)) body
+      | .CUnit _ =>
+        let v <- fresh "c"
+        let body <- k v
+        return .letVal v (.cst .unit) body
+
+      | .Prod' l r _ =>
+        lowerE l ρ ctors fun lv =>
+          lowerE r ρ ctors fun rv => do
+            let p <- fresh "p"
+            let body <- k p
+            return .letRhs p (.mkPair lv rv) body
+
+      | .Fun a _ body _ =>
+        let lb <- lower body (ρ.insert a a) ctors
+        let f <- fresh "lam"
+        let kbody <- k f
+        return .letVal f (.lam a lb) kbody
+
+      | .App f a _ =>
+        lowerE f ρ ctors fun vf =>
+          lowerE a ρ ctors fun va => do
+            let r <- fresh "call"
+            let body <- k r
+            return .letRhs r (.call vf va) body
+
+      | .Cond c t e' _ =>
+        lowerE c ρ ctors fun cv => do
+          .seq #[] <$>
+            ((.cond cv · ·) <$> lower t ρ ctors <*> lower e' ρ ctors)
+
+      | .Let bs body _ =>
+        let (recFuns, nonrecs) := splitLetGroup bs
+        lowerNonRecBinds nonrecs.toSubarray ρ ctors fun ρ' => do
+          if recFuns.isEmpty then
+            lower body ρ' ctors
+          else
+            -- build all recursive functions in one letRec
+            let funs <- recFuns.mapM fun (fid, selfN, params, core) =>
+              lowerRecFun fid selfN params core ρ' ctors
+            let ρ'' := recFuns.foldl (init := ρ') fun acc (fid, _, _, _) => acc.insert fid fid
+            let body' <- lower body ρ'' ctors
+            return .letRec funs body'
+
+      | .Fix lam _ | .Fixcomb lam _ =>
+        match decomposeLamChain lam with
+        | some (selfN, params, core) => do
+          let fname <- fresh "f"
+          let funIR <- lowerRecFun fname selfN params core ρ ctors
+          let r <- fresh "r"
+          let cont <- k r
+          return .letRec #[⟨fname, funIR.param, funIR.body⟩]
+                 (.letVal r (.var fname) cont)
+        | none => lowerE lam ρ ctors k
+
+      | .Match scrs rows _ ex _ =>
+        lowerMany scrs ρ ctors fun svars =>
+          lowerMatchDT svars rows ex.isNone ρ ctors k
+
+@[inline] partial def lower (e : TExpr) (ρ : Env := ∅) (ctors : Std.HashMap String Nat := ∅) : M σ LExpr :=
+  lowerE e ρ ctors $ pure ∘ .seq #[] ∘ .ret
 
 partial def lowerMany
-  (es : Array Expr)
+  (es : Array TExpr)
   (ρ : Env)
+  (ctors : Std.HashMap String Nat)
   (k : Array Name -> M σ LExpr) : M σ LExpr := go 0 #[] where
   go i acc : M σ LExpr :=
     if h : i < es.size then
-      lowerE es[i] ρ $ go i.succ ∘ acc.push
+      lowerE es[i] ρ ctors $ go i.succ ∘ acc.push
     else k acc
 
 partial def lowerRecFun
-  (fid : Name) (selfN : String) (params : Array String) (core : Expr) (ρ : Env)
+  (fid : Name) (selfN : String) (params : Array String) (core : TExpr) (ρ : Env)
+  (ctors : Std.HashMap String Nat)
   : M σ LFun := do
   let ρ₀ := ρ.insert selfN fid
   let (p₀, rest) <- show M σ (Name × Subarray Name) from
@@ -248,7 +277,7 @@ partial def lowerRecFun
       let inner <- build i.succ (ρᵢ.insert p p)
       let v <- fresh "lam"
       return .letVal v (.lam p inner) (.seq #[] (.ret v))
-    else lower core ρᵢ
+    else lower core ρᵢ ctors
 
   let ρ₁ := ρ₀.insert p₀ p₀
   let body <- build 0 ρ₁
@@ -264,52 +293,58 @@ partial def bindPatBinds
     let (x, sel) := bs[0]!
     realizeSel roots sel fun v => do
       (.letVal x (.var v) ·) <$> bindPatBinds roots bs[1:] (ρ.insert x x) k
+
 partial def lowerDT
   (cols : Array Sel)
   (roots : Array Name)
   (dt : DTree)
   (ρ : Env)
+  (ctors : Std.HashMap String Nat)
+  (exhaustive : Bool)
   (k : Name -> M σ LExpr)
-  (onFail : LExpr)
-  : M σ LExpr := do
+  (onFail : LExpr) : M σ LExpr := do
   match dt with
   | .fail => return onFail
   | .leaf row =>
-    bindPatBinds roots row.binds ρ (lowerE row.rhs · k)
+    bindPatBinds roots row.binds ρ (lowerE row.rhs · ctors k)
   | .splitProd j next =>
-    letI s := cols[j]!
-    letI cols' := cols.replaceAt j #[.field s 0, .field s 1]
-    lowerDT cols' roots next ρ k onFail
+    let s := cols[j]!
+    let cols' := cols.replaceAt j #[.field s 0, .field s 1]
+    lowerDT cols' roots next ρ ctors exhaustive k onFail
   | .testConst j cases d? =>
     realizeSel roots cols[j]! fun sv => do
       let caseIRs <- cases.mapM (fun (tc, sub) => do
-        let br <- lowerDT (cols.eraseIdx! j) roots sub ρ k onFail
+        let br <- lowerDT (cols.eraseIdx! j) roots sub ρ ctors exhaustive k onFail
         pure (constOnly tc, br))
       let defIR? <- match d? with
-                    | some d => some <$> lowerDT (cols.eraseIdx! j) roots d ρ k onFail
-                    | none   => pure (some onFail)
-      return .seq #[] (.switchConst sv caseIRs defIR?)
+                    | some d => some <$> lowerDT (cols.eraseIdx! j) roots d ρ ctors exhaustive k onFail
+                    | none   => pure (if exhaustive then none else some onFail)
+      pure (.seq #[] (.switchConst sv caseIRs defIR?))
   | .testCtor j cases d? =>
     realizeSel roots cols[j]! fun sv => do
       let caseIRs <- cases.mapM fun (cname, ar, sub) => do
         let cols' := cols.replaceAt j $ .ofFn $ Sel.field cols[j]! ∘ @Fin.toNat ar
-        let br <- lowerDT cols' roots sub ρ k onFail
+        let br <- lowerDT cols' roots sub ρ ctors exhaustive k onFail
         pure (cname, ar, br)
       let defIR? <- match d? with
-                    | some d => some <$> lowerDT (cols.eraseIdx! j) roots d ρ k onFail
-                    | none   => pure (some onFail)
-      return .seq #[] (.switchCtor sv caseIRs defIR?)
+                    | some d => some <$> lowerDT (cols.eraseIdx! j) roots d ρ ctors exhaustive k onFail
+                    | none   => pure (if exhaustive then none else some onFail)
+      pure (.seq #[] (.switchCtor sv caseIRs defIR?))
 
 partial def lowerMatchDT
-  (scrs : Array Name) (rows : Array (Array Pattern × Expr))
-  (ρ : Env) (k : Name -> M σ LExpr) : M σ LExpr := do
+  (scrs : Array Name)
+  (rows : Array (Array Pattern × TExpr))
+  (exhaustive : Bool)
+  (ρ : Env)
+  (ctors : Std.HashMap String Nat)
+  (k : Name -> M σ LExpr) : M σ LExpr := do
   let u <- fresh "u"
   let kont <- k u
   let fallback : LExpr := .letVal u (.cst .unit) kont
   let cols := Array.ofFn (Sel.base ∘ @Fin.toNat scrs.size)
   let rstates := rows.map fun (pats, rhs) => {pats, rhs}
   let dt := buildTree cols rstates
-  lowerDT cols scrs dt ρ (fun x => pure (.seq #[] (.ret x))) fallback
+  lowerDT cols scrs dt ρ ctors exhaustive (fun x => pure (.seq #[] (.ret x))) fallback
 
 end
 open Helper in
@@ -331,8 +366,7 @@ partial def lowerTopPatBind
       let (x, sel) := binds[i]
       realizeSel roots sel fun v =>
         .letVal x (.var v) <$> bindAll (i+1) (ρ'.insert x x) k
-    else
-      k ρ'
+    else k ρ'
 
   let rec go (work : List (Sel × Pattern)) : M σ LExpr := do
     match work with
@@ -365,35 +399,33 @@ partial def lowerTopPatBind
 
   go [(Sel.base 0, pat)]
 
-partial def lowerModule (decls : Array TopDecl) : M σ (LModule × LModule) := do
-  -- not used yet.
-  let tyEnvRef : ST.Ref σ (Std.HashMap String TyDecl) <- ST.mkRef ∅
-
-  let rec build (i : Nat) (ρ : Env) (last? : Option Name) : M σ LExpr := do
+partial def lowerModule (decls : Array TopDeclT) : M σ (LModule × LModule) := do
+  let rec build (i : Nat) (ρ : Env) (last? : Option Name) (ctors : Std.HashMap String Nat) : M σ LExpr := do
     if h : i < decls.size then
       match decls[i] with
       | .tyBind td =>
-        tyEnvRef.modify fun m => m.insert td.tycon td
-        build (i + 1) ρ last?
+        -- extend ctor arities
+        let ctors' := td.ctors.foldl (init := ctors) fun m (cname, _, ar) => m.insert cname ar
+        build (i + 1) ρ last? ctors'
 
       | .idBind binds =>
         -- filter out operator-like names
         let binds := binds.filter $ not ∘ (·.startsWith "(") ∘ Prod.fst
         let (recFuns, nonrecs) := splitLetGroup binds
-        lowerNonRecBinds nonrecs.toSubarray ρ fun ρ' => do
+        lowerNonRecBinds nonrecs.toSubarray ρ ctors fun ρ' => do
           if h : recFuns.size = 0 then
-            build (i + 1) ρ' (if h : nonrecs.size = 0 then last? else some nonrecs.back.1)
+            build (i + 1) ρ' (if h : nonrecs.size = 0 then last? else some nonrecs.back.1) ctors
           else
             -- Build all rec functions together
             let funIRs <- recFuns.mapM fun (fid, selfN, ps, core) =>
-              lowerRecFun fid selfN ps core ρ'
-            let ρ'' := recFuns.foldl (init := ρ') (fun acc (fid, _, _, _) => acc.insert fid fid)
-            let next <- build (i + 1) ρ'' (some recFuns.back.1)
+              lowerRecFun fid selfN ps core ρ' ctors
+            let ρ'' := recFuns.foldl (init := ρ') fun acc (fid, _, _, _) => acc.insert fid fid
+            let next <- build (i + 1) ρ'' (some recFuns.back.1) ctors
             return (.letRec funIRs next)
 
       | .patBind (pat, e) =>
-        lowerE e ρ fun scr => do
-          let onOk (ρ' : Env) := build (i + 1) ρ' last?
+        lowerE e ρ ctors fun scr => do
+          let onOk (ρ' : Env) := build (i + 1) ρ' last? ctors
           let onFail := do
             let u <- fresh "u"
             pure (.letVal u (.cst .unit) (.seq #[] (.ret u)))
@@ -408,61 +440,19 @@ partial def lowerModule (decls : Array TopDecl) : M σ (LModule × LModule) := d
   -- Create main function
   let fid := "main"
   let param := "arg"
-  let body <- optimizeLam <$> build 0 ∅ none
+  let body <- optimizeLam <$> build 0 ∅ none ∅
   let main : LFun := {fid, param, body}
   let mod := ⟨#[], main⟩
   return Prod.mk mod (runST fun _ => (IR.closureConvert mod).run' 1000)
 
 end
 
-@[inline] def toLamModule (decls : Array TopDecl) : LModule × LModule :=
-  runST fun _ => IR.lowerModule decls |>.run' 0
-
-def toLamModule1 e :=
-  let e := optimizeLam $ runST fun _ => lower e |>.run' 0
+def toLamModuleT decls := runST fun _ => IR.lowerModule decls |>.run' 0
+def toLamT s e := runST fun _ => lower e (ctors := s) |>.run' 0
+def toLamTO s e := optimizeLam (toLamT s e)
+def dumpLamModuleT decls := toLamModuleT decls |>.map fmtModule fmtModule
+def toLamModuleT1 s e :=
+  letI e := optimizeLam $ runST fun _ => lower e (ctors := s) |>.run' 0
   runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
+attribute [inline] toLamModuleT toLamT toLamTO dumpLamModuleT toLamModuleT1
 
-@[inline] def dumpLamModule (decls : Array TopDecl) : Std.Format × Std.Format :=
-  toLamModule decls |>.map fmtModule fmtModule
-
-@[inline] def toLam1 e := runST fun _ => lower e |>.run' 0
-@[inline] def toLam1O e := optimizeLam (toLam1 e)
-def dumpLam1 s := IO.println $
-  Std.Format.pretty (width := 80) $
-  let e := Parsing.parse s initState
-  match e with
-  | .ok e => fmtLExpr $ runST fun _ => lower e |>.run' 0
-  | .error e => e
-def dumpLam1O s := IO.println $
-  Std.Format.pretty (width := 80) $
-  let e := Parsing.parse s initState
-  match e with
-  | .ok e => fmtLExpr ∘ optimizeLam $ runST fun _ => lower e |>.run' 0
-  | .error e => e
-
-private def cmpO s := IO.println $
-  match Parsing.parse s initState with
-  | .ok e =>
-    letI le := runST fun _ => lower e |>.run' 0
-    letI ole := optimizeLam le
-    Std.Format.pretty (width := 80) $
-      .group ("unoptimized:" ++ Std.Format.indentD (fmtLExpr le)) <+>
-      .group ("optimized:" ++ Std.Format.indentD (fmtLExpr ole))
-
-  | .error e => e
-
-def cmpIR e :=
-  letI le := runST fun _ => lower e |>.run' 0
-  letI ole := optimizeLam le
-  .group (mkBoldBlackWhite "unoptimized:" ++ Std.Format.indentD (fmtLExpr le)) <+>
-  .group (mkBoldBlackWhite "optimized:" ++ Std.Format.indentD (fmtLExpr ole))
-
-def ccExpr s := IO.println $
-  Std.Format.pretty (width := 80) $
-  let e := Parsing.parse s initState
-  match e with
-  | .ok e =>
-    let e := optimizeLam $ runST fun _ => lower e |>.run' 0
-    let c := runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
-    fmtModule c
-  | .error e => e

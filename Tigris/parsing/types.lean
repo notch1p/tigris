@@ -88,6 +88,9 @@ inductive MLType where
   | TApp : String -> List MLType -> MLType
 deriving Repr, BEq, Ord, Inhabited
 
+inductive Scheme where
+  | Forall : List TV -> MLType -> Scheme deriving Repr, BEq, Ord
+
 inductive Expr where
   | CI (i : Int)       | CS (s : String)        | CB (b : Bool) | CUnit
   | App (e₁ e₂ : Expr) | Cond (e₁ e₂ e₃ : Expr) | Let (ae : Array $ Symbol × Expr) (e₂ : Expr)
@@ -97,6 +100,30 @@ inductive Expr where
   | Match (aginst : Array Expr) (discr : Array (Array Pattern × Expr))
   | Ascribe (e : Expr) (ty : MLType)
 deriving Repr, Nonempty
+
+inductive TExpr where
+  | CI     (i : Int)                                    (ty : MLType)
+  | CS     (s : String)                                 (ty : MLType)
+  | CB     (b : Bool)                                   (ty : MLType)
+  | CUnit                                               (ty : MLType)
+  | Var    (x : Symbol)                                 (ty : MLType)
+  | Fun    (param : Symbol) (paramTy : MLType)
+           (body : TExpr) (ty : MLType)
+  | Fixcomb (e : TExpr)                                 (ty : MLType)
+  | Fix    (e : TExpr)                                  (ty : MLType)
+  | App    (f : TExpr) (a : TExpr)                      (ty : MLType)
+  | Let    (binds : Array (Symbol × Scheme × TExpr))
+           (body : TExpr) (ty : MLType)
+  | Cond   (c : TExpr) (t : TExpr) (e : TExpr)          (ty : MLType)
+  | Prod'  (l : TExpr) (r : TExpr)                      (ty : MLType)
+  | Match  (scrutinees : Array TExpr)
+           (branches   : Array (Array Pattern × TExpr))
+           (resTy      : MLType)
+           (counterexample : Option (List Pattern))
+           (redundantRows  : Array Nat)
+  | Ascribe (e : TExpr)                                 (ty : MLType)
+deriving Inhabited, Repr
+
 
 instance : Inhabited Expr := ⟨Expr.CUnit⟩
 -- instance : ToString Expr := ⟨Expr.toStr⟩
@@ -108,6 +135,8 @@ instance : ToString Associativity where
   | .leftAssoc => "left"
   | .rightAssoc => "right"
 abbrev Binding := Symbol × Expr
+abbrev BindingT := Symbol × Scheme × TExpr
+abbrev PBinding := Pattern × Expr
 
 structure OpEntry where
   sym : Symbol
@@ -141,11 +170,17 @@ abbrev TParser σ := SimpleParserT Substring Char
 structure TyDecl where
   tycon : String
   param : Array String
-  ctors : Array $ Symbol × List MLType
+  ctors : Array $ Symbol × List MLType × Nat
 deriving Repr
 
 inductive TopDecl
   | idBind : Array Binding -> TopDecl
-  | patBind : Pattern × Expr -> TopDecl
+  | patBind : PBinding -> TopDecl
   | tyBind : TyDecl -> TopDecl
+deriving Repr
+
+inductive TopDeclT
+  | idBind : Array BindingT -> TopDeclT
+  | patBind : Pattern × TExpr -> TopDeclT
+  | tyBind : TyDecl -> TopDeclT
 deriving Repr

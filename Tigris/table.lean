@@ -49,6 +49,7 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .byl "from crashing the main thread")
    , (.str "#help"            , .str "show this help string")
    , (.str "#ast <exp|decl>"  , .str "display the parsetree of <exp|decl>")
+   , (.str "#tast <exp>"      , .str "display the typed parsetree of <exp>")
    , (.str "#type <exp>"      , .str "typecheck <exp> without evaluating it")
    , (.str ""                 , .str "useful for type reduction")
    , (.str ""                 , .str "on a potentially diverging term")
@@ -58,7 +59,7 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .blu "+raw: w/o any optimizations;")
    , (.str ""                 , .blu "+opt: default, w/ optimizations;")
    , (.str ""                 , .blu "+cc: w/ lambda lifting, implies +opt")
-   , (.str ""                 , .byl "+cc compiles to main function")]
+   , (.str ""                 , .byl "use tigrisl for actual compilation.")]
 
 def tiglHelpMsg : TableOf HelpHeader :=
   #[ (.str "-l, --lam"  , .str "prepend CC'd IR with its source IR")

@@ -6,11 +6,11 @@ namespace IR
 /-!
 Closure conversion for the Lambda IR.
 
-Core ideas:
+Layout:
 - Eliminate Value.lam by lifting to code pointers (functions) that take a single
   "payload" parameter = ⟨arg, env⟩.
 - Environments (Γ) are explicit values holding captured variables.
-- A closure is a 2-field constructor: (ℂ⟦codePtr, env⟧).
+- A closure is a 2-field constructor: (𝐂⟦codePtr, env⟧).
 - Calls through closure variables project (code, env) and pass (arg, env) to the code pointer.
 - letRec groups are converted so each function body projects (arg, env) from payload. For recursion,
   body calls the code pointer with the same env. Mutual recursion is planned: all fns in a group
@@ -39,9 +39,8 @@ def mkEnv (envTag : Name) (fields : Array Name) (kont : Name -> LExpr) : LExpr :
   letI envName := "Γ"
   .letRhs envName (.mkConstr envTag fields) (kont envName)
 
-def mkClos (code : Name) (envName : Name) (kont : Name -> LExpr) : LExpr :=
-  letI clos := "λ"
-  .letRhs clos (.mkConstr "𝐂" #[code, envName]) (kont clos)
+def bindClos (target : Name) (code : Name) (envName : Name) (kont : LExpr) : LExpr :=
+  .letRhs target (.mkConstr "𝐂" #[code, envName]) kont
 
 def mkPayload (arg env : Name) (kont : Name -> LExpr) : LExpr :=
   letI p := "ρ"
@@ -84,7 +83,7 @@ def tailAppGlobal (f : Name) (a : Name) : (Array Stmt × Tail) :=
   , Tail.app f pl)
 
 attribute [inline]
-  proj  mkClos   mkPayload
+  proj  bindClos   mkPayload
   fresh freeVars tailAppDirect
   mkEnv projPair tailAppViaClosure
   tailAppGlobal sortedNames
@@ -246,8 +245,7 @@ partial def ccCodeBodyM
         capVars codeSet selfVar? envVar? body
     let newBody :=
       mkEnv "𝐄" capVars' fun env =>
-        mkClos fid' env fun clos =>
-          .letVal x (.var clos) body'
+        bindClos x fid' env body'
     return (newBody, liftedFuns.push funDef ++ fs)
 
   | .letVal x v body => do
@@ -356,8 +354,7 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     let (body', newFuns) <- ccExpr gCodes body
     let newBody :=
       mkEnv "𝐄" capVars fun env =>
-        mkClos fid env fun clos =>
-          .letVal x (.var clos) (fuseImmediateTailCall env x fid body')
+        bindClos x fid env (fuseImmediateTailCall env x fid body')
     return (newBody, fsL.push funDef ++ newFuns)
 
   | .letVal x v body => do
@@ -399,8 +396,7 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     let rec bindClosures (i : Nat) (envName : Name) (k : LExpr) : LExpr :=
       if h : i < funs.size then
         let fid := funs[i].1
-        mkClos fid envName fun clos =>
-          .letVal fid (.var clos) (bindClosures (i + 1) envName k)
+        bindClos fid fid envName (bindClosures (i + 1) envName k)
       else k
     let groupIntro :=
       mkEnv "𝐄" capVars fun envName => bindClosures 0 envName body'

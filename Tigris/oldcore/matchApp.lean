@@ -7,7 +7,7 @@ deriving Repr, Inhabited
 
 structure RowState where
   pats : Array Pattern
-  rhs  : Expr
+  rhs  : TExpr
   binds: Array (String × Sel) := #[]
 deriving Repr, Inhabited
 

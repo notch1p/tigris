@@ -7,9 +7,8 @@ import Tigris.interpreter.entrypoint
 namespace Interpreter open Parsing PType Value MLType TV Pattern Expr TypingError Std.ToFormat
 def registerData (E : Env) (VE : VEnv) : TyDecl -> EIO String (Env × VEnv)
   | ty@{ctors,tycon,param} =>
-    ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields) =>
+    ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields, arity) =>
       let s := ctorScheme tycon (param |>.map mkTV |>.toList) fields
-      let arity := fields.length
       let v := if arity == 0 then .VConstr cname #[]
                              else .VCtor cname arity #[]
       (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$
@@ -140,9 +139,12 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
       else pure $ .VCtor name ar acc'
     | _ => unreachable!
   | Let ae body => do
-    let vs <- ae.mapM fun (x, ex) => (x, ·) <$> eval E ex
-    letI env' := vs.foldl (init := E.env) fun acc (x, v) => acc.insert x v
-    eval ⟨env'⟩ body
+    let (recBinds, nonrecBinds) := ae.partition $ MLType.isRecRhs ∘ Prod.snd
+    let recVals <- recBinds.mapM fun (x, ex) => (x, ·) <$> eval E ex
+    let env1 := recVals.foldl (init := E.env) fun acc (x, v) => acc.insert x v
+    let env2 <- nonrecBinds.foldlM (init := env1) fun a (x, ex) =>
+      a.insert x <$> eval ⟨a⟩ ex
+    eval ⟨env2⟩ body
   | Cond c t e => do
     let e' <- eval E c
     match e' with
@@ -206,6 +208,7 @@ abbrev defaultVE : VEnv where
 
 @[always_inline, inline] def parse! s := parse s initState |>.toOption |>.getD (.CUnit)
 @[always_inline, inline] def infer! := runInfer1 (E := defaultE) ∘ parse!
+@[always_inline, inline] def inferT! := runInferT1 (E := defaultE) ∘ parse!
 @[always_inline, inline] def eval! s (e : VEnv := defaultVE) := parse! s |> eval e
 
 end Interpreter

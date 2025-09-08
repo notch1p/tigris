@@ -62,11 +62,11 @@ def ς (M : 𝓜) : Std.HashSet (Symbol × Nat) :=
     | _ => acc
 
 def completeData (td : TyDecl) (sig : Std.HashSet (Symbol × Nat)) : Bool :=
-  td.ctors.all (fun (n, fts) => sig.contains (n, fts.length))
+  td.ctors.all fun (n, _, ar) => sig.contains (n, ar)
 
 def inς (td : TyDecl) (sig : Std.HashSet (Symbol × Nat)) : Option (Symbol × Nat) :=
-  td.ctors.findSome? fun (n, fts) =>
-    let key := (n, fts.length)
+  td.ctors.findSome? fun (n, _, ar) =>
+    let key := (n, ar)
     if sig.contains key then none else some key
 
 private def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
@@ -78,11 +78,11 @@ private def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
   | MLType.TApp s ts => MLType.TApp s (ts.map (substTV m))
 
 def ctorFieldTypes (td : TyDecl) (cname : Symbol) (tyArgs : List MLType) : Option (List MLType) :=
-  let paramTVs := td.param.toList.map (fun n => TV.mkTV n)
+  let paramTVs := td.param.foldr (List.cons ∘ TV.mkTV) []
   let substMap := paramTVs.foldl2 Std.HashMap.insert ∅ tyArgs
   match td.ctors.find? (fun (n, _) => n == cname) with
   | none => none
-  | some (_, fts) => some (fts.map (substTV substMap))
+  | some (_, fts, _) => some (fts.map (substTV substMap))
 
 def headTyconArgs : MLType -> Option (Symbol × List MLType)
   | MLType.TApp s args => some (s, args)
@@ -146,11 +146,10 @@ partial def uncover
             let sig := ς M
             match inς td sig with
             | none =>
-              let rec tryCtors (cs : List (Symbol × List MLType)) : Option 𝓥 :=
+              let rec tryCtors (cs : List (Symbol × List MLType × Nat)) : Option 𝓥 :=
                 match cs with
                 | [] => none
-                | (cname, fts) :: cs' =>
-                  let arity := fts.length
+                | (cname, _, arity) :: cs' =>
                   match ctorFieldTypes td cname tyArgs with
                   | none => tryCtors cs'
                   | some fieldTys =>
@@ -161,7 +160,7 @@ partial def uncover
                       let argsP := res.take arity
                       let restP := res.drop arity
                       some (PCtor cname argsP.toArray :: restP)
-              tryCtors td.ctors.toList
+              tryCtors $ td.ctors.toList
             | some (missingName, ar) =>
               match uncover lookup σ (𝒟 M) with
               | none => none
@@ -216,9 +215,8 @@ partial def useful
               let sig := ς M
               let complete := completeData td sig
               if complete then
-                td.ctors.toList.any (fun (cname, fts) =>
-                  let ar := fts.length
-                  useful lookup (fts ++ σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps))
+                td.ctors.any fun (cname, fts, ar) =>
+                  useful lookup (fts ++ σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps)
               else
                 useful lookup σ (𝒟 M) ps
             | _ => false

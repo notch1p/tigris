@@ -28,13 +28,13 @@ def main (fp : List String) : IO Unit := do
       try
         let s <- IO.FS.readFile i
         let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
-        let (_, l) <- IO.ofExcept $ MLType.inferToplevel decls MLType.defaultE
+        let (decls,_, l) <- IO.ofExcept $ MLType.inferToplevelT decls MLType.defaultE
         IO.print l
         IO.FS.withFile o .write fun h => do
-          let (ir, cc) := IR.dumpLamModule decls
+          let (ir, cc) := IR.dumpLamModuleT decls
 
           if ir? then
-            h.putStrLn "NB. == Optimized IR ==\n"
+            h.putStrLn "NB. == Optimized IR =="
             h.putStrLn $ Std.Format.pretty (width := 80) $ ir
             h.putStrLn "\nNB. == Above CC'd =="
 

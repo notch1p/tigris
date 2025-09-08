@@ -22,7 +22,7 @@ def MLCOMMENTR : TParser σ Unit := void $ string "*)"
 
 def comment : TParser σ Unit :=
   withBacktracking $
-   (string "NB.") *> dropUntil (endOfInput <|> void eol) anyToken
+   (string "NB." <|> string "--") *> dropUntil (endOfInput <|> void eol) anyToken
 
 def spaces : TParser σ Unit :=
   dropMany <| MLCOMMENTR <|> MLCOMMENTL <|> void ASCII.whitespace <|> comment <|> void eol

@@ -93,10 +93,17 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
     let tl <- takeMany (BAR *> ctor mt param)
     return {tycon, param, ctors := #[hd] ++ tl}
   else
-    error "type constructor must begin with uppercase letter\n"
+    error "type constructor must begin with an uppercase letter\n"
     throwUnexpected
 where
-  ctor mt param := do let cname <- ID let args <- takeMany (tyApps mt param) return (cname, args.toList)
+  ctor mt param := do
+    let cname <- ID
+    if isUpperInit cname then
+      let args <- takeMany (tyApps mt param)
+      return (cname, args.toList, args.size)
+    else
+      error "value constructor must begin with an uppercase letter\n"
+      throwUnexpected
 
 end PType
 

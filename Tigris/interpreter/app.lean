@@ -2,13 +2,14 @@ import Tigris.interpreter.eval
 
 open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter IO Std.ToFormat
 
+abbrev CtorMap := Std.HashMap String Nat
 namespace Parsing open Lexing Parser PType
-
-def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEnv × Env × VEnv) :=
+def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
+  (ctors : CtorMap) : EIO String (CtorMap × PEnv × Env × VEnv) :=
   match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ xs, (PE, l)) => do
     liftEIO (print l)
-    xs.foldlM (init := (PE, E, VE)) fun (PE, E, VE) decl => do
+    xs.foldlM (init := (ctors, PE, E, VE)) fun (ctors, PE, E, VE) decl => do
       match decl with
       | .patBind (pat, e) =>
         let (.Forall _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
@@ -28,19 +29,26 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv) : EIO String (PEn
         | some (VE, vacc) =>
           for ty in tyacc, (sym, val) in vacc do
             liftEIO $ println $ templateREPL sym (format val) (format ty)
-          return (PE, E, VE)
+          return (ctors, PE, E, VE)
         | none => throw $ NoMatch #[e] (format v).pretty #[(#[pat], Expr.CUnit)] |> toString
       | .idBind group =>
         let (ty, E, l) <- ofExcept $ inferGroup group E "" |>.mapError toString
         liftEIO (print l)
-        let vs <- group.mapM fun (id, expr) =>
-          (id, ·) <$> (EIO.ofExcept $ eval VE expr |>.mapError toString)
-        for (id, ty) in ty, (_, v) in vs do
+--        let vs <- group.mapM fun (id, expr) =>
+--          (id, ·) <$> (EIO.ofExcept $ eval VE expr |>.mapError toString)
+--      
+        let (recBinds, nonrecBinds) := group.partition $ MLType.isRecRhs ∘ Prod.snd
+        let recVal <- recBinds.mapM fun (id, expr) => (id, ·) <$> (EIO.ofExcept $ eval VE expr |>.mapError toString)
+        let VE := recVal.foldl (init := VE.env) fun acc (id, v) => acc.insert id v
+        let (nonrecVal, VE) <- nonrecBinds.foldlM (init := (#[], VE)) fun (acc, VE) (id, expr) => do
+          let v <- EIO.ofExcept $ eval ⟨VE⟩ expr |>.mapError toString
+          return (acc.push (id, v), VE.insert id v)
+        for (id, ty) in ty, (_, v) in nonrecVal ++ recVal do
           liftEIO $ println $ templateREPL id (format v) (format ty)
-        let VE := vs.foldl (init := VE.env) fun acc (id, v) => acc.insert id v
-        return (PE, E, ⟨VE⟩)
+        return (ctors, PE, E, ⟨VE⟩)
       | .tyBind tydecl =>
-        (PE, ·) <$> registerData E VE tydecl
+        let ctors := ctors.insertMany $ tydecl.ctors.map fun (name, _, ar) => (name, ar)
+        (ctors, PE, ·) <$> registerData E VE tydecl
   | (.error _ e, (_, l)) => liftEIO (print l) *> throw (toString e)
 
 end Parsing
@@ -48,4 +56,4 @@ end Parsing
 def evalToplevel (bs : Array Binding) (VE : VEnv) : Except TypingError VEnv :=
   bs.foldlM (init := VE) fun VE@⟨env⟩ (id, e) => (VEnv.mk ∘ env.insert id) <$> eval VE e
 
-def interpret PE E VE s := parseModule s PE E VE |>.toIO userError
+def interpret PE E VE s ctors := parseModule s PE E VE ctors |>.toIO userError

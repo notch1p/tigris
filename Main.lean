@@ -17,6 +17,9 @@ def main : IO Unit := do
   let E <- mkRef defaultE
   let VE <- mkRef defaultVE
   let PE <- mkRef initState
+  let CE : IO.Ref CtorMap <- mkRef $ defaultE.tyDecl.fold (init := ∅) fun a _ v =>
+    a.insertMany (v.ctors.map fun (name, _, ar) => (name, ar))
+
   letI motd := "A basic language using Hindley-Milner type system\n\
                with a naive (term-rewriting) interpreted implementation.\n\
                For language specifications see source.\n\
@@ -28,6 +31,7 @@ def main : IO Unit := do
     let pe <- PE.get
     let e <- E.get
     let ve <- VE.get
+    let ctorE <- CE.get
 
     print prompt
     prompt := "- "
@@ -55,16 +59,19 @@ def main : IO Unit := do
     else if buf.startsWith "#lam" then
       let sbuf := buf.extract ⟨4⟩ buf.endPos
       let runner :=
-        if sbuf.startsWith "+raw" then IR.fmtLExpr ∘ IR.toLam1
-        else if sbuf.startsWith "+cc" then IR.fmtModule ∘ IR.toLamModule1
-        else IR.fmtLExpr ∘ IR.toLam1O
+        if sbuf.startsWith "+raw" then IR.fmtLExpr ∘ IR.toLamT ctorE
+        else if sbuf.startsWith "+cc" then IR.fmtModule ∘ IR.toLamModuleT1 ctorE
+        else IR.fmtLExpr ∘ IR.toLamTO ctorE
       try
         let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
-        let (_, l) <- MLType.runInfer1 exp e |> ofExcept
+        let (e, _, l) <- MLType.runInferT1 exp e |> ofExcept
         print l
-        runner exp |> IO.println
+        runner e |> IO.println
       catch e => println! Logging.error $ toString e
---      CPS.compile1 (buf.dropWhile $ not ∘ Char.isWhitespace) pe e
+    else if buf.startsWith "#ta" then
+      (Parsing.typeExpr (buf.dropWhile $ not ∘ Char.isWhitespace) pe e |>.toIO') >>= fun
+      | .ok b  => println! reprStr b
+      | .error e => println! Logging.error $ toString e
     else if buf.startsWith "#t" then
       try
         let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
@@ -88,9 +95,9 @@ def main : IO Unit := do
         if !path.isEmpty then
           try
             let fs <- FS.readFile $ path.dropRightWhile fun c => c.isWhitespace || c == ';'
-            let t <- asTask (interpret pe e ve fs) .dedicated
-            let (PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
-            PE.set PE' *> E.set E' *> VE.set VE'
+            let t <- asTask (interpret pe e ve fs ctorE) .dedicated
+            let (ctorE, PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
+            PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
           catch e =>
             println! Logging.error $ toString e
             println! Logging.warn  $
@@ -98,13 +105,13 @@ def main : IO Unit := do
                Fix those then #load again to update it."
     else if buf.startsWith "#s" then
       try
-        let (PE', E', VE') <- interpret pe e ve $ buf.dropWhile (not ∘ Char.isWhitespace)
-        PE.set PE' *> E.set E' *> VE.set VE'
+        let (ctorE, PE', E', VE') <- interpret pe e ve (buf.dropWhile (not ∘ Char.isWhitespace)) ctorE
+        PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
       catch e => println! Logging.error $ toString e
     else try
-      let t <- asTask (interpret pe e ve buf) .dedicated
-      let (PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
-      PE.set PE' *> E.set E' *> VE.set VE'
+      let t <- asTask (interpret pe e ve buf ctorE) .dedicated
+      let (ctorE, PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
+      PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
     catch e => println! Logging.error $ toString e
 
     buf := ""

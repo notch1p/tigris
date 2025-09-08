@@ -130,7 +130,7 @@ partial def letrec1 : TParser σ (Symbol × Expr) := do
   | false =>
     EQ; let e₁ <- parseExpr
     if pre.isEmpty && !e₁ matches Fun .. then
-      warn s!"Use letexp instead of letrec for nonrecursive definition of '{id}'\n"
+      warn s!"Use let instead of letrec for nonrecursive definition of '{id}'\n"
       return Prod.mk id (transMatch pre e₁)
     else return Prod.mk id (Fix $ Fun id $ transMatch pre e₁)
 

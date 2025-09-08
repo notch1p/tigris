@@ -2,16 +2,21 @@ let exfalso = rec id
 
 type Bad = Bad (Bad -> Bad) NB. The classic circular argument:
                             NB. Bad is in nonpositive position.
+let mkBad b =
+  match b with
+  | Bad b' => b' b
 
-let rec collapse
-  | Bad k => collapse $ k $ Bad k
+let omega () = mkBad (Bad mkBad) NB. wrapped in a function so that it doesn't loop
 
-let bad = Bad collapse
+NB. try running `#type omega ()` in the REPL
+  NB. (infinite loop)
+  NB. from a programming perspective
+  NB. this can still be considered safe.
 
-NB. try running this w/ `#type collapse` bad in the REPL
-NB. let falsehood = collapse bad 
-          NB. Because applying collapse results in divergence
-          NB. (stack overflow in our case)
-          NB. (infinite loop in practice due to tailcall)
-          NB. from a programming perspective
-          NB. this can still be considered safe.
+NB. A variant directly to Empty
+type Bad' = Bad' (Bad' -> Empty)
+
+let recBad' (Bad' f) = f (Bad' f)
+let bot () = recBad' (Bad' recBad')
+NB. try running `#type elim $ bot ()` in the REPL
+
