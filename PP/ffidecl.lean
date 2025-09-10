@@ -14,3 +14,7 @@
 
 @[extern "lean_disable_stdout_buffer", expose] opaque setStdoutBuf : Bool -> IO Unit
 
+@[extern "lean_sigint_pipe"]
+opaque installSigintPipe : IO Int32
+@[extern "lean_read_fd_byte"]
+opaque readFdByte : @&Int32 -> IO Int32
