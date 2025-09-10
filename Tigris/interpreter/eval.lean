@@ -152,7 +152,7 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
     | VB false => eval E e
     | _       => throw $ WrongCardinal 2
   | Prod' e₁ e₂ => do
-    pure $ VP (<-eval E e₁) (<-eval E e₂)
+    VP <$> eval E e₁ <*> eval E e₂
   | Match e discr => do
     let v <- e.mapM (eval E)
     let rec tryDiscriminant i (h : i <= discr.size) :=
@@ -166,6 +166,84 @@ partial def eval (E : VEnv) : Expr -> Except TypingError Value
         | none => tryDiscriminant j $ Nat.le_of_succ_le h
     tryDiscriminant discr.size Nat.le.refl
   | Ascribe e _ => eval E e
+
+private def checkInterrupt : EIO TypingError Unit :=
+  IO.checkCanceled >>= fun
+  | true => throw Interrupted
+  | false => return ()
+
+partial def evalC (E : VEnv) : Expr -> EIO TypingError Value
+  | CI v => pure $ VI v | CS v => pure $ VS v | CB v => pure $ VB v | CUnit => pure VU
+  | Var x =>
+    checkInterrupt *>
+    match E.env.get? x with
+    | some x => pure x
+    | none => throw $ Undefined x
+  | Fun x body => pure $ VF x body E
+  | Fix e | Fixcomb e =>
+    checkInterrupt *>
+    evalC E e >>= fun
+    | VF fname fbody E' =>
+      pure $ VFRec fname fbody E'
+    | _ => unreachable!
+  | App f a => do
+    checkInterrupt
+    match <- evalC E f with
+    | VF s body E' =>
+      let e <- evalC E a
+      let E' := E'.env.insert s e
+      evalC ⟨E'⟩ body
+    | VOpaque n =>
+      let a <- evalC E a
+      pure $ callForeign a n
+    | self@(VFRec fname fbody Edef) =>
+      let aVal <- evalC E a
+      let merged := mergeEnvPreferFront E.env Edef.env
+      let recE := merged.insert fname self
+      match fbody with
+      | Fun x body =>
+        evalC ⟨recE.insert x aVal⟩ body
+      | _ => unreachable!
+    | .VCtor name ar acc =>
+      let v <- evalC E a
+      let acc' := acc.push v
+      if acc'.size == ar then
+        pure $ .VConstr name acc'
+      else pure $ .VCtor name ar acc'
+    | _ => unreachable!
+  | Let ae body => do
+    checkInterrupt
+    let (recBinds, nonrecBinds) := ae.partition $ MLType.isRecRhs ∘ Prod.snd
+    let recVals <- recBinds.mapM fun (x, ex) => 
+      checkInterrupt *>
+      (x, ·) <$> evalC E ex
+    let env1 := recVals.foldl (init := E.env) fun acc (x, v) => acc.insert x v
+    let env2 <- nonrecBinds.foldlM (init := env1) fun a (x, ex) =>
+      checkInterrupt *>
+      a.insert x <$> evalC ⟨a⟩ ex
+    evalC ⟨env2⟩ body
+  | Cond c t e => do
+    checkInterrupt
+    match <- evalC E c with
+    | VB true => evalC E t
+    | VB false => evalC E e
+    | _       => throw $ WrongCardinal 2
+  | Prod' e₁ e₂ => checkInterrupt *>
+    VP <$> evalC E e₁ <*> evalC E e₂
+  | Match e discr => do
+    checkInterrupt
+    let v <- e.mapM (evalC E)
+    let rec tryDiscriminant i (h : i <= discr.size) :=
+      match i with
+      | 0 => throw $ NoMatch e (toString $ v.map format) discr
+      | j + 1 =>
+        let (p, body) := discr[discr.size - j.succ]
+        match evalPat E p v with
+        | some bs =>
+          evalC bs body
+        | none => tryDiscriminant j $ Nat.le_of_succ_le h
+    tryDiscriminant discr.size Nat.le.refl
+  | Ascribe e _ => evalC E e
 
 def arityGen (prim : Symbol) (arity : Nat) (primE : VEnv := ⟨∅⟩) : Value :=
   let rec go s

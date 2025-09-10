@@ -66,10 +66,12 @@ inductive TypingError
   | WrongCardinal (n : Nat)
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
+  | Interrupted
   | Duplicates (t : TV) (T : MLType) deriving Repr
 open Logging
 instance : ToString TypingError where
   toString
+  | .Interrupted   => s!"Interrupted."
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
   | .Undefined s   => s!"Symbol\n  {s}\nis not in scope.\n" ++
