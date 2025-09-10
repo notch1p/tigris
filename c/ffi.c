@@ -1,12 +1,7 @@
-#include <errno.h>
-#include <fcntl.h>
 #include <lean/lean.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 
 typedef lean_obj_res OBJRES;
 typedef lean_obj_arg OWNED_ARG;
@@ -69,6 +64,69 @@ LEAN_EXPORT OBJRES lean_disable_stdout_buffer(uint8_t i) {
   }
   return lean_io_result_mk_ok(lean_box(0)); // runtime Unit repr
 }
+
+#if defined(_WIN32)
+
+// -------------------- Windows implementation --------------------
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+static HANDLE g_ctrlEvent = NULL;
+
+static BOOL WINAPI ctrl_handler(DWORD dwCtrlType) {
+  switch (dwCtrlType) {
+  case CTRL_C_EVENT:
+  case CTRL_BREAK_EVENT:
+    if (g_ctrlEvent)
+      SetEvent(g_ctrlEvent);
+    return TRUE; // handled: prevent default termination
+  // For close/logoff/shutdown let default happen (or handle if you prefer)
+  default:
+    return FALSE;
+  }
+}
+
+LEAN_EXPORT lean_obj_res lean_sigint_pipe(void) {
+  if (g_ctrlEvent) {
+    return lean_io_result_mk_ok(lean_box(1));
+  }
+  g_ctrlEvent = CreateEventW(/*lpEventAttributes*/ NULL,
+                             /*bManualReset*/ TRUE,
+                             /*bInitialState*/ FALSE,
+                             /*lpName*/ NULL);
+  if (!g_ctrlEvent) {
+    return lean_mk_io_user_error(lean_mk_string("CreateEvent failed"));
+  }
+  if (!SetConsoleCtrlHandler(ctrl_handler, TRUE)) {
+    CloseHandle(g_ctrlEvent);
+    g_ctrlEvent = NULL;
+    return lean_mk_io_user_error(
+        lean_mk_string("SetConsoleCtrlHandler failed"));
+  }
+  return lean_io_result_mk_ok(lean_box(1));
+}
+
+LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t /*fd*/) {
+  if (!g_ctrlEvent) {
+    return lean_io_result_mk_ok(lean_box(0));
+  }
+  DWORD rc = WaitForSingleObject(g_ctrlEvent, INFINITE);
+  if (rc == WAIT_OBJECT_0) {
+    ResetEvent(g_ctrlEvent);
+    return lean_io_result_mk_ok(lean_box(1));
+  } else if (rc == WAIT_FAILED) {
+    return lean_mk_io_user_error(lean_mk_string("WaitForSingleObject failed"));
+  } else {
+    // WAIT_ABANDONED etc: treat as error
+    return lean_mk_io_user_error(lean_mk_string("Unexpected wait result"));
+  }
+}
+
+#else
+#include <errno.h>
+#include <signal.h>
+#include <unistd.h>
+
 static int32_t sig_pipe[2] = {-1, -1};
 
 static void sigint_handler() {
@@ -103,7 +161,7 @@ LEAN_EXPORT OBJRES lean_sigint_pipe() {
 #endif
 }
 
-LEAN_EXPORT OBJRES lean_read_fd_byte(int32_t fd) {
+LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t fd) {
 #if defined(__unix__) || defined(__APPLE__)
   char b;
   for (;;) {
@@ -114,83 +172,11 @@ LEAN_EXPORT OBJRES lean_read_fd_byte(int32_t fd) {
       return lean_io_result_mk_ok(lean_box(0)); // EOF
     if (errno == EINTR)
       continue; // retry
-    return lean_mk_io_user_error(
-        lean_mk_string("call to read() failed")); // other error
+    return lean_mk_io_user_error(lean_mk_string("read() failed"));
   }
 #else
+  (void)fd;
   return lean_io_result_mk_ok(lean_box(0));
 #endif
 }
-
-LEAN_EXPORT OBJRES lean_read_stdin_line() {
-#if defined(__unix__) || defined(__APPLE__)
-  size_t cap = 256;
-  size_t len = 0;
-  char *buf = (char *)malloc(cap);
-  if (!buf)
-    return lean_mk_io_error_resource_exhausted(ENOMEM,
-                                               lean_mk_string("out of memory"));
-
-  for (;;) {
-    char ch;
-    ssize_t r = read(STDIN_FILENO, &ch, 1);
-    if (r == 1) {
-      if (len + 1 >= cap) {
-        cap <<= 1;
-        char *nbuf = (char *)realloc(buf, cap);
-        if (!nbuf) {
-          free(buf);
-          return lean_mk_io_error_resource_exhausted(
-              ENOMEM, lean_mk_string("out of memory"));
-        }
-        buf = nbuf;
-      }
-      buf[len++] = ch;
-      if (ch == '\n')
-        break;
-    } else if (r == 0) {
-      /* EOF */
-      if (len == 0) {
-        free(buf);
-        return lean_io_result_mk_ok(lean_mk_string(""));
-      } else {
-        break;
-      }
-    } else {
-      if (errno == EIO || errno == EINTR) {
-        /* macOS can return EIO on TTY after SIGINT; treat like EINTR and retry
-         */
-        continue;
-      }
-      free(buf);
-      return lean_mk_io_error_hardware_fault(
-          EIO, lean_mk_string("read(stdin) error"));
-    }
-  }
-
-  buf[len] = 0;
-  lean_obj_res s = lean_mk_string(buf);
-  free(buf);
-  return lean_io_result_mk_ok(s);
-#else
-  char *line = NULL;
-  size_t n = 0;
-  ssize_t r = getline(&line, &n, stdin);
-  if (r < 0) {
-    if (line)
-      free(line);
-    return lean_io_result_mk_ok(lean_mk_string(""));
-  }
-  lean_obj_res s = lean_mk_string(line);
-  free(line);
-  return lean_io_result_mk_ok(s);
-#endif
-}
-
-LEAN_EXPORT OBJRES lean_clear_stdin_error() {
-#if defined(__unix__) || defined(__APPLE__)
-  clearerr(stdin);
-  tcflush(STDIN_FILENO, TCIFLUSH);
-#endif
-  return lean_io_result_mk_ok(lean_box(0));
-}
+#endif // _win32
