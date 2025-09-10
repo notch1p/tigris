@@ -42,9 +42,10 @@ def main : IO Unit := do
   letI motd := "A basic language using Hindley-Milner type system\n\
                with a naive (term-rewriting) interpreted implementation.\n\
                For language specifications see source.\n\
-               ⬝ Type #help;; to check available commands.\n\
-               ⬝ Exit with <C-d> or <C-z-Ret> (Windows).\n
-               ⬝ Interrupt with <C-c> (doesn't work if\n\
+               USAGE\n  \
+               ⬝ Type #help;; to check available commands.\n  \
+               ⬝ Exit with <C-d> or <C-z-Ret> (Windows).\n  \
+               ⬝ Interrupt with <C-c> (doesn't work if\n    \
                  running through `lake exe`)"
   println! motd
 
@@ -124,7 +125,7 @@ def main : IO Unit := do
         if !path.isEmpty then
           try
             let fs <- FS.readFile $ path.dropRightWhile fun c => c.isWhitespace || c == ';'
-            let t <- asTask (interpret pe e ve fs ctorE) .dedicated
+            let t <- asTask (interpret pe e ve fs ctorE) 5
             EVS.set $ some t
             let (ctorE, PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
             PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
@@ -142,7 +143,7 @@ def main : IO Unit := do
       catch e => println! Logging.error $ toString e
     /- defaults to threaded evaluation -/
     else try
-      let t <- asTask (interpret pe e ve buf ctorE) .dedicated
+      let t <- asTask (interpret pe e ve buf ctorE) 5
       EVS.set $ some t
       let (ctorE, PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
       PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
@@ -152,3 +153,4 @@ def main : IO Unit := do
 
     buf := ""
     prompt := "> "
+

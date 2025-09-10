@@ -20,7 +20,7 @@ def registerTy (name : String) (arity : Nat) (mt : Bool) (flag := true) : TParse
           if mt then
             s!"mutual inductive type {Logging.magenta name} arity mismatch,\n\
               expected {arity'} but received {arity}\n"
-          else s!"type {Logging.magenta name}/{Logging.cyan ∘ toString $ arity'} may not be redefined\n"
+          else s!"types are dynamically scoped: they may not be redefined.\n"
         (false, st, l ++ err)
   then return ()
   else throwUnexpected
