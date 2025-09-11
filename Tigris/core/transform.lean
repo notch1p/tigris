@@ -18,23 +18,21 @@ def constOf : TConst -> Const × PrimOp
   | .PBool b   => (.bool b, .eqBool)
   | .PStr s    => (.str s , .eqStr)
 @[inline] def constOnly := Prod.fst ∘ constOf
-
-def primOfName (s : String) (t₁ t₂ : MLType) : Option PrimOp :=
-  match s, t₁, t₂ with
-  | "add", _, _   => some .add
-  | "sub", _, _   => some .sub
-  | "mul", _, _   => some .mul
-  | "div", _, _   => some .div
-  | "eq" , .TCon "Int", .TCon "Int"
-                  => some .eqInt
-  | "eq" , .TCon "Bool", .TCon "Bool"
-                  => some .eqBool
-  | "eq" , .TCon "String", .TCon "String"
-                  => some .eqStr
-  | _, _, _       => none
+/- must be homogeneous -/
+def primOfName (s : String) (t : MLType) : Option PrimOp :=
+  match s, t with
+  | "add", _        => some .add
+  | "sub", _        => some .sub
+  | "mul", _        => some .mul
+  | "div", _        => some .div
+  | "eq" , .tInt    => some .eqInt
+  | "eq" , .tBool   => some .eqBool
+  | "eq" , .tString => some .eqStr
+  | _, _            => none
 
 def matchBinaryPrim : TExpr -> Option (PrimOp × TExpr × TExpr)
-  | .App (.App (.Var f _) x t₁) y t₂ => (·, x, y) <$> primOfName f t₁ t₂
+  | .App (.App (.Var f _) x (t₁ ->' _)) y _ => 
+    (·, x, y) <$> primOfName f t₁
   | _ => none
 
 def decomposeLamChain : TExpr -> Option (String × Array String × TExpr)

@@ -124,11 +124,25 @@ proving those functions terminates.
       with optional ANF transformation, closure conversion (already done),
       and defunctionalization.
 
-- there is a experimental IR at [core](Tigris/core)
-  that uses flat CFG inside functions and closure-passing
-  style for functions/continuations. Not flat yet.
+- there is a experimental IR at [core](Tigris/core) that translates to an ANF first:
+  - see [core/lam.lean](Tigris/core/lam.lean) for the IR spec.
+  - with pattern matching compilation to (light) decision tree
+    (also contains a backtraking automata, not used.)
+    - "light" in the sense that we do not perform exhaustiveness check at this level.
+      Because it is done at typechecking, together with redundantness check
+      (redundant rows are removed immediately upon detection).
+      We then reuse the results directly to compile pattern matching.
+  - basic optimizations have been done, including:
+    - constant folding/propagation
+    - copy propagation, with dead code elimination (including eta-reduction) after
+    - tailcall
+  - closure conversion [core/lift.lean](Tigris/core/lift.lam)
+    are done at the end of this pass.
 
-- no codegen
+- no codegen yet.
+
+The IR part is somewhat better documented than others, because I'm not that
+familiar with compiler backends and codegen.
 
 #### Exhaustiveness/Redundant check
 
