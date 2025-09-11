@@ -28,7 +28,7 @@ def main (fp : List String) : IO Unit := do
       try
         let s <- IO.FS.readFile i
         let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
-        let (decls,_, l) <- IO.ofExcept $ MLType.inferToplevelT decls MLType.defaultE
+        let (decls, _, l) <- IO.ofExcept $ MLType.inferToplevelT decls MLType.defaultE
         IO.print l
         IO.FS.withFile o .write fun h => do
           let (ir, cc) := IR.dumpLamModuleT decls

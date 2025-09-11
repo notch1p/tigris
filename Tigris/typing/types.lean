@@ -85,11 +85,11 @@ instance : ToString TypingError where
     note s!"unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n" ++
     note "recursion is supported primitively via letrec or unsafely via fixpoint combinator `rec`"
 
-@[inline] abbrev tInt := TCon "Int"
-@[inline] abbrev tBool := TCon "Bool"
-@[inline] abbrev tString := TCon "String"
-@[inline] abbrev tEmpty := TCon "Empty"
-@[inline] abbrev tUnit := TCon "Unit"
+@[inline, match_pattern] abbrev tInt := TCon "Int"
+@[inline, match_pattern] abbrev tBool := TCon "Bool"
+@[inline, match_pattern] abbrev tString := TCon "String"
+@[inline, match_pattern] abbrev tEmpty := TCon "Empty"
+@[inline, match_pattern] abbrev tUnit := TCon "Unit"
 end MLType
 
 abbrev TyMap := Std.HashMap String TyDecl
