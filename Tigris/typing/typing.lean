@@ -615,7 +615,7 @@ def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array Top
     match b with
     | .idBind group =>
       let (a, E, l) <- inferGroupT group E L
-      return (acc.push a, E, L ++ l)
+      return (acc.push a, E, l)
     | .tyBind ty@{ctors, tycon, param} =>
       return (acc.push (.tyBind ty), ·, L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields

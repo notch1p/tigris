@@ -68,7 +68,6 @@ LEAN_EXPORT OBJRES lean_disable_stdout_buffer(uint8_t i) {
 #if defined(_WIN32)
 
 // -------------------- Windows implementation --------------------
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 static HANDLE g_ctrlEvent = NULL;
@@ -79,8 +78,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType) {
   case CTRL_BREAK_EVENT:
     if (g_ctrlEvent)
       SetEvent(g_ctrlEvent);
-    return TRUE; // handled: prevent default termination
-  // For close/logoff/shutdown let default happen (or handle if you prefer)
+    return TRUE;
   default:
     return FALSE;
   }
@@ -138,7 +136,6 @@ static void sigint_handler() {
 }
 
 LEAN_EXPORT OBJRES lean_sigint_pipe() {
-#if defined(__unix__) || defined(__APPLE__)
   if (sig_pipe[0] != -1)
     return lean_io_result_mk_ok(lean_box(sig_pipe[0])); // already installed
   if (pipe(sig_pipe) != 0)
@@ -156,13 +153,9 @@ LEAN_EXPORT OBJRES lean_sigint_pipe() {
     return lean_mk_io_user_error(lean_mk_string("call to sigaction() failed"));
   }
   return lean_io_result_mk_ok(lean_box(sig_pipe[0]));
-#else
-  return lean_io_result_mk_ok(lean_box(-1));
-#endif
 }
 
 LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t fd) {
-#if defined(__unix__) || defined(__APPLE__)
   char b;
   for (;;) {
     ssize_t r = read(fd, &b, 1);
@@ -174,9 +167,5 @@ LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t fd) {
       continue; // retry
     return lean_mk_io_user_error(lean_mk_string("read() failed"));
   }
-#else
-  (void)fd;
-  return lean_io_result_mk_ok(lean_box(0));
-#endif
 }
 #endif // _win32
