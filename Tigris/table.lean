@@ -18,7 +18,7 @@ def genTable (E : Env) (widTy : Nat) (widVal : Nat) : VEnv -> TableOf EnvHeader
   | {env := VE} => E.1.keysArray.map fun (k : String) =>
     ( .str k
     , .str $ truncate widTy  $ toString $ E.1.get! k
-    , .str $ truncate widVal $ toString $ VE.get!  k)
+    , .str $ truncate widVal $ toString $ VE.getD  k (.VEvalError "⋯ "))
 
 def PEnvHeader : List Text.SString := ["op", "prec", "assoc"].map fun s => ⟨s, {style := [.bold]}⟩
 def genTableOp (PE : OpTable) : TableOf PEnvHeader :=
@@ -54,11 +54,11 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .str "useful for type reduction")
    , (.str ""                 , .str "on a potentially diverging term")
    , (.str "#flush"           , .str "flush the environment")
-   , (.str ""                 , .byl "changes to the env is dropped")
+   , (.str ""                 , .byl "changes to the env are dropped")
    , (.str "#lam[+opts] <exp>", .str "Compile <exp> to Lambda IR, opts:")
-   , (.str ""                 , .blu "+raw: w/o any optimizations;")
-   , (.str ""                 , .blu "+opt: default, w/ optimizations;")
-   , (.str ""                 , .blu "+cc: w/ lambda lifting, implies +opt")
+   , (.str ""                 , .blu "⬝ raw: w/o any optimization;")
+   , (.str ""                 , .blu "⬝ opt: default, w/ optimizations;")
+   , (.str ""                 , .blu "⬝ cc: w/ closure conversion, implies `opt`")
    , (.str ""                 , .byl "use tigrisl for actual compilation.")]
 
 def tiglHelpMsg : TableOf HelpHeader :=

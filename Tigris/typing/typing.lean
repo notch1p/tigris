@@ -591,6 +591,8 @@ def inferGroup
 def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Logger) :=
   b.foldlM (init := (E, "")) fun (E, L) b =>
     match b with
+    | .extBind s _ sch => pure
+      ({E with E := E.E.insert s sch}, L)
     | .idBind group => inferGroup group E L <&> Prod.snd
     | .tyBind ty@{ctors, tycon, param} =>
       return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
@@ -613,6 +615,8 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
 def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array TopDeclT × Env × Logger) :=
   b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
     match b with
+    | .extBind s n sch@(.Forall _ t) => pure $
+      (acc.push (.idBind #[(s, sch,TExpr.Var n t)]) ,{E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let (a, E, l) <- inferGroupT group E L
       return (acc.push a, E, l)

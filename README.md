@@ -207,7 +207,7 @@ This project is a pain in the ass to develop and has undergone multiple refactor
 12. added a new "lambda" IR as the first half of a 2-stage IR. refactor #8.
     (like the namesake small language used as an IR for SML from Compiling with Continuation (Appel92))
     - have done various optimizations. these can be found in [opt.lean](Tigris/core/opt.lean)
-    - Closure Conversion (lambda lifting) is done at the end of this process
+    - Closure Conversion (lambda lifting, not in a strict sense: we've only made closure explicit) is done at the end of this process
       (also embedded some optimizations).
     - This IR will then gets compiled to a later-stage CPS IR.
     - It is now living in `core`.

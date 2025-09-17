@@ -9,7 +9,18 @@ namespace Parsing open Lexing Parser PType TopDecl
 def declaration : TParser σ TopDecl := first'
   #[ tyBind <$> tyDecl false
    , tyBind <$> tyEmpty
+   , externDecl
    , (idBind ∘ Array.singleton) <$> value parseExpr
+   , idBind <$> letDeclDispatch
+   , (idBind ∘ Array.singleton) <$> infixlDecl
+   , (idBind ∘ Array.singleton) <$> infixrDecl
+   ]
+  simpErrorCombine
+
+def declarationFile : TParser σ TopDecl := first'
+  #[ tyBind <$> tyDecl false
+   , tyBind <$> tyEmpty
+   , externDecl
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
    , (idBind ∘ Array.singleton) <$> infixrDecl
@@ -27,6 +38,9 @@ def mutTyDecl : TParser σ $ Array TopDecl := do
 
 def module : TParser σ $ Array TopDecl :=
   sepBy (optional END) declaration <* optional END
+
+def moduleFile : TParser σ $ Array TopDecl :=
+  sepBy (optional END) declarationFile <* optional END
 
 def parse (s : String) (PE : PEnv) : Except String Expr :=
   match runST fun _ => parseExpr <* optional END <* spaces <* endOfInput |>.run s |>.run' (PE, "") with
@@ -55,12 +69,22 @@ def lpOrModOrMut : TParser σ $ Array TopDecl := do
     mutTyDecl <* END
   else Array.singleton <$> lpOrMod
 
+def lpOrModOrMutFile : TParser σ $ Array TopDecl := do
+  if <- test MUTUAL then
+    mutTyDecl <* END
+  else Array.singleton <$> (withErrorMessage "Decl" $
+  first' #[declarationFile, patBind <$> letPatDecl] simpErrorCombine)
+
 def toplevel : TParser σ $ Array TopDecl := withErrorMessage "Toplevel" $
   let hd := lpOrModOrMut <* optional END
   (foldl (· ++ ·) · hd) =<< hd
 
+def toplevelFile : TParser σ $ Array TopDecl := withErrorMessage "Toplevel" $
+  let hd := lpOrModOrMutFile <* optional END
+  (foldl (· ++ ·) · hd) =<< hd
+
 def parseModuleIR (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
-  match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
+  match runST fun _ => toplevelFile <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 end Parsing

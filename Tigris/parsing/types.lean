@@ -177,6 +177,7 @@ inductive TopDecl
   | idBind : Array Binding -> TopDecl
   | patBind : PBinding -> TopDecl
   | tyBind : TyDecl -> TopDecl
+  | extBind : Symbol -> String -> Scheme -> TopDecl
 deriving Repr
 
 inductive TopDeclT

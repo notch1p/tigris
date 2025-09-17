@@ -9,9 +9,6 @@ open IO Std.ToFormat
 
 abbrev EvalState := Option (Task (Except Error (CtorMap × PEnv × Env × VEnv)))
 
---@[extern "lean_read_stdin_line"]
---opaque readTtyLine : IO String
-
 def main : IO Unit := do
   setStdoutBuf false
 
