@@ -131,7 +131,7 @@ static void sigint_handler() {
   // write is async-signal-safe
   char b = 1;
   if (sig_pipe[1] >= 0) {
-    write(sig_pipe[1], &b, 1);
+    (void)!write(sig_pipe[1], &b, 1);
   }
 }
 

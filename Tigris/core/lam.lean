@@ -32,12 +32,12 @@ inductive Value where
 deriving Repr, Inhabited
 
 inductive Rhs where
-  | prim     (op : PrimOp) (args : Array Name)         -- x := op(args)
-  | proj     (src : Name) (idx : Nat)                  -- x := π_idx src
-  | mkPair   (a b : Name)                              -- x := (a,b)
-  | mkConstr (tag : Name) (fields : Array Name)        -- x := Ctag(fields)
+  | prim     (op : PrimOp) (args : Array Name)         -- x := op(args,*)
+  | proj     (src : Name) (idx : Nat)                  -- x := src[idx]
+  | mkPair   (a b : Name)                              -- x := ⟨a,b⟩
+  | mkConstr (tag : Name) (fields : Array Name)        -- x := Ctag⟦fields,*⟧
   | isConstr (src : Name) (tag : Name) (arity : Nat)   -- x := is_Ctag[src] (boolean)
-  | call     (f : Name) (arg : Name)                   -- x := f arg (direct-style call result)
+  | call     (f : Name) (arg : Name)                   -- x := f(arg)
 deriving Repr, Inhabited
 
 inductive Stmt where
@@ -45,29 +45,33 @@ inductive Stmt where
 deriving Repr, Inhabited
 
 inductive Tail where
-  | ret  (x : Name)                       -- return x
-  | app  (f : Name) (arg : Name)          -- tail call: f arg
+  | ret  (x : Name)                       -- RET x
+  | app  (f : Name) (arg : Name)          -- tail call: f(arg)ᵀ
   | cond (condVar : Name) (tBranch eBranch : LExpr)  -- if cond then t else e
-  | switchConst (scrut : Name)       -- distinguish constant switch
+  | switchConst (scrut : Name)       -- caseᶜ
       (cases : Array (Const × LExpr))
       (default? : Option LExpr)
-  | switchCtor (scrut : Name)
+  | switchCtor (scrut : Name)        -- case
       (cases : Array (Name × Nat × LExpr))
       (default? : Option LExpr)
 deriving Repr, Inhabited
 
 inductive LExpr where
   | seq    (binds : Array Stmt) (tail : Tail)
-  | letVal (x : Name) (v : Value) (body : LExpr)
+  | letVal (x : Name) (v : Value) (body : LExpr) -- letι x = v in body
   /-- Nested let Rhs bindings. -/
-  | letRhs (x : Name) (rhs : Rhs) (body : LExpr)
+  | letRhs (x : Name) (rhs : Rhs) (body : LExpr) -- let x = rhs in body
   /--
     - Recursive function bindings.
     `LFun` here doesn't mean that `funs` have to be toplevel. We use LFun instead
     of Name × Name × LExpr is simply because of compatible representation.
     Which saves some conversions.
   -/
-  | letRec (funs : Array LFun) (body : LExpr)
+  | letRec (funs : Array LFun) (body : LExpr) -- letω
+                                              --  label fun₀: ...
+                                              --  label fun₁: ...
+                                              --    ...
+                                              -- in body
 deriving Repr, Inhabited, BEq
 
 /-- A top-level function in the Lambda IR. -/

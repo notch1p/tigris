@@ -4,6 +4,7 @@ import Tigris.core.lift
 import Tigris.interpreter.entrypoint
 import Tigris.oldcore.matchApp
 import PP
+
 @[inline] def Array.replaceAt (xs : Array α) (i : Nat) (elems : Array α) : Array α :=
   xs[0:i] ++ elems ++ xs[i+1:]
 
@@ -31,9 +32,30 @@ def primOfName (s : String) (t : MLType) : Option PrimOp :=
   | _, _            => none
 
 def matchBinaryPrim : TExpr -> Option (PrimOp × TExpr × TExpr)
-  | .App (.App (.Var f _) x (t₁ ->' _)) y _ => 
+  | .App (.App (.Var f _) x (t₁ ->' _)) y _
+  | .App (.Var f _) (.Prod' x y (t₁ ×'' _)) _ =>
     (·, x, y) <$> primOfName f t₁
   | _ => none
+
+def arrArity : MLType -> Nat
+  | .TArr _ b => 1 + arrArity b
+  | _ => 0
+
+def getArrArity : TExpr -> Nat
+  | .CI _ ty | .CS _ ty | .CB _ ty | .CUnit ty
+  | .Var _ ty | .Fun _ _ _ ty | .Fixcomb _ ty | .Fix _ ty
+  | .App _ _ ty | .Let _ _ ty | .Cond _ _ _ ty
+  | .Prod' _ _ ty | .Match _ _ ty _ _ | .Ascribe _ ty => arrArity ty
+
+def decomposeArr : MLType -> (List MLType × MLType)
+  | .TArr a b =>
+    let (as, r) := decomposeArr b
+    (a :: as, r)
+  | t => ([], t)
+
+@[inline] def buildProdTy : List MLType -> MLType
+  | [] => .tUnit
+  | t@(x :: xs) => t.foldr1 (· ×'' ·) $ ‹_› ▸ List.cons_ne_nil x xs
 
 def decomposeLamChain : TExpr -> Option (String × Array String × TExpr)
   | .Fun p _ b _ =>
@@ -91,8 +113,30 @@ def splitLetGroup
         | some (selfN, params, core) => (recs.push (x, selfN, params, core), nonrecs)
         | none => (recs, nonrecs.push (x, e))
       | _ => (recs, nonrecs.push (x, e))
+def destructArgsPrelude (tuple : Name) (params : Array Name) (core : LExpr) : LExpr :=
+  go tuple params.size Nat.le.refl where
+  go (t : Name) : (n : Nat) -> n <= params.size -> LExpr
+  | 0, _ => core
+  | 1, _ => .letVal params[0] (.var t) core
+  | x + 2, h =>
+    let i := x + 1
+    letI xe := params[i]
+    letI l := s!"_pL#{xe}"
+    letI r := s!"_pR#{xe}"
+    .letRhs l (.proj t 0)
+    $ .letRhs r (.proj t 1)
+    $ .letVal xe (.var l)
+    $ go r i (Nat.le_of_succ_le h)
 
 end Helper
+
+
+def buildPairs (kont : Name -> M σ LExpr) : (name : List Name) -> M σ LExpr
+  | [] => unreachable!
+  | [x] => kont x
+  | x :: xs => do
+    let t <- fresh "pair"
+    buildPairs (name := xs) fun y => .letRhs t (.mkPair x y) <$> kont t
 
 open Function (uncurry) in
 open Helper in
@@ -140,6 +184,46 @@ partial def lowerCtorApp
       (args.foldl (init := TExpr.Var cname (MLType.TVar ⟨"?"⟩))
       (fun f a => TExpr.App f a (MLType.TVar ⟨"?"⟩)))
       ρ ctors k
+
+partial def lowerFunApp
+  (head : TExpr) (args : Array TExpr)
+  (ρ : Env) (ctors : Std.HashMap String Nat)
+  (k : Name -> M σ LExpr) : M σ LExpr :=
+  let n := getArrArity head
+  if n <= 1 then
+    lowerE head ρ ctors fun vf =>
+      lowerE args[0]! ρ ctors fun va => do
+        let r <- fresh "call"
+        let body <- k r
+        return .letRhs r (.call vf va) body
+  else if args.size > n then unreachable!
+  else if args.size = n then
+    lowerE head ρ ctors fun vf =>
+      lowerMany args ρ ctors fun ns =>
+        buildPairs (name := ns.toList) fun tuple => do
+          let r0 <- fresh "r"
+          .letRhs r0 (.call vf tuple) <$> (k r0)
+  else -- 1 < args.size < n, partial app
+    lowerE head ρ ctors fun vf => do
+      lowerMany args ρ ctors fun supplied => do
+        let missing := n - args.size
+        let rec buildLam (i : Nat) (captured : Array Name) : M σ Value := do
+          let p <- fresh "arg"
+          if i + 1 < missing then
+            let inner <- buildLam i.succ $ captured.push p
+            let v <- fresh "lam"
+            let body := .letVal v inner $ .seq #[] $ (.ret v)
+            return .lam p body
+          else
+            let res <- fresh "r"
+            let allArgs := supplied ++ captured.push p
+            .lam p <$>
+              buildPairs (name := allArgs.toList) fun tuple =>
+                pure $ .letRhs res (.call vf tuple) (.seq #[] (.ret res))
+        let lamV <- buildLam 0 #[]
+        let out <- fresh "clos"
+        let cont <- k out
+        return .letVal out lamV cont
 
 partial def lowerE
   (e : TExpr) (ρ : Env)
@@ -200,18 +284,37 @@ partial def lowerE
             let body <- k p
             return .letRhs p (.mkPair lv rv) body
 
-      | .Fun a _ body _ =>
-        let lb <- lower body (ρ.insert a a) ctors
-        let f <- fresh "lam"
-        let kbody <- k f
-        return .letVal f (.lam a lb) kbody
+      | .Fun .. =>
+--        let lb <- lower body (ρ.insert a a) ctors
+--        let f <- fresh "lam"
+--        let kbody <- k f
+--        return .letVal f (.lam a lb) kbody
+        match decomposeLamChain e with
+        | some (p0, rest, core) =>
+          if rest.isEmpty then
+            let lb <- lower core (ρ.insert p0 p0) ctors
+            let f <- fresh "lam"
+            let kbody <- k f
+            return .letVal f (.lam p0 lb) kbody
+          else
+            let tupleParam <- fresh "args"
+            let ρ' := rest.foldl (fun acc p => acc.insert p p) (init := ρ.insert p0 p0)
+            let loweredCore <- lower core ρ' ctors
+            let body' := destructArgsPrelude tupleParam (#[p0] ++ rest) loweredCore
+            let f <- fresh "lam"
+            let kbody <- k f
+            return .letVal f (.lam tupleParam body') kbody
+        | none => unreachable!
 
-      | .App f a _ =>
-        lowerE f ρ ctors fun vf =>
-          lowerE a ρ ctors fun va => do
-            let r <- fresh "call"
-            let body <- k r
-            return .letRhs r (.call vf va) body
+
+      | .App .. =>
+        let (h, args) := decomposeApp e
+        lowerFunApp h args ρ ctors k
+--        lowerE f ρ ctors fun vf =>
+--          lowerE a ρ ctors fun va => do
+--            let r <- fresh "call"
+--            let body <- k r
+--            return .letRhs r (.call vf va) body
 
       | .Cond c t e' _ =>
         lowerE c ρ ctors fun cv => do
@@ -264,22 +367,20 @@ partial def lowerRecFun
   (ctors : Std.HashMap String Nat)
   : M σ LFun := do
   let ρ₀ := ρ.insert selfN fid
-  let (p₀, rest) <- show M σ (Name × Subarray Name) from
-    if h : params.size = 0 then do
-      (·, ∅) <$> fresh "arg"
-    else return (params[0], params[1:])
-
-  let rec build (i : Nat) (ρᵢ : Env) : M σ LExpr := do
-    if h : i < rest.size then
-      let p := rest[i]
-      let inner <- build i.succ (ρᵢ.insert p p)
-      let v <- fresh "lam"
-      return .letVal v (.lam p inner) (.seq #[] (.ret v))
-    else lower core ρᵢ ctors
-
-  let ρ₁ := ρ₀.insert p₀ p₀
-  let body <- build 0 ρ₁
-  return ⟨fid, p₀, body⟩
+  if params.size = 0 then
+    let p <- fresh "arg"
+    let body <- lower core (ρ₀.insert p p) ctors
+    return ⟨fid, p, body⟩
+  else if h : params.size = 1 then
+    let p₀ := params[0]
+    let body <- lower core (ρ₀.insert p₀ p₀) ctors
+    return ⟨fid, p₀, body⟩
+  else
+    let tupleParam <- fresh "args"
+    let ρ := params.foldl (init := ρ₀) fun acc p => acc.insert p p
+    let loweredCore <- lower core ρ ctors
+    let body' := destructArgsPrelude tupleParam params loweredCore
+    return ⟨fid, tupleParam, body'⟩
 
 partial def bindPatBinds
   (roots : Array Name)
@@ -453,4 +554,3 @@ def toLamModuleT1 s e :=
   letI e := optimizeLam $ runST fun _ => lower e (ctors := s) |>.run' 0
   runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
 attribute [inline] toLamModuleT toLamT toLamTO dumpLamModuleT toLamModuleT1
-
