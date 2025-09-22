@@ -113,20 +113,19 @@ def splitLetGroup
         | some (selfN, params, core) => (recs.push (x, selfN, params, core), nonrecs)
         | none => (recs, nonrecs.push (x, e))
       | _ => (recs, nonrecs.push (x, e))
+
 def destructArgsPrelude (tuple : Name) (params : Array Name) (core : LExpr) : LExpr :=
-  go tuple params.size Nat.le.refl where
-  go (t : Name) : (n : Nat) -> n <= params.size -> LExpr
-  | 0, _ => core
-  | 1, _ => .letVal params[0] (.var t) core
-  | x + 2, h =>
-    let i := x + 1
-    letI xe := params[i]
-    letI l := s!"_pL#{xe}"
-    letI r := s!"_pR#{xe}"
+  go tuple params.toList where
+  go t
+  | [] => core
+  | [x] => .letVal x (.var t) core
+  | x :: xs =>
+    let l := s!"_pL#{x}"
+    let r := s!"_pR#{x}"
     .letRhs l (.proj t 0)
     $ .letRhs r (.proj t 1)
-    $ .letVal xe (.var l)
-    $ go r i (Nat.le_of_succ_le h)
+    $ .letVal x (.var l)
+    $ go r xs
 
 end Helper
 

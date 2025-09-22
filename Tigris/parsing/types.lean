@@ -1,6 +1,7 @@
 import Parser
 import PP.dependentPP
 
+@[simp, grind]
 axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
 
 abbrev Symbol := String

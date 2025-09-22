@@ -176,6 +176,10 @@ def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.get!
 
+def Array.foldl1D (f : α -> α -> α) (arr : Array α) (dflt : α) : α :=
+  let mf mx y := some $ match mx with | none => y | some x => f x y
+  arr.foldl mf none |>.getD dflt
+
 def Array.foldr1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf x my := some $ match my with | none => x | some y => f x y
   arr.foldr mf none |>.get!

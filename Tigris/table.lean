@@ -59,13 +59,18 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .blu "⬝ raw: w/o any optimization;")
    , (.str ""                 , .blu "⬝ opt: default, w/ optimizations;")
    , (.str ""                 , .blu "⬝ cc: w/ closure conversion, implies `opt`")
-   , (.str ""                 , .byl "use tigrisl for actual compilation.")]
+   , (.str ""                 , .byl "use tigrisl for actual compilation.")
+   , (.str "#cps <exp>"       , .str "Compile <exp> to CPS IR")
+   , (.str ""                 , .str "implies `#lam+cc`")]
 
 def tiglHelpMsg : TableOf HelpHeader :=
-  #[ (.str "-l, --lam"  , .str "prepend CC'd IR with its source IR")
-   , (.str "<ifiles>"   , .str "a list of input files read from")
-   , (.str "-o <ofiles>", .str "a list of output files written to")
-   , (.str ""           , .byl "must match or be smaller than input list")
-   , (.str ""           , .str "unmatched inputs use default naming convention")
-   , (.str ""           , .blu "i.e. 'file.tig' renames to 'file.tig.ir'")
-   , (.str "-h, --help" , .str "show this help string")]
+  #[ (.str "-l, --lam"      , .str "emit raw lambda IR w/ optmizations")
+   , (.str "-c, --cc"       , .str "emit CC'd lambda IR")
+   , (.str "--cps"          , .str "emit CPS IR")
+   , (.str "-ne, --no-entry", .str "do not generate entrypoint")
+   , (.str "<ifiles>"       , .str "a list of input files read from")
+   , (.str "-o <ofiles>"    , .str "a list of output files written to")
+   , (.str ""               , .byl "must match or be smaller than input list")
+   , (.str ""               , .str "unmatched inputs use dflt naming convention")
+   , (.str ""               , .blu "i.e. 'x.tig' renames to 'x.tig.ir'")
+   , (.str "-h, --help"     , .str "show this help string")]

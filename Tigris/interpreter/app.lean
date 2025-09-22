@@ -26,8 +26,8 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
         let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
           liftEIO $ print $ Logging.warn
-            s!"Partial pattern matching, \
-               possible cases such as {ex.map (·.render)} are ignored\n"
+            s!"Partial pattern matching, an unmatched candidate is\
+             \n  {ex.map (·.render)}\n"
 
         let v <- evalC VE e |>.adaptExcept toString
         match evalPat1 v VE #[] pat with
