@@ -1,29 +1,39 @@
-import Tigris.core.transform
+import Tigris.cps.ctransform
+import Tigris.codegen.sbcl
 import Tigris.table
 
+structure ArgParserFlag where
+  lam? : Bool := false
+  lamcc? : Bool := false
+  entry? : Bool := true
+  cps?   : Bool := false
+
 def validate args := do
-  if let some (ir?, is, os) <- argParser false [] [] args then
+  if let some (spec, is, os) <- argParser {} [] [] args then
     if is.size = 0 then IO.throwServerError "no input files"
     else if is.size < os.size then IO.throwServerError s!"received {is.size} file(s) but need {os.size}"
     else
-      let left := is.foldl (Array.push · $ String.append · ".ir") #[] os.size
-      return some (ir?, is, os ++ left)
+      let left := is.foldl (Array.push · $ String.append · ".lisp") #[] os.size
+      return some (spec, is, os ++ left)
   else return none
-where argParser (b : Bool) (is : List String) (os : List String)
-  : List String -> IO (Option (Bool × Array String × Array String))
-  | [] => return some (b, is.foldr (flip Array.push) #[], #[])
-  | "-h" :: _ | "--help" :: _ => return none
-  | "-l" :: xs | "--lam" :: xs => argParser true is os xs
+where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
+  : List String -> IO (Option (ArgParserFlag × Array String × Array String))
+  | [] => return some (spec, is.foldr (flip Array.push) #[], #[])
+  | "-h" :: _   | "--help" :: _ => return none
+  | "-l" :: xs  | "--lam" :: xs => argParser {spec with lam? := true} is os xs
+  | "-c" :: xs  | "--cc" :: xs => argParser {spec with lamcc? := true} is os xs
+                | "--cps" :: xs => argParser {spec with cps? := true} is os xs
+  | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
   | "-o" :: xs =>
-    (b, is.foldr (flip Array.push) #[], ·) <$> xs.foldrM (init := #[]) fun s a =>
+    (spec, is.foldr (flip Array.push) #[], ·) <$> xs.foldrM (init := #[]) fun s a =>
       if s.startsWith "-"
       then IO.throwServerError s!"flag {s} must come before positional vararg '-o'"
       else return a.push s
-  | x :: xs => argParser b (x :: is) os xs
+  | x :: xs => argParser spec (x :: is) os xs
 
 def main (fp : List String) : IO Unit := do
   let PE := initState
-  if let some (ir?, is, os) <- validate fp then
+  if let some ({lam?, lamcc?, entry?, cps?}, is, os) <- validate fp then
     for i in is, o in os do
       try
         let s <- IO.FS.readFile i
@@ -31,17 +41,32 @@ def main (fp : List String) : IO Unit := do
         let (decls, _, l) <- IO.ofExcept $ MLType.inferToplevelT decls MLType.defaultE
         IO.print l
         IO.FS.withFile o .write fun h => do
-          let (ir, cc) := IR.dumpLamModuleT decls
+          let (ir, cc) := IR.toLamModuleT decls
+          let mod := CPS.toCPS cc
 
-          if ir? then
-            h.putStrLn "NB. == Optimized IR =="
-            h.putStrLn $ Std.Format.pretty (width := 80) $ ir
-            h.putStrLn "\nNB. == Above CC'd =="
+          if lam? then
+            h.putStrLn ";; == Optimized IR ==\n"
+            h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule ir
+          if lamcc? then
+            h.putStrLn ";; == Optimized IR CC'd ==\n"
+            h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule cc
+          if cps? then
+            h.putStrLn ";; == CPS IR ==\n"
+            h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
 
-          h.putStrLn $ Std.Format.pretty (width := 80) $ cc
+          h.putStrLn ";; == Common Lisp ==\n"
+          let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
+--          h.putStrLn "; package-defs"
+--          h.putStrLn hd
+          h.putStrLn "; hoisted functions"
+          h.putStrLn funs
+          h.putStrLn "; entrypoint"
+          h.putStrLn main
+          h.putStrLn "; driver"
+          h.putStrLn drv
       catch e => println! Logging.error (toString e)
   else
-    println! "Tigris IR₀ compiler"
+    println! "Tigris IR₀/IR₁/CL compiler"
     println! "USAGE:\n  tigrisl [FLAGS] <ifiles> [-o <ofiles>]"
     println! "FLAGS & ARGS:"
     println! PrettyPrint.tabulate

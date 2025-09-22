@@ -82,7 +82,12 @@ def tyEmpty : TParser σ TyDecl := do
   return {tycon, param, ctors := #[]}
 
 @[inline]
-def tyExp : TParser σ MLType := tyArrow false #[]
+def tyExp (e : Array String := #[]) : TParser σ MLType := 
+  tyArrow false e
+
+def tyScheme : TParser σ Scheme := do
+  let hd <- optionD (FORALL *> takeMany1 ID <* COMMA) #[]
+  .Forall (hd.foldr (.cons ∘ .mkTV) []) <$> tyExp hd
 
 def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
   TYPE let tycon <- ID

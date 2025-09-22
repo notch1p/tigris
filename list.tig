@@ -1,0 +1,23 @@
+type List a = Nil | Cons a (List a)
+
+infixr 67 "::" => Cons
+
+let rec map f
+  | Nil => Nil
+  | x :: xs => f x :: map f xs
+
+let rec foldl f init
+  | Nil => init
+  | x :: xs =>
+    foldl f (f init x) xs
+
+let hd (x :: _) = x
+let tl (_ :: xs) = xs
+
+let main =
+  let l = 1 :: 2 :: 3 :: 4 :: Nil in
+  let mapl = map (1 + _) l in
+  let sum = foldl (_ + _) 0 l in 
+  ( mapl, sum
+  , foldl (_ + _) 0 mapl
+  , hd mapl)

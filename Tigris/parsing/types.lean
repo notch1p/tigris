@@ -1,6 +1,7 @@
 import Parser
 import PP.dependentPP
 
+@[simp, grind]
 axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
 
 abbrev Symbol := String
@@ -70,16 +71,15 @@ def Pattern.render : Pattern -> String
   | PProd' p₁ p₂ => toString (render p₁, render p₂)
   | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prodOrApp? s) (render s)) $ Logging.blue n
 
-
 instance : ToString Pattern := ⟨Pattern.toStr⟩
-
 inductive TV where
-  | mkTV : String -> TV deriving Repr, BEq, Ord, Hashable
-instance : ToString TV := ⟨fun | .mkTV s => s⟩
+  | mkTV : String -> TV deriving Repr, Ord, Hashable
+instance : BEq TV := ⟨fun (.mkTV s) (.mkTV s') => s == s'⟩
+instance : ToString TV := ⟨fun (.mkTV s) => s⟩
+instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩
 def TV.renderFmt : TV -> Std.Format
   | mkTV s => Logging.cyan s
 instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
-
 inductive MLType where
   | TVar : TV -> MLType
   | TCon : String -> MLType
@@ -177,6 +177,7 @@ inductive TopDecl
   | idBind : Array Binding -> TopDecl
   | patBind : PBinding -> TopDecl
   | tyBind : TyDecl -> TopDecl
+  | extBind : Symbol -> String -> Scheme -> TopDecl
 deriving Repr
 
 inductive TopDeclT

@@ -493,6 +493,7 @@ partial def tailcallify : LExpr -> LExpr := fun e =>
   4. copy-prop-DCE again
 -/
 def optimizeLam (e : LExpr) : LExpr :=
+--  letI e0 := fuseTupleProj e
   letI e1 := constantFold e
   letI e2 := copyPropDCE e1
   letI e3 := tailcallify e2

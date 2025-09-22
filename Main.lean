@@ -9,9 +9,6 @@ open IO Std.ToFormat
 
 abbrev EvalState := Option (Task (Except Error (CtorMap × PEnv × Env × VEnv)))
 
---@[extern "lean_read_stdin_line"]
---opaque readTtyLine : IO String
-
 def main : IO Unit := do
   setStdoutBuf false
 
@@ -80,6 +77,14 @@ def main : IO Unit := do
         let p <- Process.spawn {cmd := editor, args := fp.toArray}
         () <$ p.wait
       catch e => println! Logging.error $ toString e
+    else if buf.startsWith "#cps" then
+      let sbuf := buf.extract ⟨4⟩ buf.endPos
+      try
+        let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
+        let (e, _, l) <- MLType.runInferT1 exp e |> ofExcept
+        print l
+        e |> IO.println ∘ CPS.fmtCModule ∘ CPS.toCPS ∘ IR.toLamModuleT1 ctorE
+      catch e => println! Logging.error $ toString e
     /- compiles to IR₀ -/
     else if buf.startsWith "#lam" then
       let sbuf := buf.extract ⟨4⟩ buf.endPos
@@ -93,6 +98,23 @@ def main : IO Unit := do
         print l
         runner e |> IO.println
       catch e => println! Logging.error $ toString e
+    else if buf.startsWith "#comp" then
+      let sbuf := buf.dropWhile $ not ∘ Char.isWhitespace
+      try
+        let exp <- Parsing.parse sbuf pe |> ofExcept
+        let (e, _, l) <- MLType.runInferT1 exp e |> ofExcept
+        print l
+        let (_, funs, main, _) :=
+          Codegen.CL.emitModule (addDriver := false)
+          ∘ CPS.toCPS
+          ∘ IR.toLamModuleT1 ctorE
+          $ e
+        println! "; hoisted functions"
+        println! funs
+        println! "; entrypoint"
+        println! main
+      catch e => println! Logging.error $ toString e
+
     /- dump typedtree -/
     else if buf.startsWith "#ta" then
       (Parsing.typeExpr (buf.dropWhile $ not ∘ Char.isWhitespace) pe e |>.toIO') >>= fun
@@ -153,4 +175,3 @@ def main : IO Unit := do
 
     buf := ""
     prompt := "> "
-

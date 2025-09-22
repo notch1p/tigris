@@ -11,6 +11,11 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
     liftEIO (print l)
     xs.foldlM (init := (ctors, PE, E, VE)) fun (ctors, PE, E, VE) decl => do
       match decl with
+      | .extBind id _ sch =>
+        let E := {E with E := E.E.insert id sch}
+        liftEIO (print ∘ Logging.warn $ "`extern` definition only updates the typing environment in REPL:\n\
+                                         It's not used for evaluation. This can been seen as importing an axiom.\n")
+        $> (ctors, PE, E, VE)
       | .patBind (pat, e) =>
         let (.Forall _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
         liftEIO (print l)
@@ -21,8 +26,8 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
         let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
         if let some ex := ex then
           liftEIO $ print $ Logging.warn
-            s!"Partial pattern matching, \
-               possible cases such as {ex.map (·.render)} are ignored\n"
+            s!"Partial pattern matching, an unmatched candidate is\
+             \n  {ex.map (·.render)}\n"
 
         let v <- evalC VE e |>.adaptExcept toString
         match evalPat1 v VE #[] pat with

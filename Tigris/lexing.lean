@@ -36,11 +36,12 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
   , ("=>", "=>")
   , (",", ",")
   , ("_", "_")
-  , (":", ":")]
+  , (":", ":")
+  , ("∀", "∀")]
 
 def reserved :=
-  #[ "mutual","infixl" , "infixr", "match"
-   , "data"  , "type"  , "with"
+  #[ "mutual","infixl" , "infixr", "match", "extern"
+   , "forall", "data"  , "type"  , "with"
    , "else"  , "then"  , "let"
    , "and"   , "rec"   , "fun"
    , "fn"    , "in"    , "if"]
@@ -99,6 +100,8 @@ abbrev WITH   : TParser σ Unit := kw "with"
 abbrev TYPE   : TParser σ Unit := kw "type" <|> kw "data"
 abbrev MUTUAL : TParser σ Unit := kw "mutual"
 abbrev AND    : TParser σ Unit := kw "and"
+abbrev FORALL : TParser σ Unit := kw "forall" <|> kw "∀"
+abbrev EXTERN : TParser σ Unit := kw "extern"
 
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
 abbrev ARROW: TParser σ Unit := spaces *>

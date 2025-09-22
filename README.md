@@ -119,10 +119,23 @@ proving those functions terminates.
 
 #### IR/Backends
 
-- [ ] Frankly I'm not very familiar with backends, Even If I were to do it,
+We currently maintain a two stage IR for the ease of reasoning:
+  - IR₀: Lambda IR
+  - IR₁: CPS IR
+
+- Pipeline
+  1. Lambda IR (ANF)
+    - Uncurrying
+    - Pattern matching lowering via decision tree
+    - Closure Conversion
+    - Optimizations
+  2. CPS IR
+  3. Common Lisp
+
+- [x] Frankly I'm not very familiar with backends, Even If I were to do it,
       it would most likely be a example of compiling with continuations,
       with optional ANF transformation, closure conversion (already done),
-      and defunctionalization.
+      ~~and defunctionalization.~~
 
 - there is a experimental IR at [core](Tigris/core) that translates to an ANF first:
   - see [core/lam.lean](Tigris/core/lam.lean) for the IR spec.
@@ -139,9 +152,30 @@ proving those functions terminates.
   - closure conversion [core/lift.lean](Tigris/core/lift.lam)
     are done at the end of this pass.
 
-- no codegen yet.
+- ~~no codegen yet.~~
 
-The IR part is somewhat better documented than others, because I'm not that
+- there is a naive CPS IR at [cps](Tigris/cps). It doesn't do much, but
+  non-tailrec functions are transformed to CPS to maintain tailrec property.
+  - also contains some optimizations
+
+- there is a common lisp backend. Basically a 1-to-1 translation of CPS IR.
+  - Why common lisp? Because I'm familiar with the langauge.
+  - Although the Lisp-2 double namespace (value/function) does add complexity to
+    the codegen process.
+  - Virtually all functions are tailrec however SBCL does not guarantee tailrec optimization
+    that means we are at the mercy of SBCL's optimizer. _Trust the compiler_.
+  - an `extern` definition whose syntax is
+    ```ebnf
+    <extern-decl> ::=
+      "extern" <id> <strlit> : <type-scheme>
+    <type-scheme> ::= (("forall" | "∀") <id>+ ,)? <type-exp>
+    ```
+    can be used to add import foreign functions.
+    Although this is merely a syntactic transformation and it doesn't "just work".
+    You'll need to follow the calling convention found in [core/lift.lean](Tigris/core/lift.lean) and
+    [codegen/sbcl.lean](Tigris/codegen/sbcl.lean) to define those functions in the runtime.
+
+This part (IR/Backends) is somewhat better documented than others, because I'm not that
 familiar with compiler backends and codegen.
 
 #### Exhaustiveness/Redundant check
@@ -207,7 +241,7 @@ This project is a pain in the ass to develop and has undergone multiple refactor
 12. added a new "lambda" IR as the first half of a 2-stage IR. refactor #8.
     (like the namesake small language used as an IR for SML from Compiling with Continuation (Appel92))
     - have done various optimizations. these can be found in [opt.lean](Tigris/core/opt.lean)
-    - Closure Conversion (lambda lifting) is done at the end of this process
+    - Closure Conversion (lambda lifting, not in a strict sense: we've only made closure explicit) is done at the end of this process
       (also embedded some optimizations).
     - This IR will then gets compiled to a later-stage CPS IR.
     - It is now living in `core`.
