@@ -1,0 +1,18 @@
+extern println "%println" : forall a, a -> Unit
+extern append "%string-append" : String -> String -> String
+extern toString "%to-string" : forall a, a -> String
+
+infixl 65 "++" => append
+
+let fact n =
+  let rec go acc
+    | 0 -> acc
+    | m ->
+      let an = acc * m in
+      let _ = println $ "fact " ++ toString n ++ " = " ++ toString an
+      in
+      go an @@ m - 1
+  in go 1 n
+
+let main = fact 5
+

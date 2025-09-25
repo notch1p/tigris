@@ -7,10 +7,11 @@ structure ArgParserFlag where
   lamcc? : Bool := false
   entry? : Bool := true
   cps?   : Bool := false
+  ffi?    : Option String := "ffi.lisp"
 
 def validate args := do
   if let some (spec, is, os) <- argParser {} [] [] args then
-    if is.size = 0 then IO.throwServerError "no input files"
+    if is.size = 0 then return none
     else if is.size < os.size then IO.throwServerError s!"received {is.size} file(s) but need {os.size}"
     else
       let left := is.foldl (Array.push · $ String.append · ".lisp") #[] os.size
@@ -24,6 +25,9 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
   | "-c" :: xs  | "--cc" :: xs => argParser {spec with lamcc? := true} is os xs
                 | "--cps" :: xs => argParser {spec with cps? := true} is os xs
   | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
+  | "-lf" :: x :: xs | "--link-ffi" :: x :: xs =>
+    argParser {spec with ffi? := x} is os xs
+  | "-nlf" :: xs | "--no-link-ffi" :: xs => argParser {spec with ffi? := none} is os xs
   | "-o" :: xs =>
     (spec, is.foldr (flip Array.push) #[], ·) <$> xs.foldrM (init := #[]) fun s a =>
       if s.startsWith "-"
@@ -33,7 +37,13 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
 
 def main (fp : List String) : IO Unit := do
   let PE := initState
-  if let some ({lam?, lamcc?, entry?, cps?}, is, os) <- validate fp then
+  if let some ( { lam?
+                , lamcc?
+                , entry?
+                , cps?
+                , ffi?}
+              , is
+              , os) <- validate fp then
     for i in is, o in os do
       try
         let s <- IO.FS.readFile i
@@ -43,6 +53,10 @@ def main (fp : List String) : IO Unit := do
         IO.FS.withFile o .write fun h => do
           let (ir, cc) := IR.toLamModuleT decls
           let mod := CPS.toCPS cc
+
+          if let some ffip := ffi? then
+            h.putStrLn ";; == external FFI ==\n"
+            h.putStrLn s!"(load \"{ffip}\")\n"
 
           if lam? then
             h.putStrLn ";; == Optimized IR ==\n"
@@ -73,3 +87,4 @@ def main (fp : List String) : IO Unit := do
       "tigrisl"
       {align := (.left, .left), header? := false}
       tiglHelpMsg
+

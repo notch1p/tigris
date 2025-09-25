@@ -120,16 +120,18 @@ proving those functions terminates.
 #### IR/Backends
 
 We currently maintain a two stage IR for the ease of reasoning:
-  - IR₀: Lambda IR
-  - IR₁: CPS IR
+
+- IR₀: Lambda IR
+- IR₁: CPS IR
 
 - Pipeline
   1. Lambda IR (ANF)
-    - Uncurrying
-    - Pattern matching lowering via decision tree
-    - Closure Conversion
-    - Optimizations
+    1.1 Uncurrying
+    1.2 Pattern matching lowering via decision tree
+    1.3 Closure Conversion
+    1.4 Optimizations
   2. CPS IR
+    2.1 optimizations
   3. Common Lisp
 
 - [x] Frankly I'm not very familiar with backends, Even If I were to do it,
@@ -165,15 +167,18 @@ We currently maintain a two stage IR for the ease of reasoning:
   - Virtually all functions are tailrec however SBCL does not guarantee tailrec optimization
     that means we are at the mercy of SBCL's optimizer. _Trust the compiler_.
   - an `extern` definition whose syntax is
+
     ```ebnf
     <extern-decl> ::=
       "extern" <id> <strlit> : <type-scheme>
     <type-scheme> ::= (("forall" | "∀") <id>+ ,)? <type-exp>
     ```
+
     can be used to add import foreign functions.
     Although this is merely a syntactic transformation and it doesn't "just work".
     You'll need to follow the calling convention found in [core/lift.lean](Tigris/core/lift.lean) and
     [codegen/sbcl.lean](Tigris/codegen/sbcl.lean) to define those functions in the runtime.
+    - see also [ffi.lisp](ffi.lisp) for examples
 
 This part (IR/Backends) is somewhat better documented than others, because I'm not that
 familiar with compiler backends and codegen.

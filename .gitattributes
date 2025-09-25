@@ -1,1 +1,2 @@
 *.tig linguist-language=OCaml
+examples/* -linguist-vendored

@@ -87,7 +87,6 @@ def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := spac
    (withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ string s *> notFollowedBy (tokenFilter badNext))
-
 abbrev LET    : TParser σ Unit := kw "let"
 abbrev IN     : TParser σ Unit := kw "in"
 abbrev FUN    : TParser σ Unit := kw "fun"
@@ -100,7 +99,12 @@ abbrev WITH   : TParser σ Unit := kw "with"
 abbrev TYPE   : TParser σ Unit := kw "type" <|> kw "data"
 abbrev MUTUAL : TParser σ Unit := kw "mutual"
 abbrev AND    : TParser σ Unit := kw "and"
-abbrev FORALL : TParser σ Unit := kw "forall" <|> kw "∀"
+abbrev FORALL : TParser σ Unit := kw "forall"
+abbrev FORALL' : TParser σ Unit := spaces *>
+                                    ( withBacktracking
+                                    $ withErrorMessage s!"kw '∀'"
+                                    $ void
+                                    $ string "∀")
 abbrev EXTERN : TParser σ Unit := kw "extern"
 
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')

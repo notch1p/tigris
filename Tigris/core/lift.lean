@@ -68,8 +68,8 @@ def tailAppDirect
 
 def tailAppViaClosure (clos : Name) (a : Name) : (Array Stmt × Tail) :=
   letI code := "_code"
-  letI env  := "Γ"
-  letI pl   := "ρ"
+  letI env  := "Γc"
+  letI pl   := "ρc"
   ( #[ .let1 code (.proj clos 0)
      , .let1 env  (.proj clos 1)
      , .let1 pl   (.mkPair a env)]
@@ -178,8 +178,8 @@ def emitLetCallInCode
     .letRhs x   (.call f pl) k
   else
     let code := "_code"
-    let env  := "Γ"
-    let pl   := "ρ"
+    let env  := "Γc"
+    let pl   := "ρc"
     .letRhs code (.proj f 0) $
     .letRhs env  (.proj f 1) $
     .letRhs pl   (.mkPair a env) $
@@ -363,8 +363,8 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
 
   | .letRhs x (.call f a) body => do
     let code <- fresh "_code"
-    let env  <- fresh "Γ"
-    let pl   <- fresh "ρ"
+    let env  <- fresh "Γc"
+    let pl   <- fresh "ρc"
     let (b', fs) <- ccExpr gCodes body
     let e' :=
       .letRhs code (.proj f 0) $

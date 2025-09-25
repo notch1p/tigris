@@ -1,0 +1,21 @@
+mutual
+type Tree a = Empty | Node a (Forest a)
+type Forest a = Nil | Cons (Tree a) (Forest a)
+;;
+
+let rec countTree
+  | Empty => 0
+  | Node _ f => 1 + countForest f
+and countForest
+  | Nil => 0
+  | Cons t f => countTree t + countForest f
+
+
+let main = countTree $
+  Node 1 $
+    Cons
+      (Node 2 (Cons (Node 5 Nil) Nil))
+    $ Cons
+        (Node 3
+          (Cons (Node 4 Nil) Nil))
+        (Cons Empty Nil)

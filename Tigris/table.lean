@@ -67,13 +67,16 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .str "the only backend is common lisp for now.")]
 
 def tiglHelpMsg : TableOf HelpHeader :=
-  #[ (.str "-l, --lam"      , .str "emit raw lambda IR w/ optmizations")
-   , (.str "-c, --cc"       , .str "emit CC'd lambda IR")
-   , (.str "--cps"          , .str "emit CPS IR")
-   , (.str "-ne, --no-entry", .str "do not generate entrypoint")
-   , (.str "<ifiles>"       , .str "a list of input files read from")
-   , (.str "-o <ofiles>"    , .str "a list of output files written to")
-   , (.str ""               , .byl "must match or be smaller than input list")
-   , (.str ""               , .str "unmatched inputs use dflt naming convention")
-   , (.str ""               , .blu "i.e. 'x.tig' renames to 'x.tig.ir'")
-   , (.str "-h, --help"     , .str "show this help string")]
+  #[ (.str "-l, --lam"                , .str "emit raw lambda IR w/ optmizations")
+   , (.str "-c, --cc"                 , .str "emit CC'd lambda IR")
+   , (.str "--cps"                    , .str "emit CPS IR")
+   , (.str "-lf, --link-ffi <path>"   , .str "link ffi declarations from <path>")
+   , (.str ""                         , .str "default behavior: link 'ffi.lean'")
+   , (.str "-nlf, --no-link-ffi"      , .str "do not link ffi")
+   , (.str "-ne, --no-entry"          , .str "do not generate entrypoint")
+   , (.str "<ifiles>"                 , .str "a list of input files read from")
+   , (.str "-o <ofiles>"              , .str "a list of output files written to")
+   , (.str ""                         , .byl "must match or be smaller than input list")
+   , (.str ""                         , .str "unmatched inputs use dflt naming convention")
+   , (.str ""                         , .blu "i.e. 'x.tig' renames to 'x.tig.ir'")
+   , (.str "-h, --help"               , .str "show this help string")]

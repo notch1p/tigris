@@ -73,7 +73,7 @@ def letPatDecl : TParser σ (Pattern × Expr) := do
 def value p := show TParser σ Binding from ("_", ·) <$> p
 
 def externDecl : TParser σ TopDecl := do
-  EXTERN; let id <- ID let name <- space *> strLit
+  EXTERN; let id <- ID let name <- spaces *> strLit
   COLON let sch <- PType.tyScheme
   return .extBind id name sch
 
