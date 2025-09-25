@@ -72,4 +72,4 @@ extern_lib libleanffi pkg := do
   let name := nameToStaticLib "leanffi"
   buildStaticLib (pkg.staticLibDir / name) #[ffiO]
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"617f4fa5c48f35076274d57546884261560f1285"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"04dab179aa3d9a7150f105ddba70738098bd68d4"
