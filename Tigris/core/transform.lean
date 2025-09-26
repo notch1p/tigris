@@ -115,18 +115,30 @@ def splitLetGroup
       | _ => (recs, nonrecs.push (x, e))
 
 def destructArgsPrelude (tuple : Name) (params : Array Name) (core : LExpr) : LExpr :=
-  go tuple params.toList where
-  go t
-  | [] => core
-  | [x] => .letVal x (.var t) core
-  | x :: xs =>
-    let l := s!"_pL#{x}"
-    let r := s!"_pR#{x}"
-    .letRhs l (.proj t 0)
-    $ .letRhs r (.proj t 1)
-    $ .letVal x (.var l)
-    $ go r xs
-
+  let sz := params.size
+  if sz = 0 then
+    core
+  else if _ : sz = 1 then
+    let p0 := params[0]
+    let l  := s!"_pL#{p0}"
+    let r  := s!"_pR#{p0}"   -- dummy unit tail
+    .letRhs l (.proj tuple 0)
+    $ .letRhs r (.proj tuple 1)
+    $ .letVal p0 (.var l) core
+  else
+    let rec go (t : Name) (i : Nat) (h : i <= sz) : LExpr :=
+      match h' : i with
+      | 0 => core
+      | 1 => .letVal params[sz - 1] (.var t) core
+      | n + 2 =>
+        let x := params[sz - i]
+        let l := s!"_pL#{x}"
+        let r := s!"_pR#{x}"
+        .letRhs l (.proj t 0)
+        $ .letRhs r (.proj t 1)
+        $ .letVal x (.var l)
+        $ go r i.pred (Nat.le_trans (Nat.pred_le i) (h' ▸ h))
+    go tuple sz Nat.le.refl
 end Helper
 
 
@@ -191,10 +203,15 @@ partial def lowerFunApp
   let n := getArrArity head
   if n <= 1 then
     lowerE head ρ ctors fun vf =>
-      lowerE args[0]! ρ ctors fun va => do
+      lowerE args[0]! ρ ctors fun vArg => do
+        let u <- fresh "u"
+        let pair <- fresh "pair"
         let r <- fresh "call"
         let body <- k r
-        return .letRhs r (.call vf va) body
+        pure
+        $ .letVal u (.cst .unit)
+        $ .letRhs pair (.mkPair vArg u)
+        $ .letRhs r (.call vf pair) body
   else if args.size > n then unreachable!
   else if args.size = n then
     lowerE head ρ ctors fun vf =>
@@ -284,36 +301,22 @@ partial def lowerE
             return .letRhs p (.mkPair lv rv) body
 
       | .Fun .. =>
---        let lb <- lower body (ρ.insert a a) ctors
---        let f <- fresh "lam"
---        let kbody <- k f
---        return .letVal f (.lam a lb) kbody
         match decomposeLamChain e with
         | some (p0, rest, core) =>
-          if rest.isEmpty then
-            let lb <- lower core (ρ.insert p0 p0) ctors
-            let f <- fresh "lam"
-            let kbody <- k f
-            return .letVal f (.lam p0 lb) kbody
-          else
-            let tupleParam <- fresh "args"
-            let ρ' := rest.foldl (fun acc p => acc.insert p p) (init := ρ.insert p0 p0)
-            let loweredCore <- lower core ρ' ctors
-            let body' := destructArgsPrelude tupleParam (#[p0] ++ rest) loweredCore
-            let f <- fresh "lam"
-            let kbody <- k f
-            return .letVal f (.lam tupleParam body') kbody
+          let tupleParam <- fresh "args"
+          let allParams := #[p0] ++ rest
+          let ρ' := allParams.foldl (fun acc p => acc.insert p p) ρ
+          let loweredCore <- lower core ρ' ctors
+          let body' := destructArgsPrelude tupleParam allParams loweredCore
+          let f <- fresh "lam"
+          let kbody <- k f
+          return .letVal f (.lam tupleParam body') kbody
         | none => unreachable!
 
 
       | .App .. =>
         let (h, args) := decomposeApp e
         lowerFunApp h args ρ ctors k
---        lowerE f ρ ctors fun vf =>
---          lowerE a ρ ctors fun va => do
---            let r <- fresh "call"
---            let body <- k r
---            return .letRhs r (.call vf va) body
 
       | .Cond c t e' _ =>
         lowerE c ρ ctors fun cv => do
@@ -370,10 +373,6 @@ partial def lowerRecFun
     let p <- fresh "arg"
     let body <- lower core (ρ₀.insert p p) ctors
     return ⟨fid, p, body⟩
-  else if h : params.size = 1 then
-    let p₀ := params[0]
-    let body <- lower core (ρ₀.insert p₀ p₀) ctors
-    return ⟨fid, p₀, body⟩
   else
     let tupleParam <- fresh "args"
     let ρ := params.foldl (init := ρ₀) fun acc p => acc.insert p p

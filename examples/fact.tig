@@ -9,7 +9,7 @@ let fact n =
     | 0 -> acc
     | m ->
       let an = acc * m in
-      let _ = println $ "fact " ++ toString n ++ " = " ++ toString an
+      let _ = println $ "fact " ++ toString (n - m) ++ " = " ++ toString an
       in
       go an @@ m - 1
   in go 1 n

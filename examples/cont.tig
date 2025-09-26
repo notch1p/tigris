@@ -1,0 +1,23 @@
+type Cont a r = Cont ((a -> r) -> r)
+
+let return x = Cont fun k => k x
+
+let run c k = let (Cont kf) = c in kf k
+
+let bind (Cont m) f = Cont $
+  fun k =>
+    m fun a =>
+      let (Cont k') = f a in
+      k' k
+
+infixl 55 " >>= " => bind
+
+let callcc f = Cont $
+  fun k =>
+    let (Cont kf) = f fun a => Cont fun _ => k a in
+    kf k
+
+let f = callcc fun k =>
+  return 0 >>= fun _ => k 42
+
+let main = run f (fun x => x)
