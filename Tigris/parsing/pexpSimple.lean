@@ -54,15 +54,49 @@ in
    , parenthesized parsePattern]
   simpErrorCombine
 
+def reorderRecord (ctor : Symbol) (fs : Array $ String × Expr) : TParser σ Expr := do
+  let ({recordFields,..}, _) <- get
+  let some order := recordFields.get? ctor | error "unknown record {ty}\n"; throwUnexpected
+  let mut mp : Std.HashMap String Expr := ∅
+  for (f, e) in fs do
+    if f ∈ mp then
+      error s!"duplicate fields '{f}' for record {ctor} literal\n"
+      throwUnexpected
+    mp := mp.insert f e
+  if order.any (not ∘ mp.contains) || mp.size != order.size then
+    error s!"record literal does not match field set of {ctor}\n"
+    throwUnexpected
+  let exprs := order.map mp.get!
+  let core := Expr.Var ctor
+  return exprs.foldl App core
+
+def resolveBareRecord (fs : Array $ String × Expr) : TParser σ Expr := do
+  let ({recordFields,..}, _) <- get
+  let fids := fs.map Prod.fst
+  let set : Std.HashSet String := fids.foldl .insert ∅
+  letI cand := Std.HashMap.toList <| recordFields.filter fun _ order =>
+    order.size == fids.size && order.all set.contains
+  match cand with
+  | [(ty, _)] => reorderRecord ty fs
+  | [] => error "no record type matches the given field set\n" *> throwUnexpected
+  | %[(ty, _) | _] => warn
+    s!"ambiguous record literal (using default '{ty}'), consider adding type ascription;\n\
+       as we currently do not have type-directed parsing.\n\
+       candidates are {cand}\n" *> reorderRecord ty fs
+
 mutual
+partial def parseExpr : TParser σ Expr := withErrorMessage "Term" parsePratt
+
 partial def funapp : TParser σ Expr :=
   chainl1 atom (pure App)
 
 partial def atom : TParser σ Expr := spaces *>
-  first' #[ ascription
+  first' #[ recordExpTyped
+          , ascription
           , parenthesized prodExp
           , letDispatch
           , funDispatch
+          , recordExp
           , fixpointExp , condExp
           , matchExp    , intExp
           , strExp      , varExp]
@@ -175,7 +209,19 @@ partial def condExp     : TParser σ Expr := do
   THEN let e₁ <- parseExpr
   ELSE let e₂ <- parseExpr        return Cond c e₁ e₂
 
-partial def parseExpr : TParser σ Expr := withErrorMessage "Term" parsePratt
+partial def recordExp   : TParser σ Expr :=
+  transShorthand <$> (resolveBareRecord =<< braced do sepBy COMMA do
+    let f <- ID; EQ; let e <- parseExpr; return (f, e))
+
+partial def recordExpTyped : TParser σ Expr := parenthesized do
+  let fs <- braced do sepBy COMMA do
+    let f <- ID; EQ; let e <- parseExpr; return (f, e)
+  COLON
+  match <- PType.tyExp with
+  | ty@(.TCon s) | ty@(.TApp s _) =>
+    Ascribe (ty := ty) <$> reorderRecord s fs
+  | ty => .Ascribe (ty := ty) <$> resolveBareRecord fs
 
 end
 end Parsing
+

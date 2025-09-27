@@ -70,6 +70,7 @@ def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α :=
   (ws $ char l) *> t <* (ws $ char r)
 
 def parenthesized (t : TParser σ α) : TParser σ α := between '(' t ')'
+def braced (t : TParser σ α) : TParser σ α := between '{' t '}'
 
 def kw (s : String) : TParser σ Unit := spaces *>
                                      (withBacktracking

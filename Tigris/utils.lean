@@ -10,6 +10,14 @@ def List.rmDup [BEq α] [Hashable α] (l : List α) : List α :=
     | x :: xs => if x ∈ s then go s xs else x :: go (insert x s) xs
   go s l
 
+def Array.hasDuplicates [BEq α] [Hashable α] (l : Array α) : Bool :=
+  go 0 (∅ : Std.HashSet α) where
+  go i acc :=
+    if h : i < l.size then
+      if l[i] ∈ acc then true
+      else go i.succ (acc.insert l[i])
+    else false
+
 def List.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : List α) : β :=
   match xs with
   | [] => panic! "empty list"
@@ -51,6 +59,10 @@ partial def chainr1
   let x <- p; rest x where
   rest x :=
     (do let f <- op; chainr1 p op <&> f x) <|> pure x
+/- like `test`, but non-consuming -/
+def test' (p : ParserT ε σ τ m α) : ParserT ε σ τ m Bool :=
+  try lookAhead p $> true
+  catch _ => return false
 
 def warn (s : String) : TParser σ Unit :=
   modify fun (pe, a) =>

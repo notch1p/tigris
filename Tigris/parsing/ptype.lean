@@ -20,7 +20,7 @@ def registerTy (name : String) (arity : Nat) (mt : Bool) (flag := true) : TParse
           if mt then
             s!"mutual inductive type {Logging.magenta name} arity mismatch,\n\
               expected {arity'} but received {arity}\n"
-          else s!"types are dynamically scoped: they may not be redefined.\n"
+          else s!"types are dynamically scoped: for this reason they may not be redefined.\n"
         (false, st, l ++ err)
   then return ()
   else throwUnexpected
@@ -89,14 +89,36 @@ def tyScheme : TParser σ Scheme := do
   let hd <- optionD ((FORALL <|> FORALL') *> takeMany1 ID <* COMMA) #[]
   .Forall (hd.foldr (.cons ∘ .mkTV) []) <$> tyExp hd
 
+def tyField (param : Array Symbol) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
+  let id <- ID; COLON; let ty <- tyExp param
+  return (id, ty)
+
+def tyRecord (tycon : String) (param : Array Symbol) (mt : Bool)
+  : TParser σ TyDecl := withErrorMessage "TyRecord" do
+  let (fids, tys) <- sepBy COMMA (tyField param) <&> Array.unzip
+  if fids.hasDuplicates then
+    dbg_trace fids
+    error "duplicated fields not allowed in structure definition\n"
+    throwUnexpected
+  
+  registerTy tycon param.size mt
+
+  modify fun (st@{recordFields,..}, l) =>
+    ({st with recordFields := recordFields.insert tycon fids}, l)
+  return {tycon, param, ctors := #[(tycon, tys.toList, tys.size)]}
+
 def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
   TYPE let tycon <- ID
   if isUpperInit tycon then
     let param <- takeMany ID; EQ
-    registerTy tycon param.size mt
-    let hd <- (optional BAR *> ctor mt param)
-    let tl <- takeMany (BAR *> ctor mt param)
-    return {tycon, param, ctors := #[hd] ++ tl}
+    if <- test (kwOpExact "{") then
+      tyRecord tycon param mt <* kwOpExact "}"
+    else
+      registerTy tycon param.size mt
+      let hd <- (optional BAR *> ctor mt param)
+      let tl <- takeMany (BAR *> ctor mt param)
+      return {tycon, param, ctors := #[hd] ++ tl}
+    
   else
     error "type constructor must begin with an uppercase letter\n"
     throwUnexpected

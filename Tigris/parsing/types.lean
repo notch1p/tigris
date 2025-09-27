@@ -162,6 +162,7 @@ structure PEnv where
   ops : OpTable
   tys : TyArity
   undTy : List Symbol
+  recordFields : Std.HashMap Symbol (Array Symbol) := {}
 
 --abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT Substring Char
