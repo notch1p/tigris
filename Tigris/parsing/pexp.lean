@@ -1,5 +1,5 @@
 import Tigris.utils
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.parsing.pexpSimple
 
 open Expr Lexing Parser Parser.Char Pattern Associativity

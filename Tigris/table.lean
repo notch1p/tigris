@@ -1,6 +1,6 @@
 import PP.dependentPP
 import Tigris.parsing.types
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.interpreter.types
 
 open PrettyPrint Alignment

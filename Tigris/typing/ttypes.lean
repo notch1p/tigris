@@ -67,10 +67,12 @@ inductive TypingError
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
   | Interrupted
+  | Impossible (s : String)
   | Duplicates (t : TV) (T : MLType) deriving Repr
 open Logging
 instance : ToString TypingError where
   toString
+  | .Impossible s => s!"Impossible: {s}"
   | .Interrupted   => s!"Interrupted."
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
@@ -114,9 +116,7 @@ class Rewritable (α : Type) where
 
 namespace Rewritable open MLType
 
-def diff [BEq α] [Hashable α] (s₁ s₂ : Std.HashSet α) :=
-  s₂.fold (fun a s => if s ∈ s₁ then s₁.erase s else a) s₁
-instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨diff⟩
+instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨fun s₁ s₂ => s₂.fold .erase s₁⟩
 
 def applyT : Subst -> MLType -> MLType
   | _, s@(TCon _) => s
@@ -128,7 +128,7 @@ def applyT : Subst -> MLType -> MLType
 def fvT : MLType -> Std.HashSet TV
   | TCon _ => ∅ | TVar a => {a}
   | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
-  | TApp _ as => as.foldl (init := ∅) fun a t => a ∪ fvT t
+  | TApp _ as => as.foldl (· ∪ fvT ·) ∅
 
 instance : Rewritable MLType := ⟨applyT, fvT⟩
 instance : Rewritable Scheme where
@@ -142,3 +142,68 @@ instance : Rewritable Env where
   apply s e := {e with E := e.E.map fun _ v => apply s v}
   fv      e := fv e.E.values
 end Rewritable
+
+namespace MLType open Rewritable
+@[inline] def merge (s₁ s₂ : Subst) :=
+  s₂.foldl (init := s₁) fun acc k v =>
+    acc.insert k (apply s₁ v)
+infixl : 65 " ∪' " => merge
+
+def gensym (n : Nat) : String :=
+  let (q, r) := (n / 25, n % 25)
+  let s := Char.ofNat $ r + 0x03b1
+  if q == 0 then s.toString
+  else s.toString ++ q.toSubscriptString
+
+def normalize : Scheme -> Scheme
+  | .Forall _ body =>
+    let rec fv
+      | TVar a => [a] | TCon _ => []
+      | a ->' b | a ×'' b => fv a ++ fv b
+      | TApp _ as => as.flatMap fv
+    let ts := (List.rmDup $ fv body);
+    let ord := ts.zip $ ts.foldrIdx (fun i _ a => .mkTV (gensym i) :: a) []
+    let rec normtype
+      | a ->' b => normtype a ->' normtype b
+      | a ×'' b => normtype a ×'' normtype b
+      | TVar a  => match ord.lookup a with
+                   | some x => TVar x
+                   | none => panic! "some variable is undefined"
+      | TApp h as => TApp h $ as.map normtype
+      | t => t
+  .Forall (List.map Prod.snd ord) (normtype body)
+
+def isRecRhs : Expr -> Bool
+  | .Fix _ | .Fixcomb _ => true
+  | _ => false
+
+def curry : MLType -> MLType
+  | t₁ ->' t₂ =>
+    go t₁ |>.foldr (· ->' ·) t₂
+  | t => t
+where
+  go | t₃ ×'' t₄ => go t₃ ++ go t₄ | t => [t]
+
+local instance : CoeHead String TV := ⟨.mkTV⟩
+local instance : CoeTail TV MLType := ⟨TVar⟩
+
+abbrev dE : List (String × Scheme) :=
+  [ ("rec"  , .Forall ["α"] $ ("α" ->' "α") ->' "α")
+  , ("__add", .Forall []    $ tInt ×'' tInt ->' tInt)
+  , ("__sub", .Forall []    $ tInt ×'' tInt ->' tInt)
+  , ("__mul", .Forall []    $ tInt ×'' tInt ->' tInt)
+  , ("__div", .Forall []    $ tInt ×'' tInt ->' tInt)
+  , ("__eq" , .Forall ["α"] $ "α" ×'' "α" ->' tBool)
+  , ("not"  , .Forall []    $ tBool ->' tBool)
+  , ("elim" , .Forall ["α"] $ tEmpty ->' "a")
+  , ("id"   , .Forall ["α"] $ "α" ->' "α")
+  , ("succ" , .Forall []    $ tInt ->' tInt)]
+
+abbrev defaultE : Env := ⟨.ofList $
+  dE.foldl (init := []) fun a p@(sym, .Forall c ty) =>
+    if sym.startsWith "__"
+    then p :: (sym.drop 2, .Forall c $ curry ty) :: a
+    else p :: a
+    , ∅⟩
+
+end MLType

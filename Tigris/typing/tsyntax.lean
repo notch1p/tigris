@@ -1,4 +1,4 @@
-import Tigris.typing.types
+import Tigris.typing.ttypes
 
 namespace TExpr open Rewritable
 open Array (sizeOf_lt_of_mem)

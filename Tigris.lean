@@ -3,8 +3,9 @@
 import Tigris.parsing.types
 import Tigris.lexing
 import Tigris.utils
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.typing.typing
+import Tigris.typing.constraint
 import Tigris.parsing.ppat
 import Tigris.parsing.pexpSimple
 import Tigris.parsing.pexp

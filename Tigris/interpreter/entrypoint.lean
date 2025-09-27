@@ -1,7 +1,8 @@
 import Tigris.parsing.pexp
 import Tigris.typing.typing
+import Tigris.typing.constraint
 import Tigris.parsing.ptype
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.parsing.types
 import Tigris.interpreter.types
 namespace Parsing open Lexing Parser PType TopDecl
@@ -98,5 +99,14 @@ def check1 (s : String) (E : Env := defaultE) : String :=
     match runInfer1 e E with
     | .error e' => toString e' ++ s!"AST: {reprStr e}"
     | .ok    s => toString s
+
+def check1C (s : String) (E : Env := defaultE) : String :=
+  match Parsing.parse s initState with
+  | .error e => toString e
+  | .ok e    =>
+    match runInferConstraintT e E with
+    | .error e' => toString e' ++ s!"AST: {reprStr e}"
+    | .ok    (_, s, l) =>
+      toString s ++ "\n" ++ l
 
 end MLType

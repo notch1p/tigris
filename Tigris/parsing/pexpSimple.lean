@@ -1,5 +1,5 @@
 import Tigris.utils
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.parsing.ppat
 import Tigris.parsing.ptype
 open Expr Lexing Parser Parser.Char Pattern
@@ -224,4 +224,3 @@ partial def recordExpTyped : TParser σ Expr := parenthesized do
 
 end
 end Parsing
-

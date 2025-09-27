@@ -18,6 +18,17 @@ def Array.hasDuplicates [BEq α] [Hashable α] (l : Array α) : Bool :=
       else go i.succ (acc.insert l[i])
     else false
 
+def Array.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) (xs : Array α) (ys : Array β) : m γ :=
+  let minSz := Nat.min xs.size ys.size
+  have ⟨h₁, h₂⟩ : minSz <= xs.size ∧ minSz <= ys.size :=
+    ⟨Nat.min_le_left .., Nat.min_le_right ..⟩
+  let rec go init i (h : i <= minSz) :=
+    match h' : i with
+    | 0 => return init
+    | n + 1 =>
+      (go · n $ by omega) =<< f init xs[minSz - i] ys[minSz - i]
+  go init minSz Nat.le.refl
+
 def List.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : List α) : β :=
   match xs with
   | [] => panic! "empty list"
@@ -31,6 +42,11 @@ def List.foldr1 (f : α -> α -> α) (xs : List α) (h : xs ≠ []) : α :=
 def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
   | x :: xs, y :: ys => foldl2 f (f init x y) xs ys
   | _, _ => init
+
+def List.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) 
+  : List α -> List β -> m γ
+  | x :: xs, y :: ys => (f init x y) >>= (foldlM2 f · xs ys)
+  | _, _ => return init
 
 def List.foldr2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
   | x :: xs, y :: ys => f (foldr2 f init xs ys) x y
@@ -281,3 +297,6 @@ infixl : 60 " <> " => spaceBeside
 end
 
 @[inline] def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act
+@[inline] def Function.on (g : β -> β -> γ) (f : α -> β)
+  : α -> α -> γ := fun x y => g (f x) (f y)
+infixl:90 "on" => Function.on

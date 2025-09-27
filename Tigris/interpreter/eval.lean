@@ -1,4 +1,4 @@
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.parsing.types
 import Tigris.parsing.ptype
 import Tigris.interpreter.types
@@ -214,7 +214,7 @@ partial def evalC (E : VEnv) : Expr -> EIO TypingError Value
   | Let ae body => do
     checkInterrupt
     let (recBinds, nonrecBinds) := ae.partition $ MLType.isRecRhs ∘ Prod.snd
-    let recVals <- recBinds.mapM fun (x, ex) => 
+    let recVals <- recBinds.mapM fun (x, ex) =>
       checkInterrupt *>
       (x, ·) <$> evalC E ex
     let env1 := recVals.foldl (init := E.env) fun acc (x, v) => acc.insert x v

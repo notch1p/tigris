@@ -3,69 +3,9 @@ import Tigris.parsing.types
 import Tigris.typing.exhaust
 import PP.dependentPP
 
-@[inline] def compRM (f : α -> β -> γ) (g : γ -> δ) : α -> β -> δ
-  | x, y => g $ f x y
-
 namespace MLType open Expr TV TypingError Pattern Rewritable
 
-def curry : MLType -> MLType
-  | t₁ ->' t₂ =>
-    go t₁ |>.foldr (· ->' ·) t₂
-  | t => t
-where
-  go | t₃ ×'' t₄ => go t₃ ++ go t₄ | t => [t]
-
-local instance : CoeHead String TV := ⟨mkTV⟩
-local instance : CoeTail TV MLType := ⟨TVar⟩
-
-abbrev dE : List (String × Scheme) :=
-  [ ("rec"  , .Forall ["α"] $ ("α" ->' "α") ->' "α")
-  , ("__add", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__sub", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__mul", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__div", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__eq" , .Forall ["α"] $ "α" ×'' "α" ->' tBool)
-  , ("not"  , .Forall []    $ tBool ->' tBool)
-  , ("elim" , .Forall ["α"] $ tEmpty ->' "a")
-  , ("id"   , .Forall ["α"] $ "α" ->' "α")
-  , ("succ" , .Forall []    $ tInt ->' tInt)]
-
 variable {σ : Type}
-
-abbrev defaultE : Env := ⟨.ofList $
-  dE.foldl (init := []) fun a p@(sym, .Forall c ty) =>
-    if sym.startsWith "__"
-    then p :: (sym.drop 2, .Forall c $ curry ty) :: a
-    else p :: a
-    , ∅⟩
-
-def gensym (n : Nat) : String :=
-  let (q, r) := (n / 25, n % 25)
-  let s := Char.ofNat $ r + 0x03b1
-  if q == 0 then s.toString
-  else s.toString ++ q.toSubscriptString
-
-def normalize : Scheme -> Scheme
-  | .Forall _ body =>
-    let rec fv
-      | TVar a => [a] | TCon _ => []
-      | a ->' b | a ×'' b => fv a ++ fv b
-      | TApp _ as => as.flatMap fv
-    let ts := (List.rmDup $ fv body);
-    let ord := ts.zip $ ts.foldrIdx (fun i _ a => mkTV (gensym i) :: a) []
-    let rec normtype
-      | a ->' b => normtype a ->' normtype b
-      | a ×'' b => normtype a ×'' normtype b
-      | TVar a  => match ord.lookup a with
-                   | some x => TVar x
-                   | none => panic! "some variable is undefined"
-      | TApp h as => TApp h $ as.map normtype
-      | t => t
-  .Forall (List.map Prod.snd ord) (normtype body)
-@[inline] def merge (s₁ s₂ : Subst) :=
-  s₂.foldl (init := s₁) fun acc k v =>
-    acc.insert k (apply s₁ v)
-infixl : 65 " ∪' " => merge
 
 def bindTV (a : TV) (t : MLType) : Infer σ Subst :=
   if t == TVar a then pure ∅
@@ -166,10 +106,6 @@ def checkPat (E : Env) (expected : Array MLType) (ps : Array Pattern) : Infer σ
 
 def metavariable? : MLType -> Bool
   | TVar (.mkTV s) => if s.startsWith "?" then true else false
-  | _ => false
-
-def isRecRhs : Expr -> Bool
-  | .Fix _ | .Fixcomb _ => true
   | _ => false
 
 private def splitLetGroupRec

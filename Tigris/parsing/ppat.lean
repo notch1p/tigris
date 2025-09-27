@@ -1,5 +1,5 @@
 import Tigris.utils
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.parsing.ptype
 open Expr Lexing Parser Parser.Char Pattern
 
@@ -29,7 +29,7 @@ def resolveBareRecordPat (fs : Array $ String × Pattern) : TParser σ Pattern :
   match cand with
   | [(ty, _)] => reorderRecordPat ty fs
   | [] => error "no record type matches the given field set\n" *> throwUnexpected
-  | %[(ty, _) | _] => 
+  | %[(ty, _) | _] =>
     warn s!"ambiguous record pattern (using default '{ty}'), consider adding type ascription;\n\
             as we currently do not have type-directed parsing.\n\
             candidates are {cand}\n" *> reorderRecordPat ty fs

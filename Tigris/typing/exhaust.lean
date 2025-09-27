@@ -1,4 +1,4 @@
-import Tigris.typing.types
+import Tigris.typing.ttypes
 open Pattern MLType
 
 namespace Exhaustive

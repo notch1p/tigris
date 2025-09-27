@@ -1,4 +1,4 @@
-import Tigris.typing.types
+import Tigris.typing.ttypes
 import Tigris.parsing.types
 import Tigris.lexing
 
@@ -82,7 +82,7 @@ def tyEmpty : TParser σ TyDecl := do
   return {tycon, param, ctors := #[]}
 
 @[inline]
-def tyExp (e : Array String := #[]) : TParser σ MLType := 
+def tyExp (e : Array String := #[]) : TParser σ MLType :=
   tyArrow false e
 
 def tyScheme : TParser σ Scheme := do
@@ -100,7 +100,7 @@ def tyRecord (tycon : String) (param : Array Symbol) (mt : Bool)
     dbg_trace fids
     error "duplicated fields not allowed in structure definition\n"
     throwUnexpected
-  
+
   registerTy tycon param.size mt
 
   modify fun (st@{recordFields,..}, l) =>
@@ -118,7 +118,7 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
       let hd <- (optional BAR *> ctor mt param)
       let tl <- takeMany (BAR *> ctor mt param)
       return {tycon, param, ctors := #[hd] ++ tl}
-    
+
   else
     error "type constructor must begin with an uppercase letter\n"
     throwUnexpected

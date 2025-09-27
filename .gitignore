@@ -34,3 +34,5 @@ cabal.project.local~
 *.x86f
 *~
 .#*
+
+.vscode/alive/repl-history.json
