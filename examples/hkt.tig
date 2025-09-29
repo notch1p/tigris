@@ -1,0 +1,6 @@
+type Boxed (m : 2) a b = Boxed (m a b)
+
+type Sum a b = Inl a | Inr b
+
+let (Boxed (Inl _)) = Boxed (Inl 1)
+let (Boxed (Inr 2)) = (Boxed (Inr 2) : Boxed Sum Empty Int)

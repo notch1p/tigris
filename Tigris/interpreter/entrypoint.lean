@@ -18,6 +18,12 @@ def declaration : TParser σ TopDecl := first'
    ]
   simpErrorCombine
 
+def tydecl : TParser σ TopDecl := first'
+ #[ tyBind <$> tyDecl false
+   , tyBind <$> tyEmpty]
+  simpErrorCombine
+
+
 def declarationFile : TParser σ TopDecl := first'
   #[ tyBind <$> tyDecl false
    , tyBind <$> tyEmpty

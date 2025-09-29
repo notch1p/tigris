@@ -19,6 +19,19 @@ partial def unify : MLType -> MLType -> Infer σ Subst
     let s₂ <- unify (apply s₁ r₁) (apply s₁ r₂)
     return s₂ ∪' s₁
   | TVar a, t | t, TVar a   => bindTV a t
+  | KApp h₁ as₁, KApp h₂ as₂ => do
+    if as₁.length != as₂.length then throw (.NoUnify (KApp h₁ as₁) (KApp h₂ as₂)) else
+      let headSub <- unify (TVar h₁) (TVar h₂)
+      List.foldlM2
+        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
+        headSub as₁ as₂
+  | KApp h₁ as₁, TApp h₂ as₂ | TApp h₂ as₂, KApp h₁ as₁ =>
+    if as₁.length != as₂.length then throw (.NoUnify (KApp h₁ as₁) (TApp h₂ as₂))
+    else do
+      let headBind <- bindTV h₁ (TApp h₂ [])
+      List.foldlM2
+        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
+        headBind as₁ as₂
   | t@(TApp h₁ []), t'@(TCon s) | t@(TCon s), t'@(TApp h₁ []) =>
     if h₁ == s then pure ∅ else throw $ NoUnify t t'
   | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) =>
@@ -40,14 +53,14 @@ partial def unify : MLType -> MLType -> Infer σ Subst
   modifyGet fun (s, l) => (TVar $ mkTV s!"?m{s}", s + 1, l)
 
 def instantiate : Scheme -> Infer σ MLType
-  | .Forall as t => do
+  | .Forall as _ t => do
     let as' <- as.mapM fun _ => fresh
     let s := as.zip as' |> .ofList
     return apply s t
 
 def generalize (E : Env) (t : MLType) : Scheme :=
   let as := fv t \ fv E |>.toList
-  .Forall as t
+  .Forall as [] t
 
 def lookupEnv (s : String) (E : Env) : Infer σ (Subst × MLType) :=
   match E.E.get? s with
@@ -68,7 +81,7 @@ def checkPat1 (E : Env) (expected : MLType) (acc : Array MLType) : Pattern -> In
   | PConst $ .PStr  _ => unify tString expected <&> apply1 acc
   | PConst $ .PUnit   => unify tUnit   expected <&> apply1 acc
 
-  | PVar x => return (acc.push expected, ∅, {E with E := E.1.insert x (.Forall [] expected)})
+  | PVar x => return (acc.push expected, ∅, {E with E := E.1.insert x (.Forall [] [] expected)})
 
   | PProd' p₁ p₂ => do
     let tv <- fresh
@@ -129,7 +142,7 @@ partial def inferTLetGroup
     recBinds.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
       let tv <- fresh
       let (n, _) := recBinds[i]
-      return ({acc with E := acc.E.insert n (.Forall [] tv)}, tvs.push tv)
+      return ({acc with E := acc.E.insert n (.Forall [] [] tv)}, tvs.push tv)
 
   let mut sRec : Subst := ∅
   let mut tvsRec' := tvs
@@ -204,7 +217,7 @@ partial def inferT (E : Env) : Expr -> Infer σ (Subst × MLType × TExpr)
   | Fun x e => do
     let tv <- fresh
     let {E, tyDecl} := E
-    let (s₁, t₁, te) <- inferT ⟨E.insert x (.Forall [] tv), tyDecl⟩ e
+    let (s₁, t₁, te) <- inferT ⟨E.insert x (.Forall [] [] tv), tyDecl⟩ e
     let argTy := apply s₁ tv
     let funTy := argTy ->' t₁
     pure (s₁, funTy, .Fun x argTy te funTy)
@@ -219,7 +232,7 @@ partial def inferT (E : Env) : Expr -> Infer σ (Subst × MLType × TExpr)
   | Fix (Fun fname fbody) => do
     let tv <- fresh
     let {E, tyDecl} := E
-    let (s₁, t₁, tBody) <- inferT ⟨E.insert fname (.Forall [] tv), tyDecl⟩ fbody
+    let (s₁, t₁, tBody) <- inferT ⟨E.insert fname (.Forall [] [] tv), tyDecl⟩ fbody
     let s₂ <- unify (apply s₁ tv) t₁
     let S := s₂ ∪' s₁
     let argTy := apply S tv
@@ -328,7 +341,7 @@ partial def inferLetGroup
     recBinds.size.foldM (init := (E, #[])) fun i _ (acc, tvs) => do
       let tv <- fresh
       let (n, _) := recBinds[i]
-      return ({acc with E := acc.E.insert n (.Forall [] tv)}, tvs.push tv)
+      return ({acc with E := acc.E.insert n (.Forall [] [] tv)}, tvs.push tv)
 
   let mut sRec : Subst := ∅
   let mut tvsRec' := tvs
@@ -362,8 +375,8 @@ partial def inferLetGroup
 
 --  let lookupSch (name : Symbol) : (Symbol × Scheme) :=
 --    match
---      schemesRec.findSome? fun tup@(n, _) => 
---        if n == name then some tup else none 
+--      schemesRec.findSome? fun tup@(n, _) =>
+--        if n == name then some tup else none
 --    with
 --    | some b => b
 --    | none   => Option.get! $
@@ -404,7 +417,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
   | Fun x e => do
     let tv          <- fresh
     let {E, tyDecl} := E
-    let (s₁, t₁)    <- infer ⟨E.insert x (.Forall [] tv), tyDecl⟩ e
+    let (s₁, t₁)    <- infer ⟨E.insert x (.Forall [] [] tv), tyDecl⟩ e
     pure (s₁, apply s₁ tv ->' t₁)
 
   | Fixcomb e => do
@@ -417,7 +430,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
   | Fix (Fun fname fbody) => do
     let tv          <- fresh
     let {E, tyDecl} := E
-    let (s₁, t₁)    <- infer ⟨E.insert fname (.Forall [] tv), tyDecl⟩ fbody
+    let (s₁, t₁)    <- infer ⟨E.insert fname (.Forall [] [] tv), tyDecl⟩ fbody
     let s₂          <- unify (apply s₁ tv) t₁
     let s := s₂ ∪' s₁
     pure (s₂ ∪' s₁, apply s tv)
@@ -535,7 +548,7 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
         ⟨E.insert cname s, tyDecl.insert tycon ty⟩
     | .patBind (pat, expr) => do
-      let (.Forall _ te, l₁) <- runInfer1 expr E
+      let (.Forall _ _ te, l₁) <- runInfer1 expr E
 
       let ((_, _, E), _, l₂) <- runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")
       -- toplevel binding can never be redundant
@@ -551,7 +564,7 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
 def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array TopDeclT × Env × Logger) :=
   b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
     match b with
-    | .extBind s n sch@(.Forall _ t) => pure $
+    | .extBind s n sch@(.Forall _ _ t) => pure $
       (acc.push (.idBind #[(s, sch,TExpr.Var n t)]) ,{E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let (a, E, l) <- inferGroupT group E L
@@ -561,7 +574,7 @@ def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array Top
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
         ⟨E.insert cname s, tyDecl.insert tycon ty⟩
     | .patBind (pat, expr) => do
-      let (e,.Forall _ te, l₁) <- runInferT1 expr E
+      let (e,.Forall _ _ te, l₁) <- runInferT1 expr E
 
       let ((_, _, E), _, l₂) <- runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")
       -- toplevel binding can never be redundant

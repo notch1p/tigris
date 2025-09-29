@@ -125,13 +125,14 @@ We currently maintain a two stage IR for the ease of reasoning:
 - IR₁: CPS IR
 
 - Pipeline
+
   1. Lambda IR (ANF)
-    1.1 Uncurrying
-    1.2 Pattern matching lowering via decision tree
-    1.3 Closure Conversion
-    1.4 Optimizations
+     1.1 Uncurrying
+     1.2 Pattern matching lowering via decision tree
+     1.3 Closure Conversion
+     1.4 Optimizations
   2. CPS IR
-    2.1 optimizations
+     2.1 optimizations
   3. Common Lisp
 
 - [x] Frankly I'm not very familiar with backends, Even If I were to do it,
@@ -140,6 +141,7 @@ We currently maintain a two stage IR for the ease of reasoning:
       ~~and defunctionalization.~~
 
 - there is a experimental IR at [core](Tigris/core) that translates to an ANF first:
+
   - see [core/lam.lean](Tigris/core/lam.lean) for the IR spec.
   - with pattern matching compilation to (light) decision tree
     (also contains a backtraking automata, not used.)
@@ -158,9 +160,11 @@ We currently maintain a two stage IR for the ease of reasoning:
 
 - there is a naive CPS IR at [cps](Tigris/cps). It doesn't do much, but
   non-tailrec functions are transformed to CPS to maintain tailrec property.
+
   - also contains some optimizations
 
 - there is a common lisp backend. Basically a 1-to-1 translation of CPS IR.
+
   - Why common lisp? Because I'm familiar with the langauge.
   - Although the Lisp-2 double namespace (value/function) does add complexity to
     the codegen process.
@@ -169,8 +173,7 @@ We currently maintain a two stage IR for the ease of reasoning:
   - an `extern` definition whose syntax is
 
     ```ebnf
-    <extern-decl> ::=
-      "extern" <id> <strlit> : <type-scheme>
+    <extern-decl> ::= "extern" <id> <strlit> ":" <type-scheme>
     <type-scheme> ::= (("forall" | "∀") <id>+ ,)? <type-exp>
     ```
 
@@ -178,6 +181,7 @@ We currently maintain a two stage IR for the ease of reasoning:
     Although this is merely a syntactic transformation and it doesn't "just work".
     You'll need to follow the calling convention found in [core/lift.lean](Tigris/core/lift.lean) and
     [codegen/sbcl.lean](Tigris/codegen/sbcl.lean) to define those functions in the runtime.
+
     - see also [ffi.lisp](ffi.lisp) for examples
 
 This part (IR/Backends) is somewhat better documented than others, because I'm not that
@@ -190,6 +194,25 @@ familiar with compiler backends and codegen.
 
 Has done the very barebone.
 It's an almost one-to-one implementation of the algorithm described in the paper above.
+
+#### higher-kinded type
+
+- [x] somewhat done. A bit restrictive: bound type ctor is not curried and must
+      be fully applied
+
+although there isn't any kind inferrence and type declaration parsing
+depends on the arity of type constructors.
+
+- arity must be provided to bind a type constructor, otherwise default to 0.
+- A simplified notation `(id : n)` that is
+  analogous to Haskell's 1-universe notation `* -> *` or Lean's `Type 0 -> Type 0`
+
+the full syntax is
+
+```ebnf
+<ty-decl> ::= "type" <ty-params> "=" <ctor-def>"|"+
+<ty-params> ::= <id> | (<id>) | (<id> ":" <int>)
+```
 
 #### Typeclass/Constraints
 
@@ -208,6 +231,8 @@ an intensional (syntactic) approach by transforming their AST to normal forms an
 with the equality relation on `Expr`, as is the case in Lean (besides `funext`).
 
 But This is unlikely to be done because I've decided it's too elaborate and metatheoretic.
+
+- **25.09.30** we are getting there.
 
 ## Specification
 
@@ -231,7 +256,24 @@ This project is a pain in the ass to develop and has undergone multiple refactor
 6. added toplevel declaration, refactor #4.
 7. added pattern matching together with algebraic datatypes, mutual recursive types,
    also need to support toplevel type binding, refactor #5.
+
    - ~~funny how mutual recursion hasn't been added but mutual rectype has.~~ Done.
+   - mutual recursion and mutual rectypes have different syntax:
+
+     - mutual recursion: OCaml-like `let rec ... and ... in ...`
+
+       - although they aren't the same especially in terms of
+         [shape restriction](https://ocaml.org/manual/5.3/letrecvalues.html#s:letrecvalues) of rhs
+       - Our parser uses a basic heuristic to check the shape of rhs; typechecker handles a let-group
+         in predefined order: function definitions first, then value.
+         (this is given by our heuristic method: we check whether the shape of a rhs is a `Fun`.)
+       - This means there is no order-preserving of `let ... and ...` definitions.
+       - Though it seems that this way we don't need OCaml's shape restrictions
+         or F#'s init-soundness checking as Tigris is simple enough.
+
+     - mutual rectype: Lean-like `mutual <ty-decl>+ ;;` (mandatory `;;`)
+       forward declaration is only allowed in a `mutual` block.
+
 8. added toplevel pattern binding, refactor #6.
    - leaking slopiness: I didn't merge identifier binding with pattern binding (w/ PVar)
      and these 2 coexists.

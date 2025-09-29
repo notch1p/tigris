@@ -80,16 +80,25 @@ instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩
 def TV.renderFmt : TV -> Std.Format
   | mkTV s => Logging.cyan s
 instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
+/--
+  TODO: add `TForall` to implement rank-n types and existentials, maybe?
+-/
 inductive MLType where
-  | TVar : TV -> MLType
-  | TCon : String -> MLType
-  | TArr : MLType -> MLType -> MLType
+  | TVar  : TV -> MLType
+  | TCon  : String -> MLType
+  | TArr  : MLType -> MLType -> MLType
   | TProd : MLType -> MLType -> MLType
-  | TApp : String -> List MLType -> MLType
-deriving Repr, BEq, Ord, Inhabited
+  | TApp  : String -> List MLType -> MLType
+  | KApp  : TV -> List MLType -> MLType -- HKT application
+deriving Repr, BEq, Ord, Inhabited, Hashable
+
+structure Pred where
+  cls  : String
+  args : List MLType := []
+deriving BEq, Inhabited, Repr, Ord, Hashable
 
 inductive Scheme where
-  | Forall : List TV -> MLType -> Scheme deriving Repr, BEq, Ord
+  | Forall : List TV -> List Pred -> MLType -> Scheme deriving Repr, BEq, Ord
 
 inductive Expr where
   | CI (i : Int)       | CS (s : String)        | CB (b : Bool) | CUnit

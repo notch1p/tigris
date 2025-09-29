@@ -13,8 +13,8 @@ def MLType.toStr : MLType -> String
   | a ->' b =>
     paren (arr? a) (toStr a) ++ " → " ++ toStr b
   | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
-  | TApp s [] => s
-  | TApp s (l :: ls) =>
+  | TApp s [] | KApp (.mkTV s) [] => s
+  | TApp s (l :: ls) | KApp s (l :: ls) =>
     let hd := paren (arr? l || prod? l) $ toStr l
     ls.foldl (init := s!"{s} {hd}") fun a s =>
       a ++ " " ++ paren (arr? l || prod? l) (toStr s)
@@ -29,7 +29,7 @@ def MLType.renderFmt : MLType -> Std.Format
   | TCon a => magenta a
   | a ->' b => nestD $ group $ paren? (arr? a) (renderFmt a) <> "→" <+> renderFmt b
   | a ×'' b => nestD $ group $ paren? (prod? a) (renderFmt a) <> "×" <+> renderFmt b
-  | TApp s ls => nestD $ group $ joinSep (text (magenta s) :: ls.map fun s => parenthesize s (renderFmt s)) line
+  | TApp s ls | KApp (.mkTV s) ls => nestD $ group $ joinSep (text (magenta s) :: ls.map fun s => parenthesize s (renderFmt s)) line
 where
   paren? b s := bif b then paren s else s
   arr? | MLType.TArr _ _ => true | _ => false
@@ -39,23 +39,42 @@ where
 instance : ToString MLType := ⟨MLType.toStr⟩
 instance : Std.ToFormat MLType := ⟨MLType.renderFmt⟩
 
-open Std.Format Std.ToFormat in @[always_inline, inline]
+instance : ToString Pred where
+  toString
+  | {cls, args} => cls ++ args.foldl (· ++ " " ++ toString ·) ""
+instance : Std.ToFormat Pred where
+  format
+  | {cls, args} =>
+    Logging.magenta cls ++ args.foldl (· ++ " " ++ MLType.renderFmt ·) ""
+
+open Std.Format Std.ToFormat in
 def Scheme.renderFmt : Scheme -> Std.Format
-  | Forall _ t' => format t'
+  | Forall _ [] t' => format t'
+  | Forall _ pred t' => format pred <> format t'
+def Pred.unary (c : String) (a : MLType) : Pred := ⟨c, [a]⟩
+def Pred.mapArgs (f : MLType -> MLType) : Pred -> Pred
+  | {cls, args} => {cls, args := args.map f}
+def Scheme.body : Scheme -> MLType
+  | .Forall _ _ t => t
+def Scheme.ctx : Scheme -> List Pred
+  | .Forall _ ps _ => ps
+
+attribute [inline] Scheme.renderFmt Pred.unary Scheme.body Scheme.ctx
 
 instance : ToString Scheme where
   toString
-  | .Forall [] t => toString t
-  | .Forall (t :: ts) t' =>
-    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}. {t'}"
+  | .Forall [] [] t => toString t
+  | .Forall [] pred t => toString pred ++ " " ++ toString t
+  | .Forall (t :: ts) pred t' =>
+    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}, {toString pred}. {t'}"
 
 instance : Std.ToFormat Scheme := ⟨Scheme.renderFmt⟩
 instance : Inhabited Scheme where
-  default := .Forall [] (MLType.TCon "False")
+  default := .Forall [] [] (MLType.TCon "False")
 namespace MLType open TV Expr
 
 def ctorScheme (tycon : String) (tparams : List TV) (fields : List MLType) : Scheme :=
-  .Forall tparams
+  .Forall tparams []
   $ fields.foldr TArr
   $ TApp tycon
   $ tparams.map (TVar ·)
@@ -67,11 +86,13 @@ inductive TypingError
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
   | Interrupted
+  | Ambiguous (msg : String)
   | Impossible (s : String)
   | Duplicates (t : TV) (T : MLType) deriving Repr
 open Logging
 instance : ToString TypingError where
   toString
+  | .Ambiguous msg => s!"Ambiguous constraint set: {msg}"
   | .Impossible s => s!"Impossible: {s}"
   | .Interrupted   => s!"Interrupted."
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
@@ -118,26 +139,40 @@ namespace Rewritable open MLType
 
 instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨fun s₁ s₂ => s₂.fold .erase s₁⟩
 
-def applyT : Subst -> MLType -> MLType
+partial def applyT : Subst -> MLType -> MLType
   | _, s@(TCon _) => s
   | s, t@(TVar a) => s.getD a t
   | s, t₁ ×'' t₂ => applyT s t₁ ×'' applyT s t₂
   | s, t₁ ->' t₂ => applyT s t₁ ->' applyT s t₂
   | s, TApp h as => TApp h (as.map (applyT s))
+  | s, KApp v as =>
+    let v' := applyT s $ TVar v
+    let as := as.map (applyT s)
+    match v' with
+    | TVar v => KApp v as
+    | TApp h [] | TCon h => TApp h as
+    | _ => KApp v as
 
 def fvT : MLType -> Std.HashSet TV
   | TCon _ => ∅ | TVar a => {a}
   | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
   | TApp _ as => as.foldl (· ∪ fvT ·) ∅
-
+  | KApp v as => {v} ∪ as.foldl (· ∪ fvT ·) ∅
 instance : Rewritable MLType := ⟨applyT, fvT⟩
-instance : Rewritable Scheme where
-  apply s | .Forall as t =>
-            .Forall as $ apply (s.eraseMany as) t
-  fv      | .Forall as t => fv t \ Std.HashSet.ofList as
+
+def fvP : Pred -> Std.HashSet TV
+  | {args,..} => args.foldl (· ∪ fvT ·) ∅
+instance : Rewritable Pred := ⟨(Pred.mapArgs $ apply ·), fvP⟩
+
 instance [Rewritable α] : Rewritable (List α) where
   apply := List.map ∘ apply
   fv    := List.foldr ((· ∪ ·) ∘ fv) ∅
+
+instance : Rewritable Scheme where
+  apply s | .Forall as ps t =>
+            let s := s.eraseMany as
+            .Forall as (ps.map (apply s)) (apply s t)
+  fv | .Forall as ps t => (fv ps ∪ fv t) \ Std.HashSet.ofList as
 instance : Rewritable Env where
   apply s e := {e with E := e.E.map fun _ v => apply s v}
   fv      e := fv e.E.values
@@ -156,22 +191,23 @@ def gensym (n : Nat) : String :=
   else s.toString ++ q.toSubscriptString
 
 def normalize : Scheme -> Scheme
-  | .Forall _ body =>
+  | .Forall _ ps body =>
     let rec fv
       | TVar a => [a] | TCon _ => []
       | a ->' b | a ×'' b => fv a ++ fv b
       | TApp _ as => as.flatMap fv
-    let ts := (List.rmDup $ fv body);
+      | KApp v as => v :: as.flatMap fv
+    let ts := (List.rmDup $ fv body ++ ps.flatMap (·.args.flatMap fv));
     let ord := ts.zip $ ts.foldrIdx (fun i _ a => .mkTV (gensym i) :: a) []
+    let rename a := ord.lookup a |>.getD a
     let rec normtype
       | a ->' b => normtype a ->' normtype b
       | a ×'' b => normtype a ×'' normtype b
-      | TVar a  => match ord.lookup a with
-                   | some x => TVar x
-                   | none => panic! "some variable is undefined"
+      | TVar a  => TVar $ rename a
       | TApp h as => TApp h $ as.map normtype
       | t => t
-  .Forall (List.map Prod.snd ord) (normtype body)
+    let ps := ps.map fun {cls, args} => {cls, args := args.map normtype}
+  .Forall (ord.map Prod.snd) ps (normtype body)
 
 def isRecRhs : Expr -> Bool
   | .Fix _ | .Fixcomb _ => true
@@ -188,22 +224,25 @@ local instance : CoeHead String TV := ⟨.mkTV⟩
 local instance : CoeTail TV MLType := ⟨TVar⟩
 
 abbrev dE : List (String × Scheme) :=
-  [ ("rec"  , .Forall ["α"] $ ("α" ->' "α") ->' "α")
-  , ("__add", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__sub", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__mul", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__div", .Forall []    $ tInt ×'' tInt ->' tInt)
-  , ("__eq" , .Forall ["α"] $ "α" ×'' "α" ->' tBool)
-  , ("not"  , .Forall []    $ tBool ->' tBool)
-  , ("elim" , .Forall ["α"] $ tEmpty ->' "a")
-  , ("id"   , .Forall ["α"] $ "α" ->' "α")
-  , ("succ" , .Forall []    $ tInt ->' tInt)]
+  [ ("rec"  , .Forall ["α"] [] $ ("α" ->' "α") ->' "α")
+  , ("__add", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__sub", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__mul", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__div", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__eq" , .Forall ["α"] [.unary "Eq" "α"] $ "α" ×'' "α" ->' tBool)
+  , ("not"  , .Forall []    [] $ tBool ->' tBool)
+  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "a")
+  , ("id"   , .Forall ["α"] [] $ "α" ->' "α")
+  , ("succ" , .Forall []    [] $ tInt ->' tInt)]
 
-abbrev defaultE : Env := ⟨.ofList $
-  dE.foldl (init := []) fun a p@(sym, .Forall c ty) =>
-    if sym.startsWith "__"
-    then p :: (sym.drop 2, .Forall c $ curry ty) :: a
-    else p :: a
-    , ∅⟩
+def mkCurriedE (e : List (String × Scheme)) : Env :=
+  ⟨ .ofList $
+      e.foldl (init := []) fun a p@(sym, .Forall c ps ty) =>
+        if sym.startsWith "__"
+        then p :: (sym.drop 2, .Forall c ps $ curry ty) :: a
+        else p :: a
+  , ∅⟩
+
+abbrev defaultE : Env := mkCurriedE dE
 
 end MLType

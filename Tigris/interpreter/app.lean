@@ -17,7 +17,7 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
                                          It's not used for evaluation. This can been seen as importing an axiom.\n")
         $> (ctors, PE, E, VE)
       | .patBind (pat, e) =>
-        let (.Forall _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
+        let (.Forall _ _ te, l) <- EIO.ofExcept $ runInfer1 e E |>.mapError toString
         liftEIO (print l)
 
         let ((tyacc, _, E), _, l) <- EIO.ofExcept $ (runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")).mapError toString
