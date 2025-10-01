@@ -83,7 +83,7 @@ partial def tyApps (mt : Bool) (param : ParamInfo) : TParser σ MLType := withEr
       let args <- take k $ tyAtom mt param
       let extra <- takeMany $ tyAtom mt param
       if extra.isEmpty then
-        if param.arity[h]?.getD 0 > 0 then
+        if param.arity.getD h 0 > 0 then
           return KApp (.mkTV h) args.toList
         else return TApp h args.toList
       else

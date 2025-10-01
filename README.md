@@ -197,8 +197,16 @@ It's an almost one-to-one implementation of the algorithm described in the paper
 
 #### higher-kinded type
 
-- [x] somewhat done. A bit restrictive: bound type ctor is not curried and must
-      be fully applied
+- not considering to do full HKT at the moment. It is done because of certain
+  typeclasses like `Monad`, `Functor` that require basic HKT.
+  - Though only unary monads would work. That is, monads like `State`/`Reader` wouldn't work.
+
+- [x] somewhat done. but is very lightweight/quite restrictive: 
+  - no higher-order type lambdas.
+  - bound type ctor is not curried and must be fully applied (first-order application really)
+    (makes it easy to rewrite `KApp` into a `TApp`, also in unification)
+  - type scheme doesn't actually bound higher-order type variable
+  - generalization doesn't quantify higer-order type variable
 
 although there isn't any kind inferrence and type declaration parsing
 depends on the arity of type constructors.
@@ -206,6 +214,9 @@ depends on the arity of type constructors.
 - arity must be provided to bind a type constructor, otherwise default to 0.
 - A simplified notation `(id : n)` that is
   analogous to Haskell's 1-universe notation `* -> *` or Lean's `Type 0 -> Type 0`
+  - Note that binding type constructor that takes a higher-order type constructor is not supported
+    (i.e. `(Type -> Type) -> Type` is not supported, not that useful anyway.)
+    - So no MTL
 
 the full syntax is
 

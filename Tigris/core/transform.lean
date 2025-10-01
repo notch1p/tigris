@@ -5,13 +5,8 @@ import Tigris.interpreter.entrypoint
 import Tigris.oldcore.matchApp
 import PP
 
-@[inline] def Array.replaceAt (xs : Array α) (i : Nat) (elems : Array α) : Array α :=
-  xs[0:i] ++ elems ++ xs[i+1:]
-
 namespace IR variable {σ}
 
-@[inline] def fresh (h := "x") : M σ Name :=
-  modifyGet fun n => (h ++ toString n, n + 1)
 namespace Helper
 def constOf : TConst -> Const × PrimOp
   | .PUnit     => (.unit  , .eqInt)
@@ -139,6 +134,47 @@ def destructArgsPrelude (tuple : Name) (params : Array Name) (core : LExpr) : LE
         $ .letVal x (.var l)
         $ go r i.pred (Nat.le_trans (Nat.pred_le i) (h' ▸ h))
     go tuple sz Nat.le.refl
+
+partial def findReturnedVar : TExpr -> Option (String × MLType × (TExpr -> TExpr))
+  | .Var v ty => some (v, ty, id)
+  | .Ascribe e ty =>
+    match findReturnedVar e with
+    | some (v, vty, reb) =>
+        some (v, vty, fun new => .Ascribe (reb new) ty)
+    | none => none
+  | .Match scrs branches resTy ex red =>
+    if h : branches.size = 1 then
+      let (pats, rhs) := branches[0]
+      match findReturnedVar rhs with
+      | some (v, vty, reb) =>
+          some (v, vty, fun new =>
+            .Match scrs #[(pats, reb new)] resTy ex red)
+      | none => none
+    else
+      none
+  | _ => none
+
+def etaExpandParams (params : Array String) (core : TExpr) : (Array String × TExpr) :=
+  match findReturnedVar core with
+  | none => (params, core)
+  | some (v, vTy, rebuild) =>
+    let (argTys, _) := decomposeArr vTy
+    if argTys.isEmpty then
+      (params, core)
+    else
+      -- build applications f η0 η1 ... with proper types
+      let rec mk (f : TExpr) (ty : MLType) (i : Nat) (accP : Array String)
+        : (Array String × TExpr) :=
+        match ty with
+        | .TArr a b =>
+          let pName := s!"η{i}"
+          let f'    := .App f (.Var pName a) b
+          mk f' b (i+1) (accP.push pName)
+        | _ => (accP, f)
+      let (newPs, applied) := mk (.Var v vTy) vTy 0 #[]
+      let allParams := params ++ newPs
+      (allParams, rebuild applied)
+
 end Helper
 
 
@@ -223,23 +259,67 @@ partial def lowerFunApp
     lowerE head ρ ctors fun vf => do
       lowerMany args ρ ctors fun supplied => do
         let missing := n - args.size
-        let rec buildLam (i : Nat) (captured : Array Name) : M σ Value := do
-          let p <- fresh "arg"
-          if i + 1 < missing then
-            let inner <- buildLam i.succ $ captured.push p
-            let v <- fresh "lam"
-            let body := .letVal v inner $ .seq #[] $ (.ret v)
-            return .lam p body
-          else
+
+--        let rec buildLam (i : Nat) (captured : Array Name) : M σ Value := do
+--          let p <- fresh "arg"
+--          if i + 1 < missing then
+--            let inner <- buildLam i.succ $ captured.push p
+--            let v <- fresh "lam"
+--            let body := .letVal v inner $ .seq #[] $ (.ret v)
+--            return .lam p body
+--          else
+--            let res <- fresh "r"
+--            let allArgs := supplied ++ captured.push p
+--            .lam p <$>
+--              buildPairs (name := allArgs.toList) fun tuple =>
+--                pure $ .letRhs res (.call vf tuple) (.seq #[] (.ret res))
+--        let lamV <- buildLam 0 #[]
+--        let out <- fresh "clos"
+--        let cont <- k out
+--        return .letVal out lamV cont
+        let rec destructTuple (root : Name) (names : Array Name) (idx : Nat) : LExpr -> LExpr :=
+          if h : idx < names.size then
+            if names.size - idx = 1 then
+              -- last name just aliases root
+              fun core => .letVal (names[idx]) (.var root) core
+            else
+              fun core =>
+                let l := s!"_pL#{names[idx]}"
+                let r := s!"_pR#{names[idx]}"
+                .letRhs l (.proj root 0) $
+                .letRhs r (.proj root 1) $
+                .letVal (names[idx]) (.var l) $
+                  destructTuple r names (idx + 1) core
+          else id
+        if missing = 1 then
+          /- Old behavior (single missing arg): produce unary curried closure. -/
+          let lamV <- do
+            let p <- fresh "arg"
             let res <- fresh "r"
-            let allArgs := supplied ++ captured.push p
-            .lam p <$>
-              buildPairs (name := allArgs.toList) fun tuple =>
-                pure $ .letRhs res (.call vf tuple) (.seq #[] (.ret res))
-        let lamV <- buildLam 0 #[]
-        let out <- fresh "clos"
-        let cont <- k out
-        return .letVal out lamV cont
+            let allArgs := supplied.push p
+            let body <- buildPairs (name := allArgs.toList) fun tuple =>
+              pure $ .letRhs res (.call vf tuple) (.seq #[] (.ret res))
+            pure (.lam p body)
+          let out <- fresh "clos"
+          let cont <- k out
+          return .letVal out lamV cont
+        else
+          /- New behavior (multiple missing args): produce ONE uncurried closure
+             expecting all remaining arguments packed as a right-associated pair chain. -/
+          let param <- fresh "rest"      -- single payload of remaining args
+          -- create fresh names for each remaining argument
+          let restNames : Array Name <- missing.foldM (init := #[]) fun _ _ a =>
+            a.push <$> fresh
+          let allArgs := supplied ++ restNames
+          let res <- fresh "r"
+          let callCore <- buildPairs (name := allArgs.toList) fun tuple =>
+            pure $ .letRhs res (.call vf tuple) (.seq #[] (.ret res))
+          let lamBody :=
+            destructTuple param restNames 0 callCore
+          let lamV : Value := .lam param lamBody
+          let out <- fresh "clos"
+          let cont <- k out
+          return .letVal out lamV cont
 
 partial def lowerE
   (e : TExpr) (ρ : Env)
@@ -304,7 +384,8 @@ partial def lowerE
         match decomposeLamChain e with
         | some (p0, rest, core) =>
           let tupleParam <- fresh "args"
-          let allParams := #[p0] ++ rest
+          let baseParams := #[p0] ++ rest
+          let (allParams, core) := etaExpandParams baseParams core
           let ρ' := allParams.foldl (fun acc p => acc.insert p p) ρ
           let loweredCore <- lower core ρ' ctors
           let body' := destructArgsPrelude tupleParam allParams loweredCore
@@ -319,7 +400,7 @@ partial def lowerE
         lowerFunApp h args ρ ctors k
 
       | .Cond c t e' _ =>
-        lowerE c ρ ctors fun cv => do
+        lowerE c ρ ctors fun cv =>
           .seq #[] <$>
             ((.cond cv · ·) <$> lower t ρ ctors <*> lower e' ρ ctors)
 
@@ -331,6 +412,7 @@ partial def lowerE
           else
             -- build all recursive functions in one letRec
             let funs <- recFuns.mapM fun (fid, selfN, params, core) =>
+              let (params, core) := etaExpandParams params core
               lowerRecFun fid selfN params core ρ' ctors
             let ρ'' := recFuns.foldl (init := ρ') fun acc (fid, _, _, _) => acc.insert fid fid
             let body' <- lower body ρ'' ctors
@@ -339,6 +421,7 @@ partial def lowerE
       | .Fix lam _ | .Fixcomb lam _ =>
         match decomposeLamChain lam with
         | some (selfN, params, core) => do
+          let (params, core) := etaExpandParams params core
           let fname <- fresh "f"
           let funIR <- lowerRecFun fname selfN params core ρ ctors
           let r <- fresh "r"
@@ -515,6 +598,7 @@ partial def lowerModule (decls : Array TopDeclT) : M σ (LModule × LModule) := 
           else
             -- Build all rec functions together
             let funIRs <- recFuns.mapM fun (fid, selfN, ps, core) =>
+              let (ps, core) := etaExpandParams ps core
               lowerRecFun fid selfN ps core ρ' ctors
             let ρ'' := recFuns.foldl (init := ρ') fun acc (fid, _, _, _) => acc.insert fid fid
             let next <- build (i + 1) ρ'' (some recFuns.back.1) ctors

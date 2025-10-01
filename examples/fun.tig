@@ -1,0 +1,8 @@
+type BoxedEqInt = Boxed (Int -> Int -> Bool)
+
+let boxedEq = Boxed (_ = _)
+
+let unwrapBoxed (Boxed f) = f
+
+let main = 
+  unwrapBoxed boxedEq 20 20

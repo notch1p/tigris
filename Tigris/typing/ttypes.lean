@@ -205,6 +205,7 @@ def normalize : Scheme -> Scheme
       | a ×'' b => normtype a ×'' normtype b
       | TVar a  => TVar $ rename a
       | TApp h as => TApp h $ as.map normtype
+      | KApp h as => KApp (rename h) $ as.map normtype
       | t => t
     let ps := ps.map fun {cls, args} => {cls, args := args.map normtype}
   .Forall (ord.map Prod.snd) ps (normtype body)

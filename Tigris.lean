@@ -6,6 +6,7 @@ import Tigris.utils
 import Tigris.typing.ttypes
 import Tigris.typing.typing
 import Tigris.typing.constraint
+import Tigris.typing.fexpr
 import Tigris.parsing.ppat
 import Tigris.parsing.pexpSimple
 import Tigris.parsing.pexp

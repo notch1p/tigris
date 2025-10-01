@@ -1,6 +1,6 @@
 import Tigris.parsing.pexp
 import Tigris.typing.typing
-import Tigris.typing.constraint
+import Tigris.typing.fexpr
 import Tigris.parsing.ptype
 import Tigris.typing.ttypes
 import Tigris.parsing.types
@@ -112,7 +112,23 @@ def check1C (s : String) (E : Env := defaultE) : String :=
   | .ok e    =>
     match runInferConstraintT e E with
     | .error e' => toString e' ++ s!"AST: {reprStr e}"
-    | .ok    (_, s, l) =>
+    | .ok    (te, s, l) =>
+      reprStr te ++ "\n" ++
       toString s ++ "\n" ++ l
+def check1C' (s : String) (E : Env := defaultE) : Option TExpr := do
+  let e <- Parsing.parse s initState |>.toOption
+  runInferConstraintT e E |>.toOption |>.map Prod.fst
+
+def check1F (s : String) (E : Env := defaultE) : String :=
+  match Parsing.parse s initState with
+  | .error e => toString e
+  | .ok e    =>
+    match runInferConstraintF e E with
+    | .error e' => toString e' ++ s!"AST: {reprStr e}"
+    | .ok    (te, s, l) =>
+      reprStr te ++ "\n" ++
+      toString s ++ "\n" ++ l
+
+-- #eval println! check1F "let rec f x = g x and g x = f x in f"
 
 end MLType

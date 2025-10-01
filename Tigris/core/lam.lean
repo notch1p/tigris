@@ -192,4 +192,9 @@ end PP
 abbrev M σ := StateRefT Nat (ST σ)
 abbrev Env := Std.HashMap String Name
 
+@[inline] def fresh (h := "x") : M σ Name :=
+  modifyGet fun n => (h ++ toString n, n + 1)
 end IR
+
+@[inline] def Array.replaceAt (xs : Array α) (i : Nat) (elems : Array α) : Array α :=
+  xs[0:i] ++ elems ++ xs[i+1:]

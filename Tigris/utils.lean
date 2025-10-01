@@ -43,13 +43,12 @@ def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> �
   | x :: xs, y :: ys => foldl2 f (f init x y) xs ys
   | _, _ => init
 
-def List.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) 
+def List.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ)
   : List α -> List β -> m γ
   | x :: xs, y :: ys => (f init x y) >>= (foldlM2 f · xs ys)
   | _, _ => return init
-
-def List.foldr2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
-  | x :: xs, y :: ys => f (foldr2 f init xs ys) x y
+def List.foldr2 (f : α -> β -> γ -> γ) (init : γ) : List α -> List β -> γ
+  | x :: xs, y :: ys => f x y (foldr2 f init xs ys)
   | _, _ => init
 section
 variable {ε σ τ m α}

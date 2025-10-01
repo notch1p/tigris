@@ -195,3 +195,12 @@ inductive TopDeclT
   | patBind : Pattern × TExpr -> TopDeclT
   | tyBind : TyDecl -> TopDeclT
 deriving Repr
+
+def TExpr.getTy : TExpr -> MLType
+  | .CI _ ty | .CS _ ty | .CB _ ty | .CUnit ty
+  | .Var _ ty
+  | .Fixcomb _ ty | .Fix _ ty
+  | .App _ _ ty
+  | .Cond _ _ _ ty | .Prod' _ _ ty
+  | .Match _ _ ty .. | .Ascribe _ ty | .Let _ _ ty
+  | .Fun _ _ _ ty => ty

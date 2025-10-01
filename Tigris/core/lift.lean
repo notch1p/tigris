@@ -1,6 +1,5 @@
 import Tigris.core.lam
 import Tigris.core.opt
-
 namespace IR
 
 /-!

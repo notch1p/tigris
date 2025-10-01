@@ -239,10 +239,10 @@ partial def useful
           | _              => useful lookup σ (𝒟 M) ps
   | _, _ => false
 
-def exhaustWitness
+def exhaustWitness -- α is `Expr` / `TExpr`
   (env : Env)
   (colTypes : Array MLType)
-  (rows : Array (Array Pattern × Expr)) : Option 𝓥 × 𝓜 × List MLType :=
+  (rows : Array (Array Pattern × α)) : Option 𝓥 × 𝓜 × List MLType :=
   letI lookup := env.tyDecl.get?
   let M : 𝓜 := rows.foldr (List.cons ∘ Array.toList ∘ Prod.fst) []
   let tys := colTypes.toList

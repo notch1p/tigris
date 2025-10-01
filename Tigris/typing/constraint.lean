@@ -349,7 +349,7 @@ def inferToplevelC
             s!"pattern binding does not support addition of constraints"
         else ""
       let ((E, _), {log := l₂,..}) <- runEST fun _ => inferPattern E te pat |>.run {}
-      let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], .CUnit)]
+      let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
       let l₃ :=
         if let some ex := ex then
           Logging.warn

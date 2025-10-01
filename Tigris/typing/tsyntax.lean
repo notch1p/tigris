@@ -41,37 +41,37 @@ def fvTE : TExpr -> Std.HashSet TV
   | .Fixcomb _ ty
   | .Fix _ ty
   | .Ascribe _ ty =>
-      fv ty
+    fv ty
 
   | .Fun _ paramTy body ty =>
-      fv ty ∪ fv paramTy ∪ fvTE body
+    fv ty ∪ fv paramTy ∪ fvTE body
 
   | .App f a ty =>
-      fv ty ∪ fvTE f ∪ fvTE a
+    fv ty ∪ fvTE f ∪ fvTE a
 
   | .Cond c t e ty =>
-      fv ty ∪ fvTE c ∪ fvTE t ∪ fvTE e
+    fv ty ∪ fvTE c ∪ fvTE t ∪ fvTE e
 
   | .Prod' l r ty =>
-      fv ty ∪ fvTE l ∪ fvTE r
+    fv ty ∪ fvTE l ∪ fvTE r
 
   | .Let binds body ty =>
-      let fvBinds :=
-        binds.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨p, prop⟩ =>
-          have := (prod_sizeOf_lt p.2 |>.2) <> (prod_sizeOf_lt p |>.2) <> (Array.sizeOf_lt_of_mem prop)
-          acc ∪ fv p.2.1 ∪ fvTE p.2.2
-      fv ty ∪ fvBinds ∪ fvTE body
+    let fvBinds :=
+      binds.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨p, prop⟩ =>
+        have := (prod_sizeOf_lt p.2 |>.2) <> (prod_sizeOf_lt p |>.2) <> (Array.sizeOf_lt_of_mem prop)
+        acc ∪ fv p.2.1 ∪ fvTE p.2.2
+    fv ty ∪ fvBinds ∪ fvTE body
 
   | .Match scrutinees branches resTy _ex _red =>
-      let fvScrs :=
-        scrutinees.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨te, prop⟩ =>
-          have := sizeOf_lt_of_mem prop
-          acc ∪ fvTE te
-      let fvBranches :=
-        branches.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨p, prop⟩ =>
-          have := (prod_sizeOf_lt p |>.2) <> sizeOf_lt_of_mem prop
-          acc ∪ fvTE p.2
-      fv resTy ∪ fvScrs ∪ fvBranches
+    let fvScrs :=
+      scrutinees.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨te, prop⟩ =>
+        have := sizeOf_lt_of_mem prop
+        acc ∪ fvTE te
+    let fvBranches :=
+      branches.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨p, prop⟩ =>
+        have := (prod_sizeOf_lt p |>.2) <> sizeOf_lt_of_mem prop
+        acc ∪ fvTE p.2
+    fv resTy ∪ fvScrs ∪ fvBranches
 termination_by te => te
 
 instance : Rewritable TExpr := ⟨applyTE, fvTE⟩
