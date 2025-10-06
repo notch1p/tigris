@@ -7,7 +7,7 @@ import PP
 
 namespace IR variable {σ}
 
-namespace Helper
+namespace Helper open MLType (decomposeArr)
 def constOf : TConst -> Const × PrimOp
   | .PUnit     => (.unit  , .eqInt)
   | .PInt i    => (.int i , .eqInt)
@@ -41,12 +41,6 @@ def getArrArity : TExpr -> Nat
   | .Var _ ty | .Fun _ _ _ ty | .Fixcomb _ ty | .Fix _ ty
   | .App _ _ ty | .Let _ _ ty | .Cond _ _ _ ty
   | .Prod' _ _ ty | .Match _ _ ty _ _ | .Ascribe _ ty => arrArity ty
-
-def decomposeArr : MLType -> (List MLType × MLType)
-  | .TArr a b =>
-    let (as, r) := decomposeArr b
-    (a :: as, r)
-  | t => ([], t)
 
 @[inline] def buildProdTy : List MLType -> MLType
   | [] => .tUnit
@@ -604,7 +598,7 @@ partial def lowerModule (decls : Array TopDeclT) : M σ (LModule × LModule) := 
             let next <- build (i + 1) ρ'' (some recFuns.back.1) ctors
             return (.letRec funIRs next)
 
-      | .patBind (pat, e) =>
+      | .patBind (pat, _, e) =>
         lowerE e ρ ctors fun scr => do
           let onOk (ρ' : Env) := build (i + 1) ρ' last? ctors
           let onFail := do

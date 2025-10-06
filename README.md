@@ -119,10 +119,17 @@ proving those functions terminates.
 
 #### IR/Backends
 
+- **overview**
+
+```plaintext
+Expr -> TExpr -> (FExpr, under construction) -> LExpr -> LExpr (CC'd) -> CExpr
+```
+
+
 We currently maintain a two stage IR for the ease of reasoning:
 
-- IR₀: Lambda IR
-- IR₁: CPS IR
+- IR₀: Lambda IR `LExpr`
+- IR₁: CPS IR `CExpr`
 
 - Pipeline
 
@@ -244,6 +251,12 @@ with the equality relation on `Expr`, as is the case in Lean (besides `funext`).
 But This is unlikely to be done because I've decided it's too elaborate and metatheoretic.
 
 - **25.09.30** we are getting there.
+- **25.10.07** almost done. Now need to hook `FExpr` into `LExpr`.
+
+We elaborate a typedtree `TExpr` into a System-F empowered `FExpr`, performing
+instance resolution/typeclass elaboration.
+
+- see [fexpr.lean](Tigris/typing/fexpr.lean), [resolve.lean](Tigris/typing/resolve.lean)
 
 ## Specification
 
@@ -314,6 +327,7 @@ This project is a pain in the ass to develop and has undergone multiple refactor
       - `Expr` (because I'll need a letrec group), and subsequently, everything relating to it (basically the entire project)
       - typechecker. While it is possible to add new layers on the existing Algorithm W to achieve constraints,
         it is not very maintainer-friendly to do so. Ultimately I'm afraid we'll have to switch to a constraint-solving based implementation.
+... (more)
 
 - Bonus: There's a _DTigris_ variant in development with Haskell which uses dependent type (single universe unfortunately).
 

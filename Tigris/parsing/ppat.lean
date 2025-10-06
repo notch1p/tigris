@@ -66,7 +66,7 @@ partial def patRecordTyped : TParser σ Pattern := do
   let ps <- braced do sepBy COMMA do
     let f <- ID; EQ; let e <- parsePattern; return (f, e)
   COLON
-  match <- PType.tyExp with
+  match <- PType.tyExp ∅ with
   | .TCon s | .TApp s _ => reorderRecordPat s ps
   | _ => resolveBareRecordPat ps
 partial def patApp : TParser σ Pattern := do

@@ -92,6 +92,16 @@ inductive MLType where
   | KApp  : TV -> List MLType -> MLType -- HKT application
 deriving Repr, BEq, Ord, Inhabited, Hashable
 
+def MLType.getRightmost : MLType -> MLType
+  | TArr _ t₂ => getRightmost t₂
+  | t => t
+
+def MLType.decomposeArr : MLType -> (List MLType × MLType)
+  | .TArr a b =>
+    let (as, r) := decomposeArr b
+    (a :: as, r)
+  | t => ([], t)
+
 structure Pred where
   cls  : String
   args : List MLType := []
@@ -179,20 +189,28 @@ abbrev TParser σ := SimpleParserT Substring Char
 
 structure TyDecl where
   tycon : String
-  param : Array String
-  ctors : Array $ Symbol × List MLType × Nat
+  param : Array (String × Nat)
+  ctors : Array $ Symbol × List (Symbol × MLType) × Nat
+  cls?  : Bool := false -- class?
 deriving Repr
 
+structure InstanceDecl where
+  ctxPreds : List Pred
+  cname    : String
+  args     : List MLType
+  methods  : Array (String × Expr)
+deriving Repr
 inductive TopDecl
-  | idBind : Array Binding -> TopDecl
-  | patBind : PBinding -> TopDecl
-  | tyBind : TyDecl -> TopDecl
-  | extBind : Symbol -> String -> Scheme -> TopDecl
+  | idBind   : Array Binding -> TopDecl
+  | patBind  : PBinding -> TopDecl
+  | tyBind   : TyDecl -> TopDecl
+  | extBind  : Symbol -> String -> Scheme -> TopDecl
+  | instBind : InstanceDecl -> TopDecl
 deriving Repr
 
 inductive TopDeclT
   | idBind : Array BindingT -> TopDeclT
-  | patBind : Pattern × TExpr -> TopDeclT
+  | patBind : Pattern × Scheme × TExpr -> TopDeclT
   | tyBind : TyDecl -> TopDeclT
 deriving Repr
 
@@ -204,3 +222,29 @@ def TExpr.getTy : TExpr -> MLType
   | .Cond _ _ _ ty | .Prod' _ _ ty
   | .Match _ _ ty .. | .Ascribe _ ty | .Let _ _ ty
   | .Fun _ _ _ ty => ty
+
+structure MethodInfo where
+  mname : Symbol
+  mty   : MLType
+  idx   : Nat
+deriving Repr
+
+/--
+Assumptions:
+  - class decl is desugared into a type decl
+  - with same name, same ctor name.
+-/
+structure ClassInfo where
+  cname    : Symbol -- cname == ctorName, assumed
+  ctorName : Symbol
+  params   : Array (String × Nat) -- class param names + HKT arity
+  methods  : Array MethodInfo
+  -- maybe superclass?? not considered now.
+deriving Repr
+
+structure InstanceInfo where
+  iname   : String
+  cls     : String
+  args    : List MLType
+  ctx     : List Pred
+deriving Repr

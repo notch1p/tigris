@@ -77,4 +77,39 @@ def externDecl : TParser σ TopDecl := do
   COLON let sch <- PType.tyScheme
   return .extBind id name sch
 
+partial def instanceExp (ctor : Symbol)
+  : TParser σ (Array $ String × Expr) := do
+  let fs <- braced do sepBy COMMA do
+    let f <- ID;
+    let pre <- takeMany funBinderID
+    match <- test BAR with
+    | true =>
+      let a <- sepBy1 BAR matchDiscr
+      return (f, transMatch pre $ pointedExp a)
+    | false =>
+      EQ; let a <- parseExpr
+      return (f, transMatch pre a)
+  let ({recordFields,..}, _) <- get
+  let some order := recordFields.get? ctor | error s!"unknown record {ctor}\n"; throwUnexpected
+  let mut mp : Std.HashMap String Expr := ∅
+  for (f, e) in fs do
+    if f ∈ mp then
+      error s!"duplicate fields '{f}' for record {ctor} literal\n"
+      throwUnexpected
+    mp := mp.insert f e
+  if order.any (not ∘ mp.contains) || mp.size != order.size then
+    error s!"record literal does not match field set of {ctor}\n"
+    throwUnexpected
+  return order.foldl (init := #[]) fun a s =>
+    a.push (s, mp.get! s)
+
+open PType in
+def instanceDecl : TParser σ TopDecl := do
+  INSTANCE
+  let (.Forall _ ctxPreds ty) <- tyScheme
+  let (.TApp cname args) := ty.getRightmost | error "not a valid class" *> throwUnexpected
+  EQ;
+  let methods <- instanceExp cname
+  return .instBind {ctxPreds, cname, args, methods}
+
 end Parsing

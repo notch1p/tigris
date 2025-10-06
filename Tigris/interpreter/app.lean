@@ -9,7 +9,7 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
   match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ xs, (PE, l)) => do
     liftEIO (print l)
-    xs.foldlM (init := (ctors, PE, E, VE)) fun (ctors, PE, E, VE) decl => do
+    xs.foldlM (init := (ctors, PE, E, VE)) fun acc@(ctors, PE, E, VE) decl => do
       match decl with
       | .extBind id _ sch =>
         let E := {E with E := E.E.insert id sch}
@@ -51,6 +51,7 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
       | .tyBind tydecl =>
         let ctors := ctors.insertMany $ tydecl.ctors.map fun (name, _, ar) => (name, ar)
         (ctors, PE, ·) <$> registerData E VE tydecl
+      | _ => return acc
   | (.error _ e, (_, l)) => liftEIO (print l) *> throw (toString e)
 
 end Parsing

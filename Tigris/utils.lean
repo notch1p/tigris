@@ -10,12 +10,18 @@ def List.rmDup [BEq α] [Hashable α] (l : List α) : List α :=
     | x :: xs => if x ∈ s then go s xs else x :: go (insert x s) xs
   go s l
 
-def Array.hasDuplicates [BEq α] [Hashable α] (l : Array α) : Bool :=
-  go 0 (∅ : Std.HashSet α) where
+def List.appendMap (f : α -> β) : List α -> List β -> List β
+  | [], ys => ys
+  | x :: xs, ys => f x :: appendMap f xs ys
+
+def Array.hasDuplicates
+  [BEq β] [Hashable β] (l : Array α) (f : α -> β) : Bool :=
+  go 0 (∅ : Std.HashSet β) where
   go i acc :=
     if h : i < l.size then
-      if l[i] ∈ acc then true
-      else go i.succ (acc.insert l[i])
+      let x := f l[i]
+      if x ∈ acc then true
+      else go i.succ (acc.insert x)
     else false
 
 def Array.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) (xs : Array α) (ys : Array β) : m γ :=
@@ -42,6 +48,9 @@ def List.foldr1 (f : α -> α -> α) (xs : List α) (h : xs ≠ []) : α :=
 def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
   | x :: xs, y :: ys => foldl2 f (f init x y) xs ys
   | _, _ => init
+
+@[inline] def List.all2 (pred : α -> β -> Bool) : List α -> List β -> Bool :=
+  List.foldl2 (· && pred · ·) true
 
 def List.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ)
   : List α -> List β -> m γ
@@ -203,9 +212,27 @@ def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.get!
 
+def Array.map2 (f : α -> β -> γ) (xs : Array α) (ys : Array β) : Array γ :=
+  let xss := xs.size
+  let yss := ys.size
+  let min := Nat.min xs.size ys.size
+  have h₁ : min <= xss := Nat.min_le_left xss yss
+  have h₂ : min <= yss := Nat.min_le_right xss yss
+  min.fold (init := #[]) fun i h a =>
+    have := Nat.lt_of_lt_of_le h h₁
+    have := Nat.lt_of_lt_of_le h h₂
+    a.push $ f xs[i] ys[i]
+
 def Array.foldl1D (f : α -> α -> α) (arr : Array α) (dflt : α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.getD dflt
+
+def Std.Format.joinSep' [Std.ToFormat α]
+  (arr : Array α) (sep : Format)
+  : Format :=
+  if h : arr.size = 0 then nil
+  else
+    arr.mapReduce format (· ++ sep ++ ·) $ Nat.zero_lt_of_ne_zero h
 
 def Array.foldr1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf x my := some $ match my with | none => x | some y => f x y
@@ -298,4 +325,3 @@ end
 @[inline] def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act
 @[inline] def Function.on (g : β -> β -> γ) (f : α -> β)
   : α -> α -> γ := fun x y => g (f x) (f y)
-infixl:90 "on" => Function.on

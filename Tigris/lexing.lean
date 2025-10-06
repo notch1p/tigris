@@ -40,11 +40,11 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
   , ("∀", "∀")]
 
 def reserved :=
-  #[ "mutual","infixl" , "infixr", "match", "extern"
-   , "forall", "data"  , "type"  , "with"
-   , "else"  , "then"  , "let"
-   , "and"   , "rec"   , "fun"
-   , "fn"    , "in"    , "if"]
+  #[ "mutual"  ,"infixl" , "infixr", "match", "extern"
+   , "class"   , "forall", "data"  , "type"  , "with"
+   , "instance", "else"  , "then"  , "let"
+   , "and"     , "rec"   , "fun"
+   , "fn"      , "in"    , "if"]
 
 open ASCII in private def ID' : TParser σ String :=
   withErrorMessage "identifier" do
@@ -71,6 +71,7 @@ def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α :=
 
 def parenthesized (t : TParser σ α) : TParser σ α := between '(' t ')'
 def braced (t : TParser σ α) : TParser σ α := between '{' t '}'
+def sbrack (t : TParser σ α) : TParser σ α := between '[' t ']'
 
 def kw (s : String) : TParser σ Unit := spaces *>
                                      (withBacktracking
@@ -107,6 +108,13 @@ abbrev FORALL' : TParser σ Unit := spaces *>
                                     $ void
                                     $ string "∀")
 abbrev EXTERN : TParser σ Unit := kw "extern"
+abbrev CLASS : TParser σ Unit := kw "class"
+abbrev INSTANCE : TParser σ Unit := kw "instance"
+
+abbrev TYPE? : TParser σ Bool := do
+  if <- test TYPE then return false
+  else if <- test CLASS then return true
+  else throwUnexpected
 
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
 abbrev ARROW: TParser σ Unit := spaces *>

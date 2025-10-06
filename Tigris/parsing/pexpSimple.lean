@@ -54,9 +54,10 @@ in
    , parenthesized parsePattern]
   simpErrorCombine
 
-def reorderRecord (ctor : Symbol) (fs : Array $ String × Expr) : TParser σ Expr := do
+def reorderRecord (ctor : Symbol) (fs : Array $ String × Expr)
+  : TParser σ Expr := do
   let ({recordFields,..}, _) <- get
-  let some order := recordFields.get? ctor | error "unknown record {ty}\n"; throwUnexpected
+  let some order := recordFields.get? ctor | error s!"unknown record {ctor}\n"; throwUnexpected
   let mut mp : Std.HashMap String Expr := ∅
   for (f, e) in fs do
     if f ∈ mp then
@@ -66,9 +67,7 @@ def reorderRecord (ctor : Symbol) (fs : Array $ String × Expr) : TParser σ Exp
   if order.any (not ∘ mp.contains) || mp.size != order.size then
     error s!"record literal does not match field set of {ctor}\n"
     throwUnexpected
-  let exprs := order.map mp.get!
-  let core := Expr.Var ctor
-  return exprs.foldl App core
+  return order.foldl (App · $ mp.get! ·) (.Var ctor)
 
 def resolveBareRecord (fs : Array $ String × Expr) : TParser σ Expr := do
   let ({recordFields,..}, _) <- get

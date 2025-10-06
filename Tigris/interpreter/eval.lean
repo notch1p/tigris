@@ -4,14 +4,16 @@ import Tigris.parsing.ptype
 import Tigris.interpreter.types
 import Tigris.interpreter.entrypoint
 
+/-! deprecated -/
+
 namespace Interpreter open Parsing PType Value MLType TV Pattern Expr TypingError Std.ToFormat
 def registerData (E : Env) (VE : VEnv) : TyDecl -> EIO String (Env × VEnv)
-  | ty@{ctors,tycon,param} =>
+  | ty@{ctors,tycon,param,..} =>
     ctors.foldlM (init := (E, VE)) fun (E, {env := VE}) (cname, fields, arity) =>
-      let s := ctorScheme tycon (param |>.map mkTV |>.toList) fields
+      let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
       let v := if arity == 0 then .VConstr cname #[]
                              else .VCtor cname arity #[]
-      (⟨E.1.insert cname s, E.2.insert tycon ty⟩, ⟨VE.insert cname v⟩) <$
+      (⟨E.1.insert cname s, E.2.insert tycon ty, E.3, E.4⟩, ⟨VE.insert cname v⟩) <$
         liftEIO (println! templateREPL cname (format v) (format s))
 
 def binop (n : Nat) (h : n ∈ [1,2,3,4]) : Int -> Int -> Int :=
@@ -290,3 +292,4 @@ abbrev defaultVE : VEnv where
 @[always_inline, inline] def eval! s (e : VEnv := defaultVE) := parse! s |> eval e
 
 end Interpreter
+

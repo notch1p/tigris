@@ -3,6 +3,8 @@ import Tigris.parsing.types
 import Tigris.typing.exhaust
 import PP.dependentPP
 
+/-! deprecated -/
+
 namespace MLType open Expr TV TypingError Pattern Rewritable
 
 variable {σ : Type}
@@ -163,9 +165,9 @@ partial def inferTLetGroup
     let sc := generalize EgenRec tv |> normalize
     bindsRec := bindsRec.push (x, sc, tr)
 
-  let {E := Emap, tyDecl} := EgenRec
+  let {E := Emap, tyDecl, clsInfo, instInfo} := EgenRec
   let EafterRec : Env :=
-    ⟨bindsRec.foldl (init := Emap) (fun m (x, sc, _) => m.insert x sc), tyDecl⟩
+    ⟨bindsRec.foldl (init := Emap) (fun m (x, sc, _) => m.insert x sc), tyDecl, clsInfo, instInfo⟩
 
   let mut sNon : Subst := ∅
   let mut EN : Env := EafterRec
@@ -216,8 +218,7 @@ partial def inferT (E : Env) : Expr -> Infer σ (Subst × MLType × TExpr)
 
   | Fun x e => do
     let tv <- fresh
-    let {E, tyDecl} := E
-    let (s₁, t₁, te) <- inferT ⟨E.insert x (.Forall [] [] tv), tyDecl⟩ e
+    let (s₁, t₁, te) <- inferT {E with E := E.E.insert x (.Forall [] [] tv)} e
     let argTy := apply s₁ tv
     let funTy := argTy ->' t₁
     pure (s₁, funTy, .Fun x argTy te funTy)
@@ -231,8 +232,7 @@ partial def inferT (E : Env) : Expr -> Infer σ (Subst × MLType × TExpr)
 
   | Fix (Fun fname fbody) => do
     let tv <- fresh
-    let {E, tyDecl} := E
-    let (s₁, t₁, tBody) <- inferT ⟨E.insert fname (.Forall [] [] tv), tyDecl⟩ fbody
+    let (s₁, t₁, tBody) <- inferT {E with E := E.E.insert fname (.Forall [] [] tv)} fbody
     let s₂ <- unify (apply s₁ tv) t₁
     let S := s₂ ∪' s₁
     let argTy := apply S tv
@@ -416,8 +416,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 
   | Fun x e => do
     let tv          <- fresh
-    let {E, tyDecl} := E
-    let (s₁, t₁)    <- infer ⟨E.insert x (.Forall [] [] tv), tyDecl⟩ e
+    let (s₁, t₁)    <- infer {E with E := E.E.insert x (.Forall [] [] tv)} e
     pure (s₁, apply s₁ tv ->' t₁)
 
   | Fixcomb e => do
@@ -429,8 +428,7 @@ partial def infer (E : Env) : Expr -> Infer σ (Subst × MLType)
 
   | Fix (Fun fname fbody) => do
     let tv          <- fresh
-    let {E, tyDecl} := E
-    let (s₁, t₁)    <- infer ⟨E.insert fname (.Forall [] [] tv), tyDecl⟩ fbody
+    let (s₁, t₁)    <- infer {E with E := E.E.insert fname (.Forall [] [] tv)} fbody
     let s₂          <- unify (apply s₁ tv) t₁
     let s := s₂ ∪' s₁
     pure (s₂ ∪' s₁, apply s tv)
@@ -518,8 +516,8 @@ def inferGroupT
   : Except TypingError (TopDeclT × Env × Logger) := do
   let ((ES, _, _), _, l) <- runEST fun _ => inferTLetGroup E b CUnit |>.run (0, "")
   let (E, ES) :=
-    let ⟨E, T⟩ := E
-    Prod.map (Env.mk · T) id $
+    let ⟨E, T, C, I⟩ := E
+    Prod.map (Env.mk · T C I) id $
       ES.foldl (init := (E, #[])) fun (E, ES) (id, s, te) =>
         let s := normalize s
         (E.insert id s, ES.push (id, s, te))
@@ -530,8 +528,8 @@ def inferGroup
   : Except TypingError (Array (Symbol × Scheme) × Env × Logger) := do
   let ((ES, _, _), _, l) <- runEST fun _ => inferLetGroup E b CUnit |>.run (0, "")
   let (E, ES) :=
-    let ⟨E, T⟩ := E
-    Prod.map (Env.mk · T) id $
+    let ⟨E, T, C, I⟩ := E
+    Prod.map (Env.mk · T C I) id $
       ES.foldl (init := (E, #[])) fun (E, ES) (id, s) =>
         let s := normalize s
         (E.insert id s, ES.push (id, s))
@@ -544,9 +542,9 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
       ({E with E := E.E.insert s sch}, L)
     | .idBind group => inferGroup group E L <&> Prod.snd
     | .tyBind ty@{ctors, tycon, param} =>
-      return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
-        letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
-        ⟨E.insert cname s, tyDecl.insert tycon ty⟩
+      return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl, clsInfo, instInfo} (cname, fields, _) =>
+        letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV ∘ Prod.fst) []) fields
+        ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo⟩
     | .patBind (pat, expr) => do
       let (.Forall _ _ te, l₁) <- runInfer1 expr E
 
@@ -560,6 +558,7 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
                possible cases such as {ex.map Pattern.render} are ignored\n"
         else ""
       return (E, l₁ ++ l₂ ++ l₃)
+    | _ => return (E, L) -- TODO: typeclass
 
 def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array TopDeclT × Env × Logger) :=
   b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
@@ -570,11 +569,11 @@ def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array Top
       let (a, E, l) <- inferGroupT group E L
       return (acc.push a, E, l)
     | .tyBind ty@{ctors, tycon, param} =>
-      return (acc.push (.tyBind ty), ·, L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
-        letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV) []) fields
-        ⟨E.insert cname s, tyDecl.insert tycon ty⟩
+      return (acc.push (.tyBind ty), ·, L) <| ctors.foldl (init := E) fun {E, tyDecl, clsInfo, instInfo} (cname, fields, _) =>
+        letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV ∘ Prod.fst) []) fields
+        ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo⟩
     | .patBind (pat, expr) => do
-      let (e,.Forall _ _ te, l₁) <- runInferT1 expr E
+      let (e,sch@(.Forall _ _ te), l₁) <- runInferT1 expr E
 
       let ((_, _, E), _, l₂) <- runEST fun _ => checkPat1 E te #[] pat |>.run (nat_lit 0, "")
       -- toplevel binding can never be redundant
@@ -585,6 +584,7 @@ def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array Top
             s!"Partial pattern matching, \
                possible cases such as {ex.map Pattern.render} are ignored\n"
         else ""
-      return (acc.push $ .patBind (pat, e), E, l₁ ++ l₂ ++ l₃)
+      return (acc.push $ .patBind (pat, sch, e), E, l₁ ++ l₂ ++ l₃)
+    | _ => return (acc, E, L) -- TODO: typeclass
 
 end MLType

@@ -1,0 +1,19 @@
+
+class Eq a = {eq : a -> a -> Bool}
+
+class HEq a b = {heq : a -> b -> Bool}
+
+instance Eq Int = {eq = __eqInt}
+
+instance ∀a [Eq a], HEq a a = {heq = eq}
+
+class HAdd a b c = {hadd : a -> b -> c}
+
+instance HAdd Int Int Int = {hadd = add}
+
+let f = heq ((hadd 1 2) : Int) 3
+
+let f' = heq (hadd 2 3) 5
+NB. Ambiguous: HEq ?m6 Int: typeclass elaboration is stuck because of metavariable(s)
+NB.   [?m6]
+NB. (partly) induced by a call to heq. Consider adding type ascriptions.

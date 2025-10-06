@@ -2,6 +2,25 @@
 
 (load "ffi.lisp")
 
+;; == Optimized IR ==
+
+main (arg) {
+  letι lam5 =
+    fun args0 ↦
+      let _pL#x = args0[0]
+      let _pR#x = args0[1]
+      let p1 = ⟨_pL#x, _pR#x⟩
+      letι u2 = ()
+      let pair3 = ⟨p1, u2⟩
+      __eq(pair3)ᵀ
+  letι lam12 =
+    fun args7 ↦
+      let _pL#x = args7[0]
+      let _pR#x = args7[1]
+      let pair10 = ⟨_pL#x, _pR#x⟩
+      lam5(pair10)ᵀ
+  RET lam12
+}
 ;; == Common Lisp ==
 
 ; hoisted functions
@@ -9,59 +28,39 @@
 (defun |fn1000| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|α| (car |payload|)))
-    (let ((|_pL#__?x₀| (car |α|)))
-      (let ((|_pR#__?x₀| (cdr |α|)))
-        (let ((|p1| (= |_pL#__?x₀| |_pR#__?x₀|)))
-          (funcall |k| |p1|))))))
+    (let ((|Γ| (cdr |payload|)))
+      (let ((|__eq| (svref (cdr |Γ|) 0)))
+        (let ((|_pL#x| (car |α|)))
+          (let ((|_pR#x| (cdr |α|)))
+            (let ((|p1| (cons |_pL#x| |_pR#x|)))
+              (let ((|u2| nil))
+                (let ((|pair3| (cons |p1| |u2|)))
+                  (let ((|_code| (svref (cdr |__eq|) 0)))
+                    (let ((|Γc| (svref (cdr |__eq|) 1)))
+                      (let ((|ρc| (cons |pair3| |Γc|)))
+                        (funcall |_code| |ρc| |k|)))))))))))))
 
 (defun |fn1001| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|α| (car |payload|)))
-    (let ((|_pL#__?x₀| (car |α|)))
-      (let ((|_pR#__?x₀| (cdr |α|)))
-        (let ((|_pL#η0| (car |_pR#__?x₀|)))
-          (let ((|_pR#η0| (cdr |_pR#__?x₀|)))
-            (cond
-              ((eq (car |_pL#__?x₀|) '|Boxed|)
-                (let ((|p6| (svref (cdr |_pL#__?x₀|) 0)))
-                  (let ((|pair7| (cons |_pL#η0| |_pR#η0|)))
-                    (let ((|_code| (svref (cdr |p6|) 0)))
-                      (let ((|Γc| (svref (cdr |p6|) 1)))
-                        (let ((|ρc| (cons |pair7| |Γc|)))
-                          (funcall |_code| |ρc| |k|))))))))))))))
-
-(defun |fn1002| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
-  (let ((|α| (car |payload|)))
     (let ((|Γ| (cdr |payload|)))
-      (let ((|lam9| (svref (cdr |Γ|) 1)))
-        (let ((|con3| (svref (cdr |Γ|) 0)))
-          (let ((|_pL#x11| (car |α|)))
-            (let ((|_pR#x11| (cdr |α|)))
-              (let ((|pair15| (cons |_pL#x11| |_pR#x11|)))
-                (let ((|pair14| (cons |con3| |pair15|)))
-                  (let ((|_code| (svref (cdr |lam9|) 0)))
-                    (let ((|Γc| (svref (cdr |lam9|) 1)))
-                      (let ((|ρc| (cons |pair14| |Γc|)))
-                        (funcall |_code| |ρc| |k|)))))))))))))
+      (let ((|lam5| (svref (cdr |Γ|) 0)))
+        (let ((|_pL#x| (car |α|)))
+          (let ((|_pR#x| (cdr |α|)))
+            (let ((|pair10| (cons |_pL#x| |_pR#x|)))
+              (let ((|_code| (svref (cdr |lam5|) 0)))
+                (let ((|Γc| (svref (cdr |lam5|) 1)))
+                  (let ((|ρc| (cons |pair10| |Γc|)))
+                    (funcall |_code| |ρc| |k|)))))))))))
 
 ; entrypoint
 (defun |main| (|arg| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
-  (let ((|Γ| (cons '|𝐄| (vector))))
-    (let ((|lam2| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
-      (let ((|con3| (cons '|Boxed| (vector |lam2|))))
-        (let ((|Γ| (cons '|𝐄| (vector))))
-          (let ((|lam9| (cons '|𝐂| (vector #'|fn1001| |Γ|))))
-            (let ((|Γ| (cons '|𝐄| (vector |con3| |lam9|))))
-              (let ((|clos16| (cons '|𝐂| (vector #'|fn1002| |Γ|))))
-                (let ((|c17| 20))
-                  (let ((|c18| 20))
-                    (let ((|pair19| (cons |c17| |c18|)))
-                      (let ((|_code| (svref (cdr |clos16|) 0)))
-                        (let ((|Γc| (svref (cdr |clos16|) 1)))
-                          (let ((|ρc| (cons |pair19| |Γc|)))
-                            (funcall |_code| |ρc| |k|)))))))))))))))
+  (let ((|Γ| (cons '|𝐄| (vector |__eq|))))
+    (let ((|lam5| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
+      (let ((|Γ| (cons '|𝐄| (vector |lam5|))))
+        (let ((|lam12| (cons '|𝐂| (vector #'|fn1001| |Γ|))))
+          (funcall |k| |lam12|))))))
 
 ; driver
 (defun |__start| ()

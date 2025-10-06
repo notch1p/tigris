@@ -83,11 +83,11 @@ private def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
     | some other => other -- should not occur if subst is well-kinded
 
 def ctorFieldTypes (td : TyDecl) (cname : Symbol) (tyArgs : List MLType) : Option (List MLType) :=
-  let paramTVs := td.param.foldr (List.cons ∘ TV.mkTV) []
+  let paramTVs := td.param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
   let substMap := paramTVs.foldl2 Std.HashMap.insert ∅ tyArgs
   match td.ctors.find? (fun (n, _) => n == cname) with
   | none => none
-  | some (_, fts, _) => some (fts.map (substTV substMap))
+  | some (_, fts, _) => some (fts.map (substTV substMap ∘ Prod.snd))
 
 def headTyconArgs : MLType -> Option (Symbol × List MLType)
   | MLType.TApp s args => some (s, args)
@@ -151,7 +151,7 @@ partial def uncover
             let sig := ς M
             match inς td sig with
             | none =>
-              let rec tryCtors (cs : List (Symbol × List MLType × Nat)) : Option 𝓥 :=
+              let rec tryCtors (cs : List (Symbol × List (String × MLType) × Nat)) : Option 𝓥 :=
                 match cs with
                 | [] => none
                 | (cname, _, arity) :: cs' =>
@@ -221,7 +221,7 @@ partial def useful
               let complete := completeData td sig
               if complete then
                 td.ctors.any fun (cname, fts, ar) =>
-                  useful lookup (fts ++ σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps)
+                  useful lookup (fts.appendMap Prod.snd σ) (𝒮 cname ar M) (List.replicate ar PWild ++ ps)
               else
                 useful lookup σ (𝒟 M) ps
             | _ => false

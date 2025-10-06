@@ -8,9 +8,9 @@ import Tigris.interpreter.types
 namespace Parsing open Lexing Parser PType TopDecl
 -- abbrev TopDecl := Binding ⊕ TyDecl
 def declaration : TParser σ TopDecl := first'
-  #[ tyBind <$> tyDecl false
-   , tyBind <$> tyEmpty
+  #[ instanceDecl
    , externDecl
+   , tyBind <$> tyDecl false
    , (idBind ∘ Array.singleton) <$> value parseExpr
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
@@ -23,11 +23,10 @@ def tydecl : TParser σ TopDecl := first'
    , tyBind <$> tyEmpty]
   simpErrorCombine
 
-
 def declarationFile : TParser σ TopDecl := first'
-  #[ tyBind <$> tyDecl false
-   , tyBind <$> tyEmpty
+  #[ instanceDecl
    , externDecl
+   , tyBind <$> tyDecl false
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
    , (idBind ∘ Array.singleton) <$> infixrDecl
@@ -98,37 +97,43 @@ end Parsing
 
 namespace MLType
 
-def check1 (s : String) (E : Env := defaultE) : String :=
+def check1 (s : String) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
-  | .error e => toString e
+  | .error e => println! e
   | .ok e    =>
     match runInfer1 e E with
-    | .error e' => toString e' ++ s!"AST: {reprStr e}"
-    | .ok    s => toString s
+    | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
+    | .ok    s => println! s
 
-def check1C (s : String) (E : Env := defaultE) : String :=
+def check1C (s : String) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
-  | .error e => toString e
+  | .error e => println! e
   | .ok e    =>
     match runInferConstraintT e E with
-    | .error e' => toString e' ++ s!"AST: {reprStr e}"
-    | .ok    (te, s, l) =>
+    | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
+    | .ok    (te, s, l) => println!
       reprStr te ++ "\n" ++
       toString s ++ "\n" ++ l
 def check1C' (s : String) (E : Env := defaultE) : Option TExpr := do
   let e <- Parsing.parse s initState |>.toOption
   runInferConstraintT e E |>.toOption |>.map Prod.fst
 
-def check1F (s : String) (E : Env := defaultE) : String :=
+def check1F (s : String) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
-  | .error e => toString e
+  | .error e => println! e
   | .ok e    =>
     match runInferConstraintF e E with
-    | .error e' => toString e' ++ s!"AST: {reprStr e}"
-    | .ok    (te, s, l) =>
+    | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
+    | .ok    (te, s, l) => println!
       reprStr te ++ "\n" ++
       toString s ++ "\n" ++ l
 
--- #eval println! check1F "let rec f x = g x and g x = f x in f"
+def checkFile (s : String) : IO Unit := do
+  let (_, topdecl) <- Parsing.parseModuleIR s initState |>.toIO .userError
+  let stage0 <- inferToplevelC topdecl defaultE' |> IO.ofExcept
+  let (toplevel, logger) <- inferToplevelF stage0 |> IO.ofExcept
+  println! logger
+  println! unexpandDeclsF toplevel
 
 end MLType
+

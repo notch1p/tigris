@@ -3,9 +3,11 @@ import Tigris.parsing.types
 import Tigris.lexing
 
 structure ParamInfo where
-  ordered : Array String
+  ordered : Array (String × Nat)
   arity : Std.HashMap String Nat
 @[inline] def ParamInfo.empty : ParamInfo := ⟨#[], {}⟩
+
+instance : EmptyCollection ParamInfo := ⟨.empty⟩
 
 namespace Parsing
 namespace PType open Parsing Lexing MLType Parser Parser.Char Lexing
@@ -25,12 +27,11 @@ def parseParam : TParser σ (String × Nat) := (parenthesized do
 
 def parseParams : TParser σ ParamInfo := do
   let ps <- takeMany parseParam
-  let syms := ps.map Prod.fst
-  if syms.hasDuplicates then
+  if ps.hasDuplicates Prod.fst then
     error "duplicate type parameter name\n"
     throwUnexpected
   let arity := ps.foldl (fun m (n, a) => m.insert n a) {}
-  return {ordered := syms, arity}
+  return {ordered := ps, arity}
 
 def getLocalTyArity (pinfo : ParamInfo) (name : String)
   : TParser σ (Option (Nat × Bool)) := do
@@ -128,22 +129,29 @@ def tyEmpty : TParser σ TyDecl := do
   TYPE let tycon <- ID let {ordered,..} <- parseParams;
   return {tycon, param := ordered, ctors := #[]}
 
-@[inline]
-def tyExp (e : Array String := #[]) : TParser σ MLType :=
-  tyArrow false ⟨e, e.foldl (fun m v => m.insert v 0) {}⟩
-
-def tyScheme : TParser σ Scheme := do
-  let hd <- optionD ((FORALL <|> FORALL') *> takeMany1 ID <* COMMA) #[]
-  .Forall (hd.foldr (.cons ∘ .mkTV) []) [] <$> tyExp hd
-
 def tyField (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
   let id <- ID; COLON; let ty <- tyArrow false param
   return (id, ty)
 
+def tyPred (param : ParamInfo) : TParser σ Pred := do
+  let (TApp s l) <- tyArrow false param | error s!"not a valid predicate" *> throwUnexpected
+  return ⟨s, l⟩
+@[inline] def tyPreds (param : ParamInfo) : TParser σ (Array Pred) := sbrack $ sepBy1 COMMA $ tyPred param
+
+@[inline, always_inline]
+def tyExp (paramInfo : ParamInfo := ∅) : TParser σ MLType := tyArrow false paramInfo
+
+def tyScheme : TParser σ Scheme := do
+  let param@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
+  let pred <- optionD (tyPreds param) #[] <&> Array.toList
+  if !ordered.isEmpty || !pred.isEmpty then COMMA
+  .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
+
 def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
   : TParser σ TyDecl := withErrorMessage "TyRecord" do
-  let (fids, tys) <- sepBy COMMA (tyField param) <&> Array.unzip
-  if fids.hasDuplicates then
+  let fields <- sepBy COMMA (tyField param)
+  let (fids, tys) := fields.unzip
+  if fids.hasDuplicates id then
     error "duplicated fields not allowed in structure definition\n"
     throwUnexpected
 
@@ -151,19 +159,23 @@ def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
 
   modify fun (st@{recordFields,..}, l) =>
     ({st with recordFields := recordFields.insert tycon fids}, l)
-  return {tycon, param := param.ordered, ctors := #[(tycon, tys.toList, tys.size)]}
+  return  { tycon
+          , param := param.ordered
+          , ctors := #[(tycon, fields.toList, tys.size)]}
 
 def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
-  TYPE let tycon <- ID
+  let cls? <- TYPE?
+  let tycon <- ID
   if isUpperInit tycon then
     let param <- parseParams; EQ
     if <- test (kwOpExact "{") then
-      tyRecord tycon param mt <* kwOpExact "}"
+      let tydecl <- tyRecord tycon param mt <* kwOpExact "}"
+      return {tydecl with cls?}
     else
       registerTy tycon param.ordered.size mt
       let hd <- (optional BAR *> ctor mt param)
       let tl <- takeMany (BAR *> ctor mt param)
-      return {tycon, param := param.ordered, ctors := #[hd] ++ tl}
+      return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}
 
   else
     error "type constructor must begin with an uppercase letter\n"
@@ -173,7 +185,9 @@ where
     let cname <- ID
     if isUpperInit cname then
       let args <- takeMany (tyApps mt param)
-      return (cname, args.toList, args.size)
+      let namedArgs := Prod.fst $ args.foldr (init := ([], 0)) fun s (a, i) =>
+        ((s!"cname_{i}", s) :: a, i + 1)
+      return (cname, namedArgs, args.size)
     else
       error "value constructor must begin with an uppercase letter\n"
       throwUnexpected

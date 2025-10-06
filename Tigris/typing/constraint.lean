@@ -77,11 +77,9 @@ def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × 
   cs.foldrM (init := (∅, [])) fun s (sub, pending) =>
     match s with
     | .eq t u => do
-      let unis := unify on apply sub
-      let s <- unis t u
-      return (s ∪' sub, pending)
+      unify (apply sub t) (apply sub u) <&> (· ∪' sub, pending)
     | .pr eid p =>
-      return (sub, (eid, p.mapArgs (apply sub)) :: pending)
+      return (sub, (eid, apply sub p) :: pending)
 
 @[inline] def extend (Γ : Env) (x : String) (sch : Scheme) : Env :=
   {Γ with E := Γ.E.insert x sch}
@@ -91,11 +89,10 @@ def instantiate : Scheme -> InferC σ (MLType × List (Nat × Pred))
     let subst : Subst <- as.foldlM (fun a s => a.insert s <$> fresh) ∅
     let t := apply subst t
     let preds <- ps.foldlM (init := []) fun a p => do
-      let p := p.mapArgs (apply subst)
+      let p := apply subst p
       let eid <- freshEvidence p
       return (eid, p) :: a
     return (t, preds)
-
 
 def generalize (Γ : Env) (t : MLType) (res : List Pred) : Scheme :=
   let envFV := fv Γ
@@ -106,8 +103,11 @@ def generalize (Γ : Env) (t : MLType) (res : List Pred) : Scheme :=
   let allFV := tFV ∪ pfv
   let qs := (allFV \ envFV).toList
   let keep (p : Pred) :=
+  -- Keep a predicate only if it mentions at least one quantified variable
+  -- that also appears in the result type (otherwise it is vacuous / removable).
     let pvs := p.args.foldl (· ∪ fv ·) ∅
-    pvs.any $ not ∘ envFV.contains  -- predicate must mention at least one quantified var
+    let qVars := pvs.filter $ not ∘ envFV.contains
+    !(qVars.filter tFV.contains).isEmpty
   let ctx := res.filter keep |>.rmDup
   normalize (.Forall qs ctx t)
 
@@ -231,8 +231,8 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
 
   let tyNon <-
     nonrecs.foldlM (init := #[]) fun tyNon (n, rhs) => do
-      let (te, tr) <- inferExpr Γrec rhs
-      return tyNon.push (n, te, tr)
+      let (te, trps) <- inferExpr Γrec rhs
+      return tyNon.push (n, te, trps)
 
   let csAll <- get <&> (·.cst)
   let localCs := csAll.take (csAll.length - startCs)
@@ -244,7 +244,7 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
     let residual := wants.map Prod.snd
     let finalize n te ty pl Γ bindsTyped :=
       let ty := applyAll ty
-      let sch := generalize Γ ty (pl.map applyAll ++ residual)
+      let sch := generalize Γ ty (applyAll pl ++ residual)
       (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
     let (Γ, bindsTyped) :=
       tyRec.foldl (init := (Γ, #[])) fun (Γ, bindsTyped) (n, te, ty, ps) =>
@@ -277,31 +277,6 @@ partial def inferMatch (Γ : Env) (discr : Array Expr) (br : Array (Array Patter
       let (tRhs, tR, pR) <- inferExpr Γ rhs
       addEq tR tv
       return (typedBrs.push (ps, tRhs), predsAll ++ pR)
-/-
-  let cst <- get <&> (·.cst)
-  match solveAll cst with
-  | .error err => throw err
-  | .ok (sub, _) =>
-    let discrTys := discrTys.map $ apply sub
-    let (ex, mat, tyCols) := Exhaustive.exhaustWitness Γ discrTys br
-    let red := if let some _ := ex then #[] else Exhaustive.redundantRows Γ tyCols mat
-    let msg :=
-      if let some ex := ex then
-        Logging.warn
-          s!"Partial pattern matching, an unmatched candidate is\
-             \n  {ex.map (Pattern.render)}\n"
-      else
-        if red.isEmpty then "" else
-          letI br := red.foldl (init := "") fun a i =>
-            s!"{a}\n  {i + 1})  {br[i]!.1.map (Pattern.render)}"
-          Logging.warn s!"Found redundant alternatives at{br}\n"
-    appendLog msg
-    let typedBrs :=
-      if red.isEmpty then typedBrs else
-      Prod.fst $ typedBrs.size.fold (init := (#[], red, 0)) fun i _ (acc, red, idx) =>
-          if red.binSearchContains i (fun m n => m < n) idx
-          then (acc, red, idx + 1) else (acc.push typedBrs[i], red, idx)
--/
     return (.Match discrTyped typedBrs tv none #[], tv, predsAll)
 
 end
@@ -319,9 +294,84 @@ def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Sch
     | .ok (sub, wants) =>
       let te := apply sub te
       let ty := apply sub ty
-      let ps := preds ++ wants.map Prod.snd |>.map (.mapArgs (apply sub))
+      let ps := preds ++ wants.map (apply sub ∘ Prod.snd)
       let sch := generalize Γ ty ps
       .ok (te, sch, log)
+
+namespace Helper
+
+def methodScheme (cls : Symbol) (param : Array $ String × Nat) (mty : MLType) : Scheme :=
+  let binders := param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
+  let args    := binders.map TVar
+  .Forall binders [⟨cls, args⟩] mty
+
+private def instQuantifiers (headArgs : List MLType) (ctx : List Pred) : List TV :=
+  fv headArgs ∪ fv ctx |>.toList
+
+private def instanceScheme (ci : ClassInfo) (headArgs : List MLType) (ctx : List Pred) : Scheme :=
+  .Forall (instQuantifiers headArgs ctx) ctx (TApp ci.cname headArgs)
+
+private def orderInstanceMethods
+  (ci : ClassInfo)
+  (methods : Array (String × Expr))
+  : Except TypingError (Array Expr) := do
+  let mp : Std.HashMap String Expr := methods.foldl (fun m (n, e) => m.insert n e) ∅
+  ci.methods.foldlM (init := #[]) fun a m =>
+    if let some e := mp[m.mname]? then
+      return a.push e
+    else throw $ .Undefined s!"missing method {m.mname} for instance of {ci.cname}\n"
+
+private def buildInstProvider
+  (ci : ClassInfo) (orderedMethods : Array Expr)
+  (headArgs : List MLType)
+  : Expr :=
+  let dictCore := orderedMethods.foldl .App (.Var ci.ctorName)
+  let dictTy := MLType.TApp ci.cname headArgs
+  .Ascribe dictCore dictTy
+end Helper
+
+open Helper
+in @[inline] private def methodSchemes (ci : ClassInfo) : Array (String × Scheme) :=
+  ci.methods.map fun m => (m.mname, methodScheme ci.cname ci.params m.mty)
+in private def mkInstance (ci : ClassInfo) (decl : InstanceDecl) (existingCount : Nat)
+  : Except TypingError ((String × Expr) × InstanceInfo × Scheme) := do
+  let iname := s!"__i_{ci.cname}_{existingCount}"
+  let ordered <- orderInstanceMethods ci decl.methods
+  let headArgs := decl.args
+  let ctx := decl.ctxPreds
+  let body := buildInstProvider ci ordered headArgs
+  let sch := instanceScheme ci headArgs ctx
+  let info := {iname, cls := ci.cname, args := headArgs, ctx}
+  return ((iname, body), info, sch)
+in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat)
+  : InstanceDecl -> Except TypingError (String × Scheme × TExpr × Logger × InstanceInfo)
+  | {args, methods, ctxPreds,..} => do
+    let iname := s!"__i_{ci.cname}_{existingCount}"
+    let ordered <- orderInstanceMethods ci methods
+    let rawBody := buildInstProvider ci ordered args
+    let (typedBody, inferredSch, l) <- runInferConstraintT rawBody E
+    let (.Forall _ _ infRes) := inferredSch
+    let wantHead := .TApp ci.cname args
+    match unify infRes wantHead with
+    | .error _ => throw (.NoUnify infRes wantHead)
+    | .ok sub =>
+      let bodyTy := apply sub infRes
+      let detectedSpecialized :=
+        args.any fun
+          | MLType.TVar v =>
+              match apply sub (MLType.TVar v) with
+              | MLType.TVar v' => v' != v
+              | _ => true
+          | _ => false
+      if detectedSpecialized then
+        throw $ .NoSynthesize s!"{Pred.mk ci.cname args}: body is too specific. Supply a specialized scheme instead.\n"
+      let declaredCtx := apply sub ctxPreds
+      let allFVs := fv bodyTy ∪ fv declaredCtx
+      let envFVs := fv E
+      let qs := allFVs \ envFVs |>.toList
+      let finalSch := normalize (.Forall qs declaredCtx bodyTy)
+      return (iname, finalSch, typedBody, l, ⟨iname, ci.cname, args, ctxPreds⟩)
+
 
 def inferToplevelC
   (b : Array TopDecl) (E : Env)
@@ -333,20 +383,29 @@ def inferToplevelC
       (acc.push (.idBind #[(s, sch, .Var n sch.body)]) ,{E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let exprLet := Expr.Let group .CUnit
-      let (te, _, l) <- runInferConstraintT exprLet E
-      let (.Let bs _ _) := te | throw (.Impossible "unexpected shape after let inference\n")
+      let (.Let bs _ _, _, l) <- runInferConstraintT exprLet E | throw (.Impossible "unexpected shape after let inference\n")
       let E := bs.foldl (fun E (n, sc, _) => {E with E := E.E.insert n sc}) E
       return (acc.push (.idBind bs), E, L ++ l)
-    | .tyBind ty@{ctors, tycon, param} =>
-      return (acc.push (.tyBind ty), ·, L) <| ctors.foldl (init := E) fun {E, tyDecl} (cname, fields, _) =>
-        letI s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV) []) fields
-        ⟨E.insert cname s, tyDecl.insert tycon ty⟩
+    | .tyBind ty@{ctors, tycon, param, cls?} =>
+      let (acc, E) :=
+        ctors.foldl (init := (acc, E)) fun (acc, {E, tyDecl, clsInfo, instInfo}) (cname, fields, _) =>
+          let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
+          if h : cls? ∧ ctors.size ≠ 0 then
+            let methods : Array MethodInfo := Prod.fst $ ctors[0].snd.fst.foldl (init := (#[], 0))
+                fun (a, i) (mname, mty) =>
+                  (a.push ⟨mname, mty, i⟩, i + 1)
+            let cls := ⟨tycon, cname, param, methods⟩
+            let E := methodSchemes cls |>.foldl (fun E (n, sch) => E.insert n sch) E
+            ( acc
+            , ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo.insert tycon cls, instInfo⟩)
+          else (acc, ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo⟩)
+      return (acc.push (.tyBind ty), E, L)
     | .patBind (pat, expr) => do
-      let (e, .Forall _ ps te, l₁) <- runInferConstraintT expr E
+      let (e, sch@(.Forall _ ps te), l₁) <- runInferConstraintT expr E
       let l :=
         if !ps.isEmpty then
           Logging.warn
-            s!"pattern binding does not support addition of constraints"
+            s!"pattern binding does not support addition of constraints\n"
         else ""
       let ((E, _), {log := l₂,..}) <- runEST fun _ => inferPattern E te pat |>.run {}
       let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
@@ -356,4 +415,16 @@ def inferToplevelC
             s!"Partial pattern matching, \
                possible cases such as {ex.map Pattern.render} are ignored\n"
         else ""
-      return (acc.push $ .patBind (pat, e), E, L ++ l₁ ++ l ++ l₂ ++ l₃)
+      return (acc.push $ .patBind (pat, sch, e), E, L ++ l₁ ++ l ++ l₂ ++ l₃)
+    | .instBind inst => do
+      let (some ci) := E.clsInfo[inst.cname]?
+        | throw (.Undefined s!"no such class {inst.cname}\n")
+      let existing := E.instInfo.getD ci.cname #[]
+      let (iname, sch, te, l, info) <- inferInstanceDecl E ci existing.size inst
+      let instInfo := E.instInfo.alter ci.cname $ some ∘
+        fun
+        | some arr => arr.push info
+        | none => #[info]
+      return ( acc.push $ .idBind #[(iname, sch, te)]
+             , {E with E := E.E.insert iname sch, instInfo}
+             , L ++ l)

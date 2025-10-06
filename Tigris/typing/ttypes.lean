@@ -1,6 +1,6 @@
 import Tigris.utils
 
-def dummyTyDecl : TyDecl := ⟨"__dummy", #[], #[]⟩
+def dummyTyDecl : TyDecl := ⟨"__dummy", #[], #[], false⟩
 
 instance : Inhabited TyDecl := ⟨dummyTyDecl⟩
 
@@ -66,22 +66,25 @@ instance : ToString Scheme where
   | .Forall [] [] t => toString t
   | .Forall [] pred t => toString pred ++ " " ++ toString t
   | .Forall (t :: ts) pred t' =>
-    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}, {toString pred}. {t'}"
+    let preds := if pred.isEmpty then "" else " " ++ toString pred
+    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'}"
 
 instance : Std.ToFormat Scheme := ⟨Scheme.renderFmt⟩
 instance : Inhabited Scheme where
   default := .Forall [] [] (MLType.TCon "False")
 namespace MLType open TV Expr
 
-def ctorScheme (tycon : String) (tparams : List TV) (fields : List MLType) : Scheme :=
+def ctorScheme (tycon : String) (tparams : List TV) (fields : List (String × MLType)) : Scheme :=
   .Forall tparams []
-  $ fields.foldr TArr
+  $ fields.foldr (TArr ∘ Prod.snd)
   $ TApp tycon
-  $ tparams.map (TVar ·)
+  $ tparams.map TVar
+
 
 inductive TypingError
   | NoUnify (t₁ t₂ : MLType)
   | Undefined (s : String)
+  | NoSynthesize (s : String)
   | WrongCardinal (n : Nat)
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
@@ -92,11 +95,12 @@ inductive TypingError
 open Logging
 instance : ToString TypingError where
   toString
-  | .Ambiguous msg => s!"Ambiguous constraint set: {msg}"
+  | .Ambiguous msg => s!"Ambiguous: {msg}"
   | .Impossible s => s!"Impossible: {s}"
   | .Interrupted   => s!"Interrupted."
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
+  | .NoSynthesize s => s!"failed to synthesize {s}"
   | .Undefined s   => s!"Symbol\n  {s}\nis not in scope.\n" ++
                       note "use letrec or fixcomb if this is a recursive definition"
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
@@ -117,13 +121,17 @@ end MLType
 
 abbrev TyMap := Std.HashMap String TyDecl
 abbrev SchemeMap := Std.TreeMap String Scheme
+abbrev ClassMap := Std.HashMap String ClassInfo
+abbrev InstanceMap := Std.HashMap String $ Array InstanceInfo
 
 structure Env where
   E : SchemeMap
   tyDecl : TyMap
+  clsInfo : ClassMap
+  instInfo : InstanceMap
 deriving Repr
 
-instance : EmptyCollection Env := ⟨∅, ∅⟩
+instance : EmptyCollection Env := ⟨∅, ∅, ∅, ∅⟩
 abbrev Logger := String -- This is NOT how one should do logging.
                         -- but Lean doesn't really have a WriterT or MonadWriter
                         -- Lake has something similar, but that's in the build system.
@@ -236,14 +244,31 @@ abbrev dE : List (String × Scheme) :=
   , ("id"   , .Forall ["α"] [] $ "α" ->' "α")
   , ("succ" , .Forall []    [] $ tInt ->' tInt)]
 
+abbrev dE' : List (String × Scheme) :=
+  [ ("rec"  , .Forall ["α"] [] $ ("α" ->' "α") ->' "α")
+  , ("__add", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__sub", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__mul", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__div", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  , ("__eqInt", .Forall [] [] $ tInt ->' tInt ->' tBool)
+  , ("__eqBool", .Forall [] [] $ tBool ->' tBool ->' tBool)
+  , ("__eqString", .Forall [] [] $ tString ->' tString ->' tBool)
+--  , ("__eq" , .Forall ["α"] [.unary "Eq" "α"] $ "α" ×'' "α" ->' tBool)
+  , ("not"  , .Forall []    [] $ tBool ->' tBool)
+  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "a")
+  , ("id"   , .Forall ["α"] [] $ "α" ->' "α")
+  , ("succ" , .Forall []    [] $ tInt ->' tInt)]
+
 def mkCurriedE (e : List (String × Scheme)) : Env :=
   ⟨ .ofList $
       e.foldl (init := []) fun a p@(sym, .Forall c ps ty) =>
         if sym.startsWith "__"
         then p :: (sym.drop 2, .Forall c ps $ curry ty) :: a
         else p :: a
-  , ∅⟩
+  , ∅, ∅, ∅⟩ -- TODO: modify clsInfo and instInfo
+
 
 abbrev defaultE : Env := mkCurriedE dE
+abbrev defaultE' : Env := mkCurriedE dE'
 
 end MLType
