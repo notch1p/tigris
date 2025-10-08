@@ -11,10 +11,10 @@ def declaration : TParser σ TopDecl := first'
   #[ instanceDecl
    , externDecl
    , tyBind <$> tyDecl false
-   , (idBind ∘ Array.singleton) <$> value parseExpr
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
    , (idBind ∘ Array.singleton) <$> infixrDecl
+   , (idBind ∘ Array.singleton) <$> value parseExpr
    ]
   simpErrorCombine
 

@@ -58,9 +58,13 @@ def letrec1Decl : TParser σ $ Binding := do
 
 def letDeclDispatch : TParser σ $ Array Binding := do
   LET;
-  match <- test REC with
-  | false => sepBy1 AND let1Decl
-  | true => sepBy1 AND letrec1Decl
+  let bs <-
+    match <- test REC with
+    | false => sepBy1 AND let1Decl
+    | true => sepBy1 AND letrec1Decl
+  match <- option? (IN *> parseExpr) with
+  | some body => return #[("_", Let bs body)]
+  | none => return bs
 
 def letPatDecl : TParser σ (Pattern × Expr) := do
   LET;
