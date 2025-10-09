@@ -17,6 +17,10 @@ structure CState where
 deriving Inhabited
 
 abbrev InferC σ := StateRefT CState (EST TypingError σ)
+local instance : MonadLift (Except TypingError) (InferC σ) where
+  monadLift
+  | .error e => throw e
+  | .ok res => return res
 variable {σ}
 
 @[inline] def fresh : InferC σ MLType := do
@@ -28,7 +32,14 @@ variable {σ}
     (st.nextEv, {st with nextEv := st.nextEv + 1, cst := .pr st.nextEv p :: st.cst})
   return n
 
-@[inline] def addEq (t₁ t₂ : MLType) : InferC σ Unit :=
+def elimForall : MLType -> InferC σ MLType
+  | .TSch (.Forall vs ps t) =>
+    if ps.isEmpty then
+      (apply · t) <$> vs.foldlM (.insert · · <$> fresh) ∅
+    else throw .NoRankN
+  | t => return t
+
+@[inline] def addEq (t₁ t₂ : MLType) : InferC σ Unit := do
   modify fun st@{cst,..} => {st with cst := .eq t₁ t₂ :: cst}
 
 @[inline] def appendLog (s : String) : InferC σ Unit :=
@@ -71,6 +82,13 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
   | t@(TApp h []), u@(TCon h')
   | t@(TCon h), u@(TApp h' []) =>
     if h == h' then return ∅ else throw (.NoUnify t u)
+  | ts₁@(.TSch (.Forall tvs₁ ps₁ t₁)), ts₂@(.TSch (.Forall tvs₂ ps₂ t₂)) => do
+    if ps₁.length != ps₂.length || tvs₁.length != tvs₂.length then
+      throw (.NoUnify ts₁ ts₂)
+    let renameSub : Subst := List.foldl2 (·.insert · $ .TVar ·) ∅ tvs₂ tvs₁
+    let ps₂ := ps₂.map $ apply renameSub
+    if ps₁ != ps₂ then throw $ .NoUnify ts₁ ts₂
+    unify t₁ (apply renameSub t₂)
   | t, u => throw (.NoUnify t u)
 
 def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × Pred)) := do
@@ -80,6 +98,16 @@ def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × 
       unify (apply sub t) (apply sub u) <&> (· ∪' sub, pending)
     | .pr eid p =>
       return (sub, (eid, apply sub p) :: pending)
+
+@[inline] def mkSkol v := MLType.TCon $ "?sk." ++ TV.toStr v
+
+def skolemizeTSch : MLType -> Except TypingError MLType
+  | .TSch (.Forall tvs ps t) =>
+    if ps.isEmpty then
+      let sub : Subst := tvs.foldl (fun s v => s.insert v (mkSkol v)) ∅
+      return apply sub t
+    else throw .NoRankN
+  | _ => throw (.Impossible "skolemizeTSch: expected TSch")
 
 @[inline] def extend (Γ : Env) (x : String) (sch : Scheme) : Env :=
   {Γ with E := Γ.E.insert x sch}
@@ -184,10 +212,23 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
 
   | App e₁ e₂ => do
     let (tE₁, t₁, p₁) <- inferExpr Γ e₁
-    let (tE₂, t₂, p₂) <- inferExpr Γ e₂
-    let tv <- fresh
-    addEq t₁ (t₂ ->' tv)
-    return (.App tE₁ tE₂ tv, tv, p₁ ++ p₂)
+    let t₁ <- elimForall t₁
+    match t₁ with
+    | a@(.TSch $ .Forall ..) ->' b =>
+      let (tE₂, t₂, p₂) <- inferExpr Γ e₂
+      let t₂ <- elimForall t₂
+      let aSk <- skolemizeTSch a
+      addEq t₂ aSk
+      return (.App tE₁ tE₂ b, b, p₁ ++ p₂)
+--    | a ->' b =>
+--      let (tE₂, t₂, p₂) <- inferExpr Γ e₂
+--      addEq t₂ a
+--      return (.App tE₁ tE₂ b, b, p₁ ++ p₂)
+    | _ =>
+      let (tE₂, t₂, p₂) <- inferExpr Γ e₂
+      let tv <- fresh
+      addEq t₁ (t₂ ->' tv)
+      return (.App tE₁ tE₂ tv, tv, p₁ ++ p₂)
 
   | Prod' e₁ e₂ => do
     let (tE₁, t₁, p₁) <- inferExpr Γ e₁
@@ -205,6 +246,13 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
   | Let binds body => inferLet Γ binds body
 
   | Match discr br => inferMatch Γ discr br
+
+  | Ascribe e sch@(.TSch _) => do
+    let (te, teTy, preds) <- inferExpr Γ e
+    let teMono <- elimForall teTy
+    let skTy <- skolemizeTSch sch
+    addEq teMono skTy
+    return (.Ascribe te sch, sch, preds)
 
   | Ascribe e ty => do
     let (e, te, p) <- inferExpr Γ e
@@ -238,7 +286,6 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
   let localCs := csAll.take (csAll.length - startCs)
   match solveAll localCs with
   | .error err => throw err
-        --    unsolved
   | .ok (sub, wants) =>
     let applyAll {α} [Rewritable α] : α -> α := apply sub
     let residual := wants.map Prod.snd
@@ -314,25 +361,34 @@ private def instanceScheme (ci : ClassInfo) (headArgs : List MLType) (ctx : List
 private def orderInstanceMethods
   (ci : ClassInfo)
   (methods : Array (String × Expr))
-  : Except TypingError (Array Expr) := do
+  : Except TypingError (Array $ MethodInfo × Expr) := do
   let mp : Std.HashMap String Expr := methods.foldl (fun m (n, e) => m.insert n e) ∅
   ci.methods.foldlM (init := #[]) fun a m =>
     if let some e := mp[m.mname]? then
-      return a.push e
+      return a.push (m, e)
     else throw $ .Undefined s!"missing method {m.mname} for instance of {ci.cname}\n"
 
+private def paramSubst (ci : ClassInfo) (headArgs : List MLType) : Subst :=
+  let binders := ci.params.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []
+  List.foldl2 .insert ∅ binders headArgs
+
 private def buildInstProvider
-  (ci : ClassInfo) (orderedMethods : Array Expr)
+  (ci : ClassInfo) (orderedMethods : Array (MethodInfo × Expr))
   (headArgs : List MLType)
   : Expr :=
-  let dictCore := orderedMethods.foldl .App (.Var ci.ctorName)
-  let dictTy := MLType.TApp ci.cname headArgs
+  let sub := paramSubst ci headArgs
+  let dictCore :=
+    orderedMethods.foldl (fun acc (m, e) => .App acc $ .Ascribe e (apply sub m.mty)) (.Var ci.ctorName)
+  let dictTy := .TApp ci.cname headArgs
+--  let dictCore := orderedMethods.foldl .App (.Var ci.ctorName)
+--  let dictTy := MLType.TApp ci.cname headArgs
   .Ascribe dictCore dictTy
 end Helper
 
 open Helper
 in @[inline] private def methodSchemes (ci : ClassInfo) : Array (String × Scheme) :=
   ci.methods.map fun m => (m.mname, methodScheme ci.cname ci.params m.mty)
+
 in private def mkInstance (ci : ClassInfo) (decl : InstanceDecl) (existingCount : Nat)
   : Except TypingError ((String × Expr) × InstanceInfo × Scheme) := do
   let iname := s!"__i_{ci.cname}_{existingCount}"
@@ -343,6 +399,7 @@ in private def mkInstance (ci : ClassInfo) (decl : InstanceDecl) (existingCount 
   let sch := instanceScheme ci headArgs ctx
   let info := {iname, cls := ci.cname, args := headArgs, ctx}
   return ((iname, body), info, sch)
+
 in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat)
   : InstanceDecl -> Except TypingError (String × Scheme × TExpr × Logger × InstanceInfo)
   | {args, methods, ctxPreds,..} => do
@@ -418,7 +475,7 @@ def inferToplevelC
       return (acc.push $ .patBind (pat, sch, e), E, L ++ l₁ ++ l ++ l₂ ++ l₃)
     | .instBind inst => do
       let (some ci) := E.clsInfo[inst.cname]?
-        | throw (.Undefined s!"no such class {inst.cname}\n")
+        | throw (.Undefined inst.cname)
       let existing := E.instInfo.getD ci.cname #[]
       let (iname, sch, te, l, info) <- inferInstanceDecl E ci existing.size inst
       let instInfo := E.instInfo.alter ci.cname $ some ∘

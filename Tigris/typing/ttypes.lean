@@ -7,50 +7,53 @@ instance : Inhabited TyDecl := ⟨dummyTyDecl⟩
 infixr: 50 " ->' " => MLType.TArr
 infixr: 65 " ×'' " => MLType.TProd
 
-def MLType.toStr : MLType -> String
-  | TVar a => toString a
-  | TCon a => a
-  | a ->' b =>
-    paren (arr? a) (toStr a) ++ " → " ++ toStr b
-  | a ×'' b => paren (prod? a) (toStr a) ++ " × " ++ toStr b
-  | TApp s [] | KApp (.mkTV s) [] => s
-  | TApp s (l :: ls) | KApp s (l :: ls) =>
-    let hd := paren (arr? l || prod? l) $ toStr l
-    ls.foldl (init := s!"{s} {hd}") fun a s =>
-      a ++ " " ++ paren (arr? l || prod? l) (toStr s)
-where
-  paren b s := bif b then s!"({s})" else s
-  arr? | MLType.TArr _ _ => true | _ => false
-  prod? | MLType.TProd _ _ => true | _ => false
-
+def paren b s := bif b then s!"({s})" else s
+def paren? b s := bif b then Std.Format.paren s else s
+def arr? | _ ->' _ => true | _ => false
+def prod? | _ ×'' _ => true | _ => false
+def parenthesize s := paren? (arr? s || prod? s)
 open Std.Format Std.ToFormat in open Logging (magenta) in
+mutual
+def MLType.toStr : MLType -> String
+  | .TVar a => toString a
+  | .TCon a => a
+  | a ->' b =>
+    paren (arr? a) (MLType.toStr a) ++ " → " ++ MLType.toStr b
+  | a ×'' b => paren (prod? a) (MLType.toStr a) ++ " × " ++ MLType.toStr b
+  | .TApp s [] | .KApp (.mkTV s) [] => s
+  | .TApp s (l :: ls) | .KApp s (l :: ls) =>
+    let hd := paren (arr? l || prod? l) $ MLType.toStr l
+    ls.foldl (init := s!"{s} {hd}") fun a s =>
+      a ++ " " ++ paren (arr? l || prod? l) (MLType.toStr s)
+  | .TSch sch => sch.toStr
+
 def MLType.renderFmt : MLType -> Std.Format
-  | TVar a => format a
-  | TCon a => magenta a
-  | a ->' b => nestD $ group $ paren? (arr? a) (renderFmt a) <> "→" <+> renderFmt b
-  | a ×'' b => nestD $ group $ paren? (prod? a) (renderFmt a) <> "×" <+> renderFmt b
-  | TApp s ls | KApp (.mkTV s) ls => nestD $ group $ joinSep (text (magenta s) :: ls.map fun s => parenthesize s (renderFmt s)) line
-where
-  paren? b s := bif b then paren s else s
-  arr? | MLType.TArr _ _ => true | _ => false
-  prod? | MLType.TProd _ _ => true | _ => false
-  parenthesize s := paren? (arr? s || prod? s)
+  | .TVar a => format a
+  | .TCon a => magenta a
+  | a ->' b => nestD $ group $ paren? (arr? a) (MLType.renderFmt a) <> "→" <+> MLType.renderFmt b
+  | a ×'' b => nestD $ group $ paren? (prod? a) (MLType.renderFmt a) <> "×" <+> MLType.renderFmt b
+  | .TApp s ls | .KApp (.mkTV s) ls =>
+    nestD $ group
+    $ joinSep (text (magenta s) :: ls.map fun s => parenthesize s (MLType.renderFmt s)) line
+  | .TSch sch => sch.renderFmt
 
-instance : ToString MLType := ⟨MLType.toStr⟩
-instance : Std.ToFormat MLType := ⟨MLType.renderFmt⟩
-
-instance : ToString Pred where
-  toString
-  | {cls, args} => cls ++ args.foldl (· ++ " " ++ toString ·) ""
-instance : Std.ToFormat Pred where
-  format
+def Pred.toStr : Pred -> String
+  | {cls, args} => cls ++ args.foldl (· ++ " " ++ MLType.toStr ·) ""
+def Pred.renderFmt : Pred -> Std.Format
   | {cls, args} =>
     Logging.magenta cls ++ args.foldl (· ++ " " ++ MLType.renderFmt ·) ""
 
-open Std.Format Std.ToFormat in
 def Scheme.renderFmt : Scheme -> Std.Format
-  | Forall _ [] t' => format t'
-  | Forall _ pred t' => format pred <> format t'
+  | .Forall _ [] t' => t'.renderFmt
+  | .Forall _ pred t' => toString (pred.map Pred.renderFmt) <> t'.renderFmt
+def Scheme.toStr : Scheme -> String
+  | .Forall [] [] t => t.toStr
+  | .Forall [] pred t => toString (pred.map Pred.renderFmt) ++ " " ++ t.toStr
+  | .Forall (t :: ts) pred t' =>
+    let preds := if pred.isEmpty then "" else " " ++ toString (pred.map Pred.toStr)
+    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'.toStr}"
+end
+
 def Pred.unary (c : String) (a : MLType) : Pred := ⟨c, [a]⟩
 def Pred.mapArgs (f : MLType -> MLType) : Pred -> Pred
   | {cls, args} => {cls, args := args.map f}
@@ -59,16 +62,15 @@ def Scheme.body : Scheme -> MLType
 def Scheme.ctx : Scheme -> List Pred
   | .Forall _ ps _ => ps
 
+instance : ToString MLType := ⟨MLType.toStr⟩
+instance : Std.ToFormat MLType := ⟨MLType.renderFmt⟩
+
+instance : ToString Pred := ⟨Pred.toStr⟩
+instance : Std.ToFormat Pred := ⟨Pred.renderFmt⟩
+
 attribute [inline] Scheme.renderFmt Pred.unary Scheme.body Scheme.ctx
 
-instance : ToString Scheme where
-  toString
-  | .Forall [] [] t => toString t
-  | .Forall [] pred t => toString pred ++ " " ++ toString t
-  | .Forall (t :: ts) pred t' =>
-    let preds := if pred.isEmpty then "" else " " ++ toString pred
-    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'}"
-
+instance : ToString Scheme := ⟨Scheme.toStr⟩
 instance : Std.ToFormat Scheme := ⟨Scheme.renderFmt⟩
 instance : Inhabited Scheme where
   default := .Forall [] [] (MLType.TCon "False")
@@ -89,6 +91,7 @@ inductive TypingError
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | InvalidPat (msg : String)
   | Interrupted
+  | NoRankN
   | Ambiguous (msg : String)
   | Impossible (s : String)
   | Duplicates (t : TV) (T : MLType) deriving Repr
@@ -101,9 +104,9 @@ instance : ToString TypingError where
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
   | .NoSynthesize s => s!"failed to synthesize {s}"
-  | .Undefined s   => s!"Symbol\n  {s}\nis not in scope.\n" ++
-                      note "use letrec or fixcomb if this is a recursive definition"
+  | .Undefined s   => s!"Symbol\n  {s}\nis not in scope."
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
+  | .NoRankN => s!"Rank-n types are not supported yet."
   | .NoMatch e v arr =>
     let arr := arr.map $ Array.map Pattern.render ∘ Prod.fst
     s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString arr}."
@@ -147,6 +150,7 @@ namespace Rewritable open MLType
 
 instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨fun s₁ s₂ => s₂.fold .erase s₁⟩
 
+mutual
 partial def applyT : Subst -> MLType -> MLType
   | _, s@(TCon _) => s
   | s, t@(TVar a) => s.getD a t
@@ -160,27 +164,36 @@ partial def applyT : Subst -> MLType -> MLType
     | TVar v => KApp v as
     | TApp h [] | TCon h => TApp h as
     | _ => KApp v as
+  | s, TSch sch => TSch (applyS s sch)
 
-def fvT : MLType -> Std.HashSet TV
+partial def fvT : MLType -> Std.HashSet TV
   | TCon _ => ∅ | TVar a => {a}
   | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
   | TApp _ as => as.foldl (· ∪ fvT ·) ∅
   | KApp v as => {v} ∪ as.foldl (· ∪ fvT ·) ∅
-instance : Rewritable MLType := ⟨applyT, fvT⟩
+  | TSch sch => fvS sch
 
-def fvP : Pred -> Std.HashSet TV
+partial def applyP : Subst -> Pred -> Pred := (Pred.mapArgs $ applyT ·)
+partial def fvP : Pred -> Std.HashSet TV
   | {args,..} => args.foldl (· ∪ fvT ·) ∅
-instance : Rewritable Pred := ⟨(Pred.mapArgs $ apply ·), fvP⟩
+
+partial def fvS : Scheme -> Std.HashSet TV
+  | .Forall tvs ps t =>
+    let inner := ps.foldr (fvP · ∪ ·) ∅ ∪ fvT t
+    tvs.foldl .erase inner
+partial def applyS : Subst -> Scheme -> Scheme
+  | s, .Forall tvs ps t =>
+    let s := s.eraseMany tvs
+    .Forall tvs (ps.map (applyP s)) (applyT s t)
+end
+
+instance : Rewritable MLType := ⟨applyT, fvT⟩
+instance : Rewritable Pred := ⟨applyP, fvP⟩
+instance : Rewritable Scheme := ⟨applyS, fvS⟩
 
 instance [Rewritable α] : Rewritable (List α) where
   apply := List.map ∘ apply
-  fv    := List.foldr ((· ∪ ·) ∘ fv) ∅
-
-instance : Rewritable Scheme where
-  apply s | .Forall as ps t =>
-            let s := s.eraseMany as
-            .Forall as (ps.map (apply s)) (apply s t)
-  fv | .Forall as ps t => (fv ps ∪ fv t) \ Std.HashSet.ofList as
+  fv    := List.foldr (fv · ∪ ·) ∅
 instance : Rewritable Env where
   apply s e := {e with E := e.E.map fun _ v => apply s v}
   fv      e := fv e.E.values
@@ -198,25 +211,26 @@ def gensym (n : Nat) : String :=
   if q == 0 then s.toString
   else s.toString ++ q.toSubscriptString
 
-def normalize : Scheme -> Scheme
+partial def normalize : Scheme -> Scheme
   | .Forall _ ps body =>
-    let rec fv
-      | TVar a => [a] | TCon _ => []
-      | a ->' b | a ×'' b => fv a ++ fv b
-      | TApp _ as => as.flatMap fv
-      | KApp v as => v :: as.flatMap fv
-    let ts := (List.rmDup $ fv body ++ ps.flatMap (·.args.flatMap fv));
-    let ord := ts.zip $ ts.foldrIdx (fun i _ a => .mkTV (gensym i) :: a) []
+    let ts := fv ps ∪ fv body |>.toList
+    let ord := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
     let rename a := ord.lookup a |>.getD a
-    let rec normtype
-      | a ->' b => normtype a ->' normtype b
-      | a ×'' b => normtype a ×'' normtype b
-      | TVar a  => TVar $ rename a
-      | TApp h as => TApp h $ as.map normtype
-      | KApp h as => KApp (rename h) $ as.map normtype
+    let rec normtype (blocked : Std.HashSet TV)
+      | a ->' b | a ×'' b => normtype blocked a ->' normtype blocked b
+      | .TVar a => .TVar $ if a ∈ blocked then a else rename a
+      | .TApp h as => .TApp h $ as.map $ normtype blocked
+      | .KApp v as =>
+        let v := if v ∈ blocked then v else rename v
+        .KApp v $ as.map $ normtype blocked
+      | .TSch $ .Forall tvs ps ty =>
+        let blocked := blocked.insertMany tvs
+        let ps := ps.map fun p => p.mapArgs $ normtype blocked
+        .TSch $ .Forall tvs ps $ normtype blocked ty
       | t => t
-    let ps := ps.map fun {cls, args} => {cls, args := args.map normtype}
-  .Forall (ord.map Prod.snd) ps (normtype body)
+
+    let ps := ps.map fun p => p.mapArgs $ normtype ∅
+  .Forall (ord.map Prod.snd) ps (normtype ∅ body)
 
 def isRecRhs : Expr -> Bool
   | .Fix _ | .Fixcomb _ => true
@@ -254,9 +268,7 @@ abbrev dE' : List (String × Scheme) :=
   , ("__eqBool", .Forall [] [] $ tBool ->' tBool ->' tBool)
   , ("__eqString", .Forall [] [] $ tString ->' tString ->' tBool)
 --  , ("__eq" , .Forall ["α"] [.unary "Eq" "α"] $ "α" ×'' "α" ->' tBool)
-  , ("not"  , .Forall []    [] $ tBool ->' tBool)
   , ("elim" , .Forall ["α"] [] $ tEmpty ->' "a")
-  , ("id"   , .Forall ["α"] [] $ "α" ->' "α")
   , ("succ" , .Forall []    [] $ tInt ->' tInt)]
 
 def mkCurriedE (e : List (String × Scheme)) : Env :=
@@ -270,5 +282,19 @@ def mkCurriedE (e : List (String × Scheme)) : Env :=
 
 abbrev defaultE : Env := mkCurriedE dE
 abbrev defaultE' : Env := mkCurriedE dE'
+
+def containsTSch : MLType -> Bool
+  | .TSch _ => true
+  | a ->' b | a ×'' b => containsTSch a || containsTSch b
+  | .TApp _ as | .KApp _ as => as.attach.any fun a =>
+    have := List.sizeOf_lt_of_mem a.property
+    containsTSch a.val
+  | _ => false
+
+def validateNoRankN : Scheme -> Except TypingError Unit
+  | .Forall _ ps t =>
+    if t.containsTSch || ps.any (List.any (p := containsTSch) ∘ Pred.args) then
+      throw .NoRankN
+    else return ()
 
 end MLType

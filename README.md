@@ -125,7 +125,6 @@ proving those functions terminates.
 Expr -> TExpr -> (FExpr, under construction) -> LExpr -> LExpr (CC'd) -> CExpr
 ```
 
-
 We currently maintain a two stage IR for the ease of reasoning:
 
 - IR₀: Lambda IR `LExpr`
@@ -208,7 +207,7 @@ It's an almost one-to-one implementation of the algorithm described in the paper
   typeclasses like `Monad`, `Functor` that require basic HKT.
   - Though only unary monads would work. That is, monads like `State`/`Reader` wouldn't work.
 
-- [x] somewhat done. but is very lightweight/quite restrictive: 
+- [x] somewhat done. but is very lightweight/quite restrictive:
   - no higher-order type lambdas.
   - bound type ctor is not curried and must be fully applied (first-order application really)
     (makes it easy to rewrite `KApp` into a `TApp`, also in unification)
@@ -257,6 +256,35 @@ We elaborate a typedtree `TExpr` into a System-F empowered `FExpr`, performing
 instance resolution/typeclass elaboration.
 
 - see [fexpr.lean](Tigris/typing/fexpr.lean), [resolve.lean](Tigris/typing/resolve.lean)
+
+#### Polymorphism, arbitrary-ranked types
+
+> Which just makes me think more about the absolute domination of expressive power
+> and the uniformity of the theory itself
+> when it comes to calculus of inductive constructions
+
+- Currently only rank-1, first-class polymorphism (i.e. System F) has been done.
+- Although the definition of `MLType` allows for rank-n types but thats extra work.
+
+We make `MLType` and `Scheme` mutually recursive. A `TSch` node is a embedded scheme which can be
+seen as a `TForall`. This means that for a type that should be rank-2 in pure system f syntax:
+`(∀a. a -> a) -> Int`, is rank-1 under our system because it is wrapped in a `TSch`.
+
+- However we never float forall binders under arrows, so in a way our system is more faithful, it just that
+  we never treat `TSch` as a genuine quantifier in arrow types.
+  - but we could, if we were to implement arbitrary-ranked types.
+  - but that requires an additional bidirectional typechecker \[SPJ07\][^2]
+  - and I'm all for making inference easy, especially coming from a language like Lean
+  - that never generalizes (for obvious reasons)
+
+The outer arrow type itself remains rank-1. Elimination of a `TSch` is done by
+
+- skolemization on argument position
+- instantiation/reifying as `TyLam` (in IR) on callsites
+
+- arbitrary-ranked types: not considered at the moment. Maybe someday.
+- As for impredicativity: not planned. What we have is basically a `Type 0` universe
+  and I'd like it to stay that way.
 
 ## Specification
 
@@ -336,3 +364,4 @@ This project is a pain in the ass to develop and has undergone multiple refactor
 - 25/08/10 taken out of [notch1p/Playbook](https://github.com/notch1p/lean-snippets)
 
 [^1]: [Maranget, Luc. "Warnings for pattern matching." Journal of Functional Programming 17.3 (2007): 387-421.](http://moscova.inria.fr/~maranget/papers/warn/warn.pdf)
+[^2]: [Jones, Simon Peyton, et al. "Practical type inference for arbitrary-rank types." Journal of functional programming 17.1 (2007): 1-82.](https://doi.org/10.1017/S0956796806006034)

@@ -104,7 +104,7 @@ partial def atom : TParser σ Expr := spaces *>
 partial def ascription : TParser σ Expr := parenthesized do
     let e <- parseExpr
     COLON
-    Ascribe e <$> PType.tyExp
+    Ascribe e <$> PType.tyForall false ∅
 
 partial def prodExp : TParser σ Expr := do
   let es <- sepBy COMMA (parsePratt 0)

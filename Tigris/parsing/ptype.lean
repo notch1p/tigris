@@ -7,6 +7,14 @@ structure ParamInfo where
   arity : Std.HashMap String Nat
 @[inline] def ParamInfo.empty : ParamInfo := ⟨#[], {}⟩
 
+def ParamInfo.merge : ParamInfo -> ParamInfo -> ParamInfo
+  | ⟨ordered₁, arity₁⟩, ⟨ordered₂, arity₂⟩ =>
+    { ordered := ordered₂.foldl (init := ordered₁) fun a ord =>
+        if let some idx := ordered₁.findIdx? $ (·.1 == ord.1) then
+          a.set! idx ord
+        else a.push ord
+    , arity := arity₁ ∪ arity₂}
+instance : Union ParamInfo := ⟨.merge⟩
 instance : EmptyCollection ParamInfo := ⟨.empty⟩
 
 namespace Parsing
@@ -129,17 +137,24 @@ def tyEmpty : TParser σ TyDecl := do
   TYPE let tycon <- ID let {ordered,..} <- parseParams;
   return {tycon, param := ordered, ctors := #[]}
 
-def tyField (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
-  let id <- ID; COLON; let ty <- tyArrow false param
+@[inline, always_inline]
+def tyExp (paramInfo : ParamInfo := ∅) : TParser σ MLType := tyArrow false paramInfo
+
+def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyForall" $
+  optionD ((FORALL <|> FORALL') *> parseParams) ∅ >>= fun param'@{ordered,..} =>
+    -- we do not parse preds yet. not supported currently anyway.
+    if ordered.isEmpty then tyArrow mt param
+    else COMMA *>
+      .TSch <$> (.Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) [] <$> tyArrow mt (param ∪ param'))
+
+def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
+  let id <- ID; COLON; let ty <- tyForall mt param
   return (id, ty)
 
 def tyPred (param : ParamInfo) : TParser σ Pred := do
   let (TApp s l) <- tyArrow false param | error s!"not a valid predicate" *> throwUnexpected
   return ⟨s, l⟩
 @[inline] def tyPreds (param : ParamInfo) : TParser σ (Array Pred) := sbrack $ sepBy1 COMMA $ tyPred param
-
-@[inline, always_inline]
-def tyExp (paramInfo : ParamInfo := ∅) : TParser σ MLType := tyArrow false paramInfo
 
 def tyScheme : TParser σ Scheme := do
   let param@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
@@ -149,7 +164,7 @@ def tyScheme : TParser σ Scheme := do
 
 def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
   : TParser σ TyDecl := withErrorMessage "TyRecord" do
-  let fields <- sepBy COMMA (tyField param)
+  let fields <- sepBy COMMA (tyField mt param)
   let (fids, tys) := fields.unzip
   if fids.hasDuplicates id then
     error "duplicated fields not allowed in structure definition\n"
@@ -184,7 +199,7 @@ where
   ctor mt param := do
     let cname <- ID
     if isUpperInit cname then
-      let args <- takeMany (tyApps mt param)
+      let args <- takeMany (parenthesized (tyForall mt param) <|> (tyForall mt param))
       let namedArgs := Prod.fst $ args.foldr (init := ([], 0)) fun s (a, i) =>
         ((s!"cname_{i}", s) :: a, i + 1)
       return (cname, namedArgs, args.size)

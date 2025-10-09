@@ -40,21 +40,11 @@ def fvTE : TExpr -> Std.HashSet TV
   | .Var _ ty
   | .Fixcomb _ ty
   | .Fix _ ty
-  | .Ascribe _ ty =>
-    fv ty
-
-  | .Fun _ paramTy body ty =>
-    fv ty ∪ fv paramTy ∪ fvTE body
-
-  | .App f a ty =>
-    fv ty ∪ fvTE f ∪ fvTE a
-
-  | .Cond c t e ty =>
-    fv ty ∪ fvTE c ∪ fvTE t ∪ fvTE e
-
-  | .Prod' l r ty =>
-    fv ty ∪ fvTE l ∪ fvTE r
-
+  | .Ascribe _ ty => fv ty
+  | .Fun _ paramTy body ty => fv ty ∪ fv paramTy ∪ fvTE body
+  | .App f a ty => fv ty ∪ fvTE f ∪ fvTE a
+  | .Cond c t e ty => fv ty ∪ fvTE c ∪ fvTE t ∪ fvTE e
+  | .Prod' l r ty => fv ty ∪ fvTE l ∪ fvTE r
   | .Let binds body ty =>
     let fvBinds :=
       binds.attach.foldl (init := (∅ : Std.HashSet TV)) fun acc ⟨p, prop⟩ =>

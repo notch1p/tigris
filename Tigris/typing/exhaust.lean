@@ -69,7 +69,7 @@ def inς (td : TyDecl) (sig : Std.HashSet (Symbol × Nat)) : Option (Symbol × N
     let key := (n, ar)
     if sig.contains key then none else some key
 
-private def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
+private partial def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
   | TVar a => m.getD a (TVar a)
   | TCon s => TCon s
   | TArr a b => TArr (substTV m a) (substTV m b)
@@ -81,6 +81,9 @@ private def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
     | some (TVar v) => KApp v (ts.map (substTV m))
     | none => KApp v (ts.map (substTV m))
     | some other => other -- should not occur if subst is well-kinded
+  | TSch (.Forall vs ps t) =>
+    let m := vs.foldl .erase m
+    .TSch (.Forall vs (ps.map fun p => p.mapArgs (substTV m)) t)
 
 def ctorFieldTypes (td : TyDecl) (cname : Symbol) (tyArgs : List MLType) : Option (List MLType) :=
   let paramTVs := td.param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []

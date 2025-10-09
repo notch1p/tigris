@@ -79,10 +79,10 @@ instance : ToString TV := ⟨fun (.mkTV s) => s⟩
 instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩
 def TV.renderFmt : TV -> Std.Format
   | mkTV s => Logging.cyan s
+def TV.toStr : TV -> String | mkTV s => s
 instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
-/--
-  TODO: add `TForall` to implement rank-n types and existentials, maybe?
--/
+
+mutual
 inductive MLType where
   | TVar  : TV -> MLType
   | TCon  : String -> MLType
@@ -90,7 +90,18 @@ inductive MLType where
   | TProd : MLType -> MLType -> MLType
   | TApp  : String -> List MLType -> MLType
   | KApp  : TV -> List MLType -> MLType -- HKT application
+  /-- essentially a `TForall`. but more convenient -/
+  | TSch  : Scheme -> MLType -- only allow rank-1 for now.
 deriving Repr, BEq, Ord, Inhabited, Hashable
+
+structure Pred where
+  cls  : String
+  args : List MLType := []
+deriving BEq, Inhabited, Repr, Ord, Hashable
+
+inductive Scheme where
+  | Forall : List TV -> List Pred -> MLType -> Scheme deriving Repr, BEq, Ord
+end
 
 def MLType.getRightmost : MLType -> MLType
   | TArr _ t₂ => getRightmost t₂
@@ -101,15 +112,6 @@ def MLType.decomposeArr : MLType -> (List MLType × MLType)
     let (as, r) := decomposeArr b
     (a :: as, r)
   | t => ([], t)
-
-structure Pred where
-  cls  : String
-  args : List MLType := []
-deriving BEq, Inhabited, Repr, Ord, Hashable
-
-inductive Scheme where
-  | Forall : List TV -> List Pred -> MLType -> Scheme deriving Repr, BEq, Ord
-
 inductive Expr where
   | CI (i : Int)       | CS (s : String)        | CB (b : Bool) | CUnit
   | App (e₁ e₂ : Expr) | Cond (e₁ e₂ e₃ : Expr) | Let (ae : Array $ Symbol × Expr) (e₂ : Expr)

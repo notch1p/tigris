@@ -1,0 +1,60 @@
+class Functor (f : 1) = 
+  {map : forall a b, (a -> b) -> f a -> f b}
+
+type List a = Nil | Cons a (List a)
+type Option a = None | Some a
+
+infixr 67 "::" => Cons
+infixr 100 "<$>" => map
+
+let optionMap f 
+  | None => None 
+  | Some a => Some $ f a
+let rec listMap f 
+  | Nil => Nil 
+  | x :: xs => f x :: listMap f xs
+
+instance Functor List = {map = listMap}
+instance Functor Option = {map = optionMap}
+
+let _ = (_ + 1) <$> Some 20
+let _ = (_ + 1) <$> (1 :: 2 :: 3 :: 4 :: 5 :: Nil)
+
+------------------ SysF IR -----------------
+let (::) : ∀ α, α → List α → List α =
+  Λ α.Cons
+
+let (<$>) : ∀ α [Functor α], ∀ a b, (a → b) → α a → α b =
+  Λ α.fun __d_Functor_0 =>
+    map
+
+let optionMap : ∀ α β, (β → α) → Option β → Option α =
+  Λ α.Λ β.fun f =>
+    fun __?x₀ =>
+      match __?x₀ with
+      | None =>
+        None
+      | Some a =>
+        Some (f a)
+
+let listMap : ∀ α β, (α → β) → List α → List β =
+  Λ α.Λ β.fun listMap =>
+    fun f =>
+      fun __?x₀ =>
+        match __?x₀ with
+        | Nil =>
+          Nil
+        | Cons x xs =>
+          Cons (f x) (listMap f xs)
+
+let __i_Functor_0 : Functor List =
+  Functor listMap
+
+let __i_Functor_1 : Functor Option =
+  Functor optionMap
+
+let _ : Option Int =
+  map (fun __?x₀ => add __?x₀ 1) (Some 20)
+
+let _ : List Int =
+  map (fun __?x₀ => add __?x₀ 1) (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))

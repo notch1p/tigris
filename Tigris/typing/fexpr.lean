@@ -33,6 +33,11 @@ Dictionary arguments are either:
   - synthesized by instance resolution (Resolve.resolvePred) producing an Expr;
     we re-run inference + elaboration on that Expr to an FExpr (recursive).
 
+If a method field type is polymorphic (embedded rank‑1): `TSch (Forall as [] τ)`,
+we reify that as System F type abstractions by wrapping the projected field with
+`TyLam` for each binder in `as`. But note that,
+
+- Per-method predicate contexts inside TSch are currently unsupported and will be rejected.
 -/
 
 namespace SysF open MLType TExpr Rewritable
@@ -75,6 +80,7 @@ def FExpr.getTy
 abbrev FEnv := Std.TreeMap String Scheme
 abbrev DictScope := List (Pred × String)  -- predicate template + dict variable name
 abbrev F := EStateM TypingError Logger
+abbrev Blocked := Std.HashSet String
 
 local instance : MonadLift (Except TypingError) F where
   monadLift
@@ -127,9 +133,9 @@ def stuckMessage (p : Pred) (method : String) : TypingError :=
   let metas := mvs p
   let metaS := if metas.isEmpty then ""
   else
-    s!"{p}: typeclass elaboration is stuck because of metavariable(s)\n  "
-    ++ toString metas
-    ++ s!"\ninduced by a call to {method}. To resolve this, consider adding type ascriptions."
+    s!"{p}: typeclass elaboration is stuck because of metavariable(s)\n  \
+       {toString metas}\n\
+       induced by a call to {method}. To resolve this, consider adding type ascriptions.\n"
   let base := s!"{p}: missing in-scope instance for method {method}\n"
   if metas.isEmpty then .NoSynthesize base
   else .Ambiguous metaS
@@ -137,7 +143,28 @@ def stuckMessage (p : Pred) (method : String) : TypingError :=
 def peelFun (acc : List (String × MLType)) : FExpr -> List (String × MLType) × FExpr
   | .Fun p pty b _ => peelFun ((p, pty) :: acc) b
   | t => (acc.reverse, t)
+def peelSch1 : MLType -> Option (List TV × List Pred × MLType)
+  | .TSch (.Forall vs ps t) => some (vs, ps, t)
+  | _ => none
+@[inline] def monoOfTSch : MLType -> MLType
+  | .TSch (.Forall _ _ t) => t
+  | t => t
 
+def pvs : Pattern -> Array String
+  | .PVar x => #[x] | .PWild => #[]
+  | .PConst _ => #[] | .PProd' p q => pvs p ++ pvs q
+  | .PCtor _ args => args.flatMap pvs
+
+def wrapExtracted (sch : Scheme) (e : FExpr) : FExpr :=
+  match sch with
+  | .Forall tvs ctx b =>
+    if tvs.isEmpty && ctx.isEmpty then
+      match peelSch1 b with
+      | some (innerTVs, innerPs, _) =>
+        if innerPs.isEmpty then wrapTyLams innerTVs e
+        else e
+      | none => e
+    else e
 
 end Helper
 
@@ -152,70 +179,84 @@ partial def elaborateDict
   | none =>
     let dictExpr <- resolvePred Γfull p
     let (te, sch, _) <- runInferConstraintT dictExpr Γfull
-    elaborateWithScope Γsch scope te sch Γfull
+    elaborateWithScope Γsch scope ∅ te sch Γfull
 
-partial def elaborate (Γsch : FEnv) (scope : DictScope) (Γfull : Env) : TExpr -> F FExpr
+partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γfull : Env) : TExpr -> F FExpr
   | .CI i ty => return .CI i ty
   | .CS s ty => return .CS s ty
   | .CB b ty => return .CB b ty
   | .CUnit ty => return .CUnit ty
-  | .Ascribe e _ => elaborate Γsch scope Γfull e
+  | .Ascribe e _ => elaborate Γsch scope blocked Γfull e
   | .Prod' l r ty =>
-    .Prod' (ty := ty) <$> elaborate Γsch scope Γfull l <*> elaborate Γsch scope Γfull r
+    .Prod' (ty := ty) <$> elaborate Γsch scope blocked Γfull l <*> elaborate Γsch scope blocked Γfull r
   | .Cond c t e ty =>
     .Cond (ty := ty)
-    <$> elaborate Γsch scope Γfull c
-    <*> elaborate Γsch scope Γfull t
-    <*> elaborate Γsch scope Γfull e
+    <$> elaborate Γsch scope blocked Γfull c
+    <*> elaborate Γsch scope blocked Γfull t
+    <*> elaborate Γsch scope blocked Γfull e
+  | .Var x sch@(TSch ..) => return (.Var x sch)
   | .Var x ty =>
-    match Γsch[x]? with
-    | none => return (.Var x ty)
-    | some (.Forall qs ctx bodyTy) => do
-      let (tArgs, sub) <- instantiateArgs qs bodyTy ty
-      let instCtx := apply sub ctx
-      let method? : Option (ClassInfo × MethodInfo) :=
-        Γfull.clsInfo.fold (init := none) fun acc _ ci =>
-          match acc with
-          | some _ => acc
-          | none =>
-            ci.methods.find? (·.mname == x) |>.map fun m => (ci, m)
-      match method? with
-      | none =>
-        let base := tArgs.foldl FExpr.TyApp (.Var x ty)
-        instCtx.foldlM (fun acc p => mkApp acc <$> elaborateDict Γsch scope p Γfull) base
-      | some (ci, m) =>
-        let some classPred := instCtx.find? (·.cls == ci.cname)
-          | throw (.Impossible s!"method {x} has no matching predicate after instantiation\n")
-        let dict : FExpr <-
-          match lookupDictVar scope classPred with
-          | some (v, dty) => pure (.Var v dty)
-          | none =>
-            if isGroundPred classPred then
-              elaborateDict Γsch scope classPred Γfull
-            else
-              throw $ stuckMessage classPred x
-        let ar := ci.methods.size
-        let methodTy := apply sub m.mty
-        let pat := patOfIdx ci.cname m.idx ar
-        let proj :=
-          FExpr.Match #[dict]
-            #[(#[pat], FExpr.Var s!"__m_{ci.cname}_{m.idx}" methodTy)]
-            methodTy none #[]
-        let others := instCtx.filter (·.cls != ci.cname)
-        let proj <-
-          others.foldlM (fun acc p => mkApp acc <$> elaborateDict Γsch scope p Γfull) proj
-        let proj := tArgs.foldl .TyApp proj
-        return proj
-  | .Fun p pTy body ty => (.Fun p pTy · ty) <$> elaborate Γsch scope Γfull body
-  | .Fix e ty | .Fixcomb e ty => (.Fix · ty) <$> elaborate Γsch scope Γfull e
-  | .App f a ty => .App (ty := ty) <$> elaborate Γsch scope Γfull f <*> elaborate Γsch scope Γfull a
+    if x ∈ blocked then return (.Var x ty)
+    else
+      match Γsch[x]? with
+      | none => return (.Var x ty)
+      | some (.Forall qs ctx bodyTy) => do
+        let (tArgs, sub) <- instantiateArgs qs bodyTy ty
+        let instCtx := apply sub ctx
+        let method? : Option (ClassInfo × MethodInfo) :=
+          Γfull.clsInfo.fold (init := none) fun acc _ ci =>
+            match acc with
+            | some _ => acc
+            | none =>
+              ci.methods.find? (·.mname == x) |>.map fun m => (ci, m)
+        match method? with
+        | none =>
+          let base := tArgs.foldl FExpr.TyApp (.Var x ty)
+          instCtx.foldlM (fun acc p => mkApp acc <$> elaborateDict Γsch scope p Γfull) base
+        | some (ci, m) =>
+          let some classPred := instCtx.find? (·.cls == ci.cname)
+            | throw (.Impossible s!"method {x} has no matching predicate after instantiation\n")
+          let dict : FExpr <-
+            match lookupDictVar scope classPred with
+            | some (v, dty) => pure (.Var v dty)
+            | none =>
+              if isGroundPred classPred then
+                elaborateDict Γsch scope classPred Γfull
+              else
+                throw $ stuckMessage classPred x
+          let ar := ci.methods.size
+          let methodTyFull := apply sub m.mty
+          let (projTy, wrapPoly) :=
+            match peelSch1 methodTyFull with
+            | some (innerB, innerP, innerTy) =>
+              if innerP.isEmpty then
+                match unify innerTy (monoOfTSch ty) with
+                | .ok sub => (apply sub innerTy, pure ∘ id)
+                | .error e => (innerTy, pure ∘ wrapTyLams innerB)
+              else (innerTy, fun _ => show F FExpr from throw TypingError.NoRankN)
+            | none => (methodTyFull, pure ∘ id)
+          let pat := patOfIdx ci.cname m.idx ar
+          let projMono : FExpr :=
+            .Match #[dict] #[(#[pat], .Var s!"__m_{ci.cname}_{m.idx}" projTy)]
+              projTy none #[]
+          let others := instCtx.filter (·.cls != ci.cname)
+          let projWithDicts <-
+            others.foldlM (fun acc p => mkApp acc <$> elaborateDict Γsch scope p Γfull) projMono
+          let projWrapped <- wrapPoly projWithDicts
+          return tArgs.foldl .TyApp projWrapped
+  | .Fun p pTy body ty => (.Fun p pTy · ty) <$> elaborate Γsch scope (blocked.insert p) Γfull body
+  | .Fix e ty | .Fixcomb e ty => (.Fix · ty) <$> elaborate Γsch scope blocked Γfull e
+  | .App f a ty =>
+    .App (ty := ty)
+    <$> elaborate Γsch scope blocked Γfull f
+    <*> elaborate Γsch scope blocked Γfull a
   | .Let binds body ty => do
     let Γsch := binds.foldl (fun g (x, sch, _) => g.insert x sch) Γsch
     let (localScope, out) <-
-      binds.foldlM (init := (scope, #[])) fun (localScope, out) (x, sch@(Scheme.Forall qs ctx bTy), rhs) => do
+      binds.foldlM (init := (scope, #[])) fun (localScope, out) (x, sch@(.Forall qs ctx bTy), rhs) => do
         let dictVars := ctx.mapIdx fun i p => (p, s!"__d_{p.cls}_{i}")
         let scopeForRhs := dictVars.foldl (flip List.cons) localScope
-        let rhsCore <- elaborate Γsch scopeForRhs Γfull rhs
+        let rhsCore <- elaborate Γsch scopeForRhs blocked Γfull rhs
         let bodyWithDicts :=
           if ctx.isEmpty then rhsCore
           else dictVars.foldr
@@ -223,15 +264,15 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (Γfull : Env) : TExpr 
               let dty := dictTypeOfPred p
               .Fun nm dty acc (dty ->' acc.getTy))
             rhsCore
-        let rhsFinal := wrapTyLams qs bodyWithDicts
+        let rhsFinal := wrapExtracted sch $ wrapTyLams qs bodyWithDicts
         return (scopeForRhs, out.push (x, sch, rhsFinal))
-    let bodyF <- elaborate Γsch localScope Γfull body
+    let bodyF <- elaborate Γsch localScope blocked Γfull body
     return (.Let out bodyF ty)
   | .Match discr br resTy .. => do
-    let discrF <- discr.mapM (elaborate Γsch scope Γfull)
+    let discrF <- discr.mapM (elaborate Γsch scope blocked Γfull)
     let discrTy := discr.map (TExpr.getTy)
     let brF <- br.mapM fun (ps, rhs) =>
-      (ps, ·) <$> elaborate Γsch scope Γfull rhs
+      (ps, ·) <$> elaborate Γsch scope (blocked.insertMany (ps.flatMap pvs)) Γfull rhs
     let (ex, mat, ty) := Exhaustive.exhaustWitness Γfull discrTy br
     let red :=
       if let some _ := ex then #[] else
@@ -255,12 +296,12 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (Γfull : Env) : TExpr 
     return .Match discrF brF resTy ex red
 
 partial def elaborateWithScope
-    (Γsch : FEnv) (scope : DictScope) (te : TExpr) (sch : Scheme) (Γfull : Env)
+    (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (te : TExpr) (sch : Scheme) (Γfull : Env)
     : F FExpr := do
     let (.Forall qs ctx _) := sch
     let dictVars := ctx.mapIdx fun i p => (p, s!"__d_{p.cls}_{i}")
     let scopeFor := dictVars.foldl (flip List.cons) scope
-    let core <- elaborate Γsch scopeFor Γfull te
+    let core <- elaborate Γsch scopeFor blocked Γfull te
     let coreWithDicts :=
       if ctx.isEmpty then core
       else
@@ -284,13 +325,12 @@ partial def elaborateWithScope
             let dty := dictTypeOfPred p
             .Fun nm dty acc (dty ->' acc.getTy))
           core
-    let final := wrapTyLams qs coreWithDicts
-    return final
+    return wrapExtracted sch $ wrapTyLams qs coreWithDicts
 
 end
 
 def elaborate1 (e : TExpr) (sch : Scheme) (Γ : Env := ∅) : F FExpr := do
-  elaborateWithScope Γ.E [] e sch Γ
+  elaborateWithScope Γ.E [] ∅ e sch Γ
 
 end SysF
 open MLType SysF
@@ -335,10 +375,13 @@ partial def FExpr.unexpand : FExpr -> Format
   | .CI i _ | .CS i _ | .CB i _ => format i
   | .CUnit _ => format ()
   | .App f a _ =>
-    let rec paren?
-      | p@(.App ..) => paren (unexpand p)
+    let rec parenR?
+      | p@(.App ..) | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) => paren (unexpand p)
       | p => unexpand p
-    unexpand f <> paren? a
+    let rec parenL?
+      | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) => paren (unexpand p)
+      | p => unexpand p
+    parenL? f <> parenR? a
   | .Cond c t e _ =>
     "if" <> unexpand c <+> "then" ++ indentD (unexpand t)
     <+> "else" ++ indentD (unexpand e)
