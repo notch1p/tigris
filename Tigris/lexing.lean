@@ -3,6 +3,13 @@ import Tigris.parsing.types
 infixr : 60 " <$ " => Functor.mapConst
 infixr : 60 " $> " => flip Functor.mapConst
 
+def String.isUpperInit (s : String) : Bool :=
+  if h : s.atEnd 0 = true then false
+  else (s.get' 0 h) >= 'A' && (s.get' 0 h) <= 'Z'
+def String.isLowerInit (s : String) : Bool :=
+  if h : s.atEnd 0 = true then false
+  else (s.get' 0 h) >= 'a' && (s.get' 0 h) <= 'z'
+
 namespace Lexing open Parser Parser.Char
 
 def alphanum' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
@@ -61,10 +68,6 @@ def intLit := @ASCII.parseInt
 def strLit : TParser σ String :=
   char '"' *> foldl .push "" (tokenFilter (· != '"')) <* char '"'
 def boolLit : TParser σ Bool := string "true" $> true <|> string "false" $> false
-
-def isUpperInit (s : String) : Bool :=
-  if h : s.atEnd 0 = true then false
-  else (s.get' 0 h) >= 'A' && (s.get' 0 h) <= 'Z'
 
 def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α :=
   (ws $ char l) *> t <* (ws $ char r)

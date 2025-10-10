@@ -92,10 +92,14 @@ namespace Helper
 @[inline] def dictTypeOfPred : Pred -> MLType
   | {cls, args,..} => TApp cls args
 
+@[inline] def monoOfTSch : MLType -> MLType
+  | .TSch (.Forall _ _ t) => t
+  | t => t
+
 def instantiateArgs (qs : List TV) (schemeBody instTy : MLType)
   : F (List MLType × Subst) := do
   if qs.isEmpty then return ([], ∅)
-  let sub <- unify schemeBody instTy
+  let sub <- unify (monoOfTSch schemeBody) (monoOfTSch instTy)
   return (qs.map (fun a => apply sub (TVar a)), sub)
 
 @[inline] def wrapTyLams (qs : List TV) (e : FExpr) : FExpr := qs.foldr .TyLam e
@@ -146,9 +150,6 @@ def peelFun (acc : List (String × MLType)) : FExpr -> List (String × MLType) �
 def peelSch1 : MLType -> Option (List TV × List Pred × MLType)
   | .TSch (.Forall vs ps t) => some (vs, ps, t)
   | _ => none
-@[inline] def monoOfTSch : MLType -> MLType
-  | .TSch (.Forall _ _ t) => t
-  | t => t
 
 def pvs : Pattern -> Array String
   | .PVar x => #[x] | .PWild => #[]
@@ -157,14 +158,12 @@ def pvs : Pattern -> Array String
 
 def wrapExtracted (sch : Scheme) (e : FExpr) : FExpr :=
   match sch with
-  | .Forall tvs ctx b =>
-    if tvs.isEmpty && ctx.isEmpty then
-      match peelSch1 b with
-      | some (innerTVs, innerPs, _) =>
-        if innerPs.isEmpty then wrapTyLams innerTVs e
-        else e
-      | none => e
-    else e
+  | .Forall _ _ b =>
+    match peelSch1 b with
+    | some (innerTVs, innerPs, _) =>
+      if innerPs.isEmpty then wrapTyLams innerTVs e
+      else e
+    | none => e
 
 end Helper
 
@@ -194,7 +193,6 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
     <$> elaborate Γsch scope blocked Γfull c
     <*> elaborate Γsch scope blocked Γfull t
     <*> elaborate Γsch scope blocked Γfull e
-  | .Var x sch@(TSch ..) => return (.Var x sch)
   | .Var x ty =>
     if x ∈ blocked then return (.Var x ty)
     else
@@ -222,8 +220,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
             | none =>
               if isGroundPred classPred then
                 elaborateDict Γsch scope classPred Γfull
-              else
-                throw $ stuckMessage classPred x
+              else throw $ stuckMessage classPred x
           let ar := ci.methods.size
           let methodTyFull := apply sub m.mty
           let (projTy, wrapPoly) :=
@@ -257,6 +254,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
         let dictVars := ctx.mapIdx fun i p => (p, s!"__d_{p.cls}_{i}")
         let scopeForRhs := dictVars.foldl (flip List.cons) localScope
         let rhsCore <- elaborate Γsch scopeForRhs blocked Γfull rhs
+        let rhsCore := wrapExtracted sch rhsCore
         let bodyWithDicts :=
           if ctx.isEmpty then rhsCore
           else dictVars.foldr
@@ -264,7 +262,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
               let dty := dictTypeOfPred p
               .Fun nm dty acc (dty ->' acc.getTy))
             rhsCore
-        let rhsFinal := wrapExtracted sch $ wrapTyLams qs bodyWithDicts
+        let rhsFinal := wrapTyLams qs bodyWithDicts
         return (scopeForRhs, out.push (x, sch, rhsFinal))
     let bodyF <- elaborate Γsch localScope blocked Γfull body
     return (.Let out bodyF ty)
@@ -302,6 +300,7 @@ partial def elaborateWithScope
     let dictVars := ctx.mapIdx fun i p => (p, s!"__d_{p.cls}_{i}")
     let scopeFor := dictVars.foldl (flip List.cons) scope
     let core <- elaborate Γsch scopeFor blocked Γfull te
+    let core := wrapExtracted sch core
     let coreWithDicts :=
       if ctx.isEmpty then core
       else
@@ -325,7 +324,7 @@ partial def elaborateWithScope
             let dty := dictTypeOfPred p
             .Fun nm dty acc (dty ->' acc.getTy))
           core
-    return wrapExtracted sch $ wrapTyLams qs coreWithDicts
+    return wrapTyLams qs coreWithDicts
 
 end
 

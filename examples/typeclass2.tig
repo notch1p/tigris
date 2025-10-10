@@ -1,4 +1,4 @@
-class Functor (f : 1) = 
+class Functor (f : 1) =
   {map : forall a b, (a -> b) -> f a -> f b}
 
 type List a = Nil | Cons a (List a)
@@ -21,12 +21,15 @@ let _ = (_ + 1) <$> Some 20
 let _ = (_ + 1) <$> (1 :: 2 :: 3 :: 4 :: 5 :: Nil)
 
 ------------------ SysF IR -----------------
+
 let (::) : ∀ α, α → List α → List α =
   Λ α.Cons
 
 let (<$>) : ∀ α [Functor α], ∀ a b, (a → b) → α a → α b =
   Λ α.fun __d_Functor_0 =>
-    map
+    Λ a.Λ b.match __d_Functor_0 with
+    | Functor __m_Functor_0 =>
+      __m_Functor_0
 
 let optionMap : ∀ α β, (β → α) → Option β → Option α =
   Λ α.Λ β.fun f =>
@@ -54,7 +57,11 @@ let __i_Functor_1 : Functor Option =
   Functor optionMap
 
 let _ : Option Int =
-  map (fun __?x₀ => add __?x₀ 1) (Some 20)
+  match __i_Functor_1 with
+  | Functor __m_Functor_0 =>
+    __m_Functor_0 (fun __?x₀ => add __?x₀ 1) (Some 20)
 
 let _ : List Int =
-  map (fun __?x₀ => add __?x₀ 1) (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))
+  match __i_Functor_0 with
+  | Functor __m_Functor_0 =>
+    __m_Functor_0 (fun __?x₀ => add __?x₀ 1) (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))

@@ -5,6 +5,7 @@ import Tigris.lexing
 structure ParamInfo where
   ordered : Array (String × Nat)
   arity : Std.HashMap String Nat
+deriving Repr
 @[inline] def ParamInfo.empty : ParamInfo := ⟨#[], {}⟩
 
 def ParamInfo.merge : ParamInfo -> ParamInfo -> ParamInfo
@@ -37,6 +38,9 @@ def parseParams : TParser σ ParamInfo := do
   let ps <- takeMany parseParam
   if ps.hasDuplicates Prod.fst then
     error "duplicate type parameter name\n"
+    throwUnexpected
+  if ps.any (String.isUpperInit ∘ Prod.fst) then
+    error "bound type constructors/variables must begin with lowercase letter\n"
     throwUnexpected
   let arity := ps.foldl (fun m (n, a) => m.insert n a) {}
   return {ordered := ps, arity}
@@ -72,7 +76,7 @@ def registerTy (name : String) (arity : Nat) (mt : Bool) (flag := true) : TParse
 mutual
 partial def tyCtor (param : ParamInfo) : TParser σ MLType := do
   let id <- ID
-  if isUpperInit id then return TApp id []
+  if id.isUpperInit then return TApp id []
   else
     match param.arity[id]? with
     | some 0 => return TVar (.mkTV id)
@@ -145,7 +149,7 @@ def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMes
     -- we do not parse preds yet. not supported currently anyway.
     if ordered.isEmpty then tyArrow mt param
     else COMMA *>
-      .TSch <$> (.Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) [] <$> tyArrow mt (param ∪ param'))
+      .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) [] <$> tyArrow mt (param ∪ param')
 
 def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
   let id <- ID; COLON; let ty <- tyForall mt param
@@ -161,6 +165,12 @@ def tyScheme : TParser σ Scheme := do
   let pred <- optionD (tyPreds param) #[] <&> Array.toList
   if !ordered.isEmpty || !pred.isEmpty then COMMA
   .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
+
+def tyInstScheme : TParser σ (Scheme × ParamInfo) := do
+  let param@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
+  let pred <- optionD (tyPreds param) #[] <&> Array.toList
+  if !ordered.isEmpty || !pred.isEmpty then COMMA
+  (·, param) <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
 
 def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
   : TParser σ TyDecl := withErrorMessage "TyRecord" do
@@ -181,7 +191,7 @@ def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
 def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
   let cls? <- TYPE?
   let tycon <- ID
-  if isUpperInit tycon then
+  if tycon.isUpperInit then
     let param <- parseParams; EQ
     if <- test (kwOpExact "{") then
       let tydecl <- tyRecord tycon param mt <* kwOpExact "}"
@@ -198,7 +208,7 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
 where
   ctor mt param := do
     let cname <- ID
-    if isUpperInit cname then
+    if cname.isUpperInit then
       let args <- takeMany (parenthesized (tyForall mt param) <|> (tyForall mt param))
       let namedArgs := Prod.fst $ args.foldr (init := ([], 0)) fun s (a, i) =>
         ((s!"cname_{i}", s) :: a, i + 1)

@@ -1,19 +1,40 @@
-
 class Eq a = {eq : a -> a -> Bool}
-
 class HEq a b = {heq : a -> b -> Bool}
-
-instance Eq Int = {eq = __eqInt}
-
-instance ∀a [Eq a], HEq a a = {heq = eq}
-
 class HAdd a b c = {hadd : a -> b -> c}
 
+instance Eq Int = {eq = __eqInt}
+instance ∀a [Eq a], HEq a a = {heq = eq}
 instance HAdd Int Int Int = {hadd = add}
 
 let f = heq ((hadd 1 2) : Int) 3
+let f' = heq 0
+let f' = heq (hadd 2 3) 5 -- Ambiguous: HEq ?m6 Int: typeclass elaboration is stuck because of metavariable(s)
+                          --   [?m6]
+                          -- induced by a call to heq. To resolve this, consider adding type ascriptions.
 
-let f' = heq (hadd 2 3) 5
-NB. Ambiguous: HEq ?m6 Int: typeclass elaboration is stuck because of metavariable(s)
-NB.   [?m6]
-NB. (partly) induced by a call to heq. Consider adding type ascriptions.
+------------------------ SysF IR -------------------
+
+let __i_Eq_0 : Eq Int =
+  Eq __eqInt
+
+let __i_HEq_0 : ∀ α [Eq α], HEq α α =
+  Λ α.fun __d_Eq_0 =>
+    HEq match __d_Eq_0 with
+    | Eq __m_Eq_0 =>
+      __m_Eq_0
+
+let __i_HAdd_0 : HAdd Int Int Int =
+  HAdd add
+
+let f : Bool =
+  match __i_HEq_0 __i_Eq_0 with
+  | HEq __m_HEq_0 =>
+    __m_HEq_0 (match __i_HAdd_0 with | HAdd __m_HAdd_0 => __m_HAdd_0 1 2) 3
+
+let f' : ∀ α [HEq Int α], α → Bool =
+  Λ α.fun __d_HEq_0 =>
+    match __d_HEq_0 with
+    | HEq __m_HEq_0 =>
+      __m_HEq_0 0
+
+

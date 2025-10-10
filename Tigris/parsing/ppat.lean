@@ -47,7 +47,7 @@ partial def patAtom : TParser σ Pattern := ws $ first' (combine := simpErrorCom
    , strLit <&> (PConst ∘ .PStr)
    , do
        let id <- ID;
-       if isUpperInit id then return PCtor id #[]
+       if id.isUpperInit then return PCtor id #[]
        else return PVar id
    ]
 

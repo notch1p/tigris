@@ -48,7 +48,7 @@ def Scheme.renderFmt : Scheme -> Std.Format
   | .Forall _ pred t' => toString (pred.map Pred.renderFmt) <> t'.renderFmt
 def Scheme.toStr : Scheme -> String
   | .Forall [] [] t => t.toStr
-  | .Forall [] pred t => toString (pred.map Pred.renderFmt) ++ " " ++ t.toStr
+  | .Forall [] pred t => toString (pred.map Pred.toStr) ++ " " ++ t.toStr
   | .Forall (t :: ts) pred t' =>
     let preds := if pred.isEmpty then "" else " " ++ toString (pred.map Pred.toStr)
     s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'.toStr}"
