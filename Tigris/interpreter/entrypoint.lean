@@ -134,6 +134,9 @@ def checkFile (s : String) : IO Unit := do
   let (toplevel, logger) <- inferToplevelF stage0 |> IO.ofExcept
   println! logger
   println! unexpandDeclsF toplevel
-
 end MLType
+
+#eval MLType.checkFile
+"
+"
 

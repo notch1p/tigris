@@ -1,19 +1,64 @@
-
 class Eq a = {eq : a -> a -> Bool}
-
 class HEq a b = {heq : a -> b -> Bool}
-
-instance Eq Int = {eq = __eqInt}
-
-instance ∀a [Eq a], HEq a a = {heq = eq}
-
 class HAdd a b c = {hadd : a -> b -> c}
 
+let boolAnd | true, true => true | _, _ => false
+infixl 35 "&&" => boolAnd
+
+instance Eq Int = {eq = __eqInt}
+instance ∀a [Eq a], HEq a a = {heq = eq}
 instance HAdd Int Int Int = {hadd = add}
+instance forall m k [Eq m, Eq k], Eq (m * k) =
+  {eq (x, y) (x', y') = x = x' && y = y'}
 
 let f = heq ((hadd 1 2) : Int) 3
+let f' = heq 0
+let f' = heq (hadd 2 3) 5 -- Ambiguous: HEq ?m6 Int: typeclass elaboration is stuck because of metavariable(s)
+                          --   [?m6]
+                          -- induced by a call to heq. To resolve this, consider adding type ascriptions.
 
-let f' = heq (hadd 2 3) 5
-NB. Ambiguous: HEq ?m6 Int: typeclass elaboration is stuck because of metavariable(s)
-NB.   [?m6]
-NB. (partly) induced by a call to heq. Consider adding type ascriptions.
+------------------------ SysF IR -------------------
+
+let boolAnd : Bool → Bool → Bool =
+  fun ?x₀ =>
+    fun ?x₁ =>
+      match ?x₀, ?x₁ with
+      | true, true =>
+        true
+      | _, _ =>
+        false
+
+let (&&) : Bool → Bool → Bool =
+  boolAnd
+
+let i_Eq_0 : Eq Int =
+  Eq __eqInt
+
+let i_HEq_0 : ∀ α [Eq α], HEq α α =
+  Λ α.fun d_Eq_0 =>
+    HEq match d_Eq_0 with
+    | Eq m_Eq_0 =>
+      m_Eq_0
+
+let i_HAdd_0 : HAdd Int Int Int =
+  HAdd add
+
+let i_Eq_1 : ∀ α β [Eq β, Eq α], Eq (β × α) =
+  Λ α.Λ β.fun d_Eq_0 =>
+    fun d_Eq_1 =>
+      Eq (fun ?x₀ =>
+         fun ?x₁ =>
+           match ?x₀, ?x₁ with
+           | (x, y), (x', y') =>
+             boolAnd (match d_Eq_0 with | Eq m_Eq_0 => m_Eq_0 x x') (match d_Eq_1 with | Eq m_Eq_0 => m_Eq_0 y y'))
+
+let f : Bool =
+  match i_HEq_0 i_Eq_0 with
+  | HEq m_HEq_0 =>
+    m_HEq_0 (match i_HAdd_0 with | HAdd m_HAdd_0 => m_HAdd_0 1 2) 3
+
+let f' : ∀ α [HEq Int α], α → Bool =
+  Λ α.fun d_HEq_0 =>
+    match d_HEq_0 with
+    | HEq m_HEq_0 =>
+      m_HEq_0 0

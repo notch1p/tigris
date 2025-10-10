@@ -70,8 +70,13 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
       List.foldlM2
         (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
         headBind as₁ as₂
-  | TApp h₁ as₁, TApp h₂ as₂ =>
-    if h₁ != h₂ || as₁.length != as₂.length then throw (.NoUnify (TApp h₁ as₁) (TApp h₂ as₂))
+  | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) =>
+    -- syntactic restriction:
+    -- type declaration must begin with uppercase letter
+    -- bound type ctor must begin with lowercase letter
+    if h₁.isLowerInit then unify (KApp (.mkTV h₁) as₁) t₂
+    else if h₂.isLowerInit then unify t₁ (KApp (.mkTV h₂) as₂)
+    else if h₁ != h₂ || as₁.length != as₂.length then throw (.NoUnify (TApp h₁ as₁) (TApp h₂ as₂))
     else
       List.foldlM2
         (fun acc t₁ t₂ => (· ∪' acc) <$> unify (apply acc t₁) (apply acc t₂))
@@ -89,7 +94,8 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
     let ps₂ := ps₂.map $ apply renameSub
     if ps₁ != ps₂ then throw $ .NoUnify ts₁ ts₂
     unify t₁ (apply renameSub t₂)
-  | t, u => throw (.NoUnify t u)
+  | t, u => 
+    throw (.NoUnify t u)
 
 def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × Pred)) := do
   cs.foldrM (init := (∅, [])) fun s (sub, pending) =>
@@ -272,15 +278,19 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
 
   let tyRec <-
     recs.foldlM (init := #[]) fun tyRec (n, rhs) => do
+      let evStart <- get <&> (·.nextEv)
       let (te, tr, ps) <- inferExpr Γrec rhs
+      let evEnd <- get <&> (·.nextEv)
       let tv := recTyVars[n]!
       addEq tv tr
-      return tyRec.push (n, te, tr, ps)
+      return tyRec.push (n, te, tr, ps, evStart, evEnd)
 
   let tyNon <-
     nonrecs.foldlM (init := #[]) fun tyNon (n, rhs) => do
-      let (te, trps) <- inferExpr Γrec rhs
-      return tyNon.push (n, te, trps)
+      let evStart <- get <&> (·.nextEv)
+      let (te, tr, ps) <- inferExpr Γrec rhs
+      let evEnd <- get <&> (·.nextEv)
+      return tyNon.push (n, te, tr, ps, evStart, evEnd)
 
   let csAll <- get <&> (·.cst)
   let localCs := csAll.take (csAll.length - startCs)
@@ -288,22 +298,29 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
   | .error err => throw err
   | .ok (sub, wants) =>
     let applyAll {α} [Rewritable α] : α -> α := apply sub
-    let residual := wants.map Prod.snd
-    let finalize n te ty pl Γ bindsTyped :=
+--    let residual := wants.map Prod.snd
+--    let finalize n te ty pl Γ bindsTyped :=
+--      let ty := applyAll ty
+--      let sch := generalize Γ ty (applyAll pl ++ residual)
+--      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
+    let predsFor evStart evEnd := 
+      wants.foldr (init := []) fun (eid, p) acc =>
+        if evStart <= eid && eid < evEnd then (applyAll p) :: acc else acc
+    let finalize n te ty pl evStart evEnd Γ bindsTyped :=
       let ty := applyAll ty
-      let sch := generalize Γ ty (applyAll pl ++ residual)
+      let ownResidual := predsFor evStart evEnd
+      let sch := generalize Γ ty (applyAll pl ++ ownResidual)
       (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
     let (Γ, bindsTyped) :=
-      tyRec.foldl (init := (Γ, #[])) fun (Γ, bindsTyped) (n, te, ty, ps) =>
-        finalize n te ty ps Γ bindsTyped
+      tyRec.foldl (init := (Γ, #[])) fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
+        finalize n te ty ps l r Γ bindsTyped
     let (Γ, bindsTyped) :=
-      tyNon.foldl (init := (Γ, bindsTyped)) fun (Γ, bindsTyped) (n, te, ty, ps) =>
-        finalize n te ty ps Γ bindsTyped
+      tyNon.foldl (init := (Γ, bindsTyped)) fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
+        finalize n te ty ps l r Γ bindsTyped
     let (tBody, tB, pB) <- inferExpr Γ body
     let tB := applyAll tB
     let tBody := applyAll tBody
     return (.Let bindsTyped tBody tB, tB, pB)
-
 partial def inferMatch (Γ : Env) (discr : Array Expr) (br : Array (Array Pattern × Expr))
   : InferC σ (TExpr × MLType × List Pred) := do
   let (discrTyped, discrTys, predsAll) <-
@@ -352,10 +369,24 @@ def methodScheme (cls : Symbol) (param : Array $ String × Nat) (mty : MLType) :
   let args    := binders.map TVar
   .Forall binders [⟨cls, args⟩] mty
 
+def normHK : MLType -> MLType
+  | .TApp h args =>
+    let args := args.map normHK
+    if h.isLowerInit then .KApp (.mkTV h) args else .TApp h args
+  | .KApp v args => .KApp v (args.map normHK)
+  | a ->' b => normHK a ->' normHK b
+  | a ×'' b => normHK a ×'' normHK b
+  | t => t
+
+def normHKPred (p : Pred) : Pred :=
+  p.mapArgs normHK
+
 private def instQuantifiers (headArgs : List MLType) (ctx : List Pred) : List TV :=
+  let (headArgs, ctx) := (headArgs.map normHK, ctx.map normHKPred)
   fv headArgs ∪ fv ctx |>.toList
 
 private def instanceScheme (ci : ClassInfo) (headArgs : List MLType) (ctx : List Pred) : Scheme :=
+  let (headArgs, ctx) := (headArgs.map normHK, ctx.map normHKPred)
   .Forall (instQuantifiers headArgs ctx) ctx (TApp ci.cname headArgs)
 
 private def orderInstanceMethods
@@ -379,56 +410,43 @@ private def buildInstProvider
   let sub := paramSubst ci headArgs
   let dictCore :=
     orderedMethods.foldl (fun acc (m, e) => .App acc $ .Ascribe e (apply sub m.mty)) (.Var ci.ctorName)
-  let dictTy := .TApp ci.cname headArgs
---  let dictCore := orderedMethods.foldl .App (.Var ci.ctorName)
---  let dictTy := MLType.TApp ci.cname headArgs
-  .Ascribe dictCore dictTy
+  .Ascribe dictCore (.TApp ci.cname headArgs)
 end Helper
 
 open Helper
 in @[inline] private def methodSchemes (ci : ClassInfo) : Array (String × Scheme) :=
   ci.methods.map fun m => (m.mname, methodScheme ci.cname ci.params m.mty)
-
-in private def mkInstance (ci : ClassInfo) (decl : InstanceDecl) (existingCount : Nat)
-  : Except TypingError ((String × Expr) × InstanceInfo × Scheme) := do
-  let iname := s!"__i_{ci.cname}_{existingCount}"
-  let ordered <- orderInstanceMethods ci decl.methods
-  let headArgs := decl.args
-  let ctx := decl.ctxPreds
-  let body := buildInstProvider ci ordered headArgs
-  let sch := instanceScheme ci headArgs ctx
-  let info := {iname, cls := ci.cname, args := headArgs, ctx}
-  return ((iname, body), info, sch)
-
 in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat)
   : InstanceDecl -> Except TypingError (String × Scheme × TExpr × Logger × InstanceInfo)
   | {args, methods, ctxPreds,..} => do
-    let iname := s!"__i_{ci.cname}_{existingCount}"
+    let iname := s!"i_{ci.cname}_{existingCount}"
     let ordered <- orderInstanceMethods ci methods
-    let rawBody := buildInstProvider ci ordered args
+    let rigidTVs := fv args ∪ fv ctxPreds
+    let rigidSub : Subst := rigidTVs.toList.foldlIdx (fun i s v => s.insert v (mkSkol $ .mkTV (gensym i))) ∅
+    let argsSk := apply rigidSub args
+    let rawBody := buildInstProvider ci ordered argsSk
     let (typedBody, inferredSch, l) <- runInferConstraintT rawBody E
     let (.Forall _ _ infRes) := inferredSch
-    let wantHead := .TApp ci.cname args
-    match unify infRes wantHead with
-    | .error _ => throw (.NoUnify infRes wantHead)
+    let wantHeadSk := .TApp ci.cname argsSk
+    match unify infRes wantHeadSk with
+    | .error _ => throw (.NoUnify infRes wantHeadSk)
     | .ok sub =>
-      let bodyTy := apply sub infRes
-      let detectedSpecialized :=
-        args.any fun
-          | MLType.TVar v =>
-              match apply sub (MLType.TVar v) with
-              | MLType.TVar v' => v' != v
-              | _ => true
-          | _ => false
-      if detectedSpecialized then
-        throw $ .NoSynthesize s!"{Pred.mk ci.cname args}: body is too specific. Supply a specialized scheme instead.\n"
-      let declaredCtx := apply sub ctxPreds
-      let allFVs := fv bodyTy ∪ fv declaredCtx
-      let envFVs := fv E
-      let qs := allFVs \ envFVs |>.toList
-      let finalSch := normalize (.Forall qs declaredCtx bodyTy)
-      return (iname, finalSch, typedBody, l, ⟨iname, ci.cname, args, ctxPreds⟩)
+       let detectedSpecialized :=
+         args.any fun
+           | MLType.TVar v | .KApp v [] =>
+             match apply sub (MLType.TVar v) with
+             | MLType.TVar v' => v' != v
+             | _ => true
+           | _ => false
+       if detectedSpecialized then
+         throw $ .NoSynthesize s!"{Pred.mk ci.cname args}: body is too specific. Supply a specialized scheme instead.\n"
 
+       let declaredCtx := apply sub ctxPreds |>.map normHKPred
+       let qs := instQuantifiers args declaredCtx
+       let bodyTy := (.TApp ci.cname args)
+       let finalSch := normalize (.Forall qs declaredCtx (normHK bodyTy))
+                                              /-        InstanceInfo        -/
+       return ⟨iname, finalSch, typedBody, l, iname, ci.cname, args, ctxPreds⟩
 
 def inferToplevelC
   (b : Array TopDecl) (E : Env)
@@ -485,3 +503,4 @@ def inferToplevelC
       return ( acc.push $ .idBind #[(iname, sch, te)]
              , {E with E := E.E.insert iname sch, instInfo}
              , L ++ l)
+

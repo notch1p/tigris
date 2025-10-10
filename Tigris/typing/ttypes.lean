@@ -48,7 +48,7 @@ def Scheme.renderFmt : Scheme -> Std.Format
   | .Forall _ pred t' => toString (pred.map Pred.renderFmt) <> t'.renderFmt
 def Scheme.toStr : Scheme -> String
   | .Forall [] [] t => t.toStr
-  | .Forall [] pred t => toString (pred.map Pred.renderFmt) ++ " " ++ t.toStr
+  | .Forall [] pred t => toString (pred.map Pred.toStr) ++ " " ++ t.toStr
   | .Forall (t :: ts) pred t' =>
     let preds := if pred.isEmpty then "" else " " ++ toString (pred.map Pred.toStr)
     s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'.toStr}"
@@ -217,7 +217,8 @@ partial def normalize : Scheme -> Scheme
     let ord := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
     let rename a := ord.lookup a |>.getD a
     let rec normtype (blocked : Std.HashSet TV)
-      | a ->' b | a ×'' b => normtype blocked a ->' normtype blocked b
+      | a ->' b => normtype blocked a ->' normtype blocked b
+      | a ×'' b => normtype blocked a ×'' normtype blocked b
       | .TVar a => .TVar $ if a ∈ blocked then a else rename a
       | .TApp h as => .TApp h $ as.map $ normtype blocked
       | .KApp v as =>
@@ -254,7 +255,7 @@ abbrev dE : List (String × Scheme) :=
   , ("__div", .Forall []    [] $ tInt ×'' tInt ->' tInt)
   , ("__eq" , .Forall ["α"] [.unary "Eq" "α"] $ "α" ×'' "α" ->' tBool)
   , ("not"  , .Forall []    [] $ tBool ->' tBool)
-  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "a")
+  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "α")
   , ("id"   , .Forall ["α"] [] $ "α" ->' "α")
   , ("succ" , .Forall []    [] $ tInt ->' tInt)]
 
@@ -268,7 +269,7 @@ abbrev dE' : List (String × Scheme) :=
   , ("__eqBool", .Forall [] [] $ tBool ->' tBool ->' tBool)
   , ("__eqString", .Forall [] [] $ tString ->' tString ->' tBool)
 --  , ("__eq" , .Forall ["α"] [.unary "Eq" "α"] $ "α" ×'' "α" ->' tBool)
-  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "a")
+  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "α")
   , ("succ" , .Forall []    [] $ tInt ->' tInt)]
 
 def mkCurriedE (e : List (String × Scheme)) : Env :=

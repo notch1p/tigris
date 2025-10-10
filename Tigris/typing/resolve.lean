@@ -1,7 +1,6 @@
 import Tigris.typing.ttypes
 import Tigris.typing.constraint
 
-
 namespace Resolve open MLType ConstraintInfer Rewritable
 
 def unifyHead (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError Subst := do
@@ -30,6 +29,11 @@ instance : MonadLift (Except TypingError) (EST TypingError σ) where
 @[inline] def already? (p : Pred) : ResolveM σ Bool :=
   get <&> (p ∈ ·)
 
+def classParamNames (env : Env) (cls : String) : Std.HashSet String :=
+  match env.clsInfo[cls]? with
+  | some ci => ci.params.foldl (fun acc (n, _) => acc.insert n) ∅
+  | none => ∅
+
 partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
   if <- already? p then
     throw $ .Ambiguous s!"cyclic instance resolution involving {p}\n"
@@ -47,7 +51,6 @@ partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
         ctx.forM fun s => resolve env s $> ()
         let specializedHead := MLType.TApp p.cls p.args
         pure $ .Ascribe (.Var info.iname) specializedHead
-
       match found with
       | none => found := some res
       | some _ => throw $ .Ambiguous s!"instance {p}: multiple instances exist\n"

@@ -92,15 +92,78 @@ namespace Helper
 @[inline] def dictTypeOfPred : Pred -> MLType
   | {cls, args,..} => TApp cls args
 
-def instantiateArgs (qs : List TV) (schemeBody instTy : MLType)
-  : F (List MLType × Subst) := do
-  if qs.isEmpty then return ([], ∅)
-  let sub <- unify schemeBody instTy
-  return (qs.map (fun a => apply sub (TVar a)), sub)
+@[inline] def monoOfTSch : MLType -> MLType
+  | .TSch (.Forall _ _ t) => t
+  | t => t
+
+def αRename (qs : List TV) : Subst × List TV :=
+  let mkFresh : TV -> Nat -> TV
+    | _, i => .mkTV s!"?inst{i}"
+  qs.foldrIdx (init := (∅, [])) fun i q (sub, acc) => 
+    let q' := mkFresh q i
+    (sub.insert q (.TVar q'), q' :: acc)
+
+def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType)
+  : F (List MLType × Subst × List Pred) := do
+  if qs.isEmpty then return ([], ∅, ctx)
+  let (rn, qs) := αRename qs
+  let schemeBody := apply rn schemeBody
+  let ctx := apply rn ctx
+  let sub <- unify (monoOfTSch instTy) (monoOfTSch schemeBody)
+  return (qs.map (fun a => apply sub (TVar a)), sub, apply sub ctx |>.map Helper.normHKPred)
 
 @[inline] def wrapTyLams (qs : List TV) (e : FExpr) : FExpr := qs.foldr .TyLam e
 @[inline] def mkApp (f a : FExpr) : FExpr :=
   .App f a $ match f.getTy with | _ ->' b => b | other => other
+
+def isSkolemOf (h : String) (v : TV) : Bool :=
+  let h' := Substring.mk h ⟨4⟩ h.endPos
+  let v := v.toStr.toSubstring
+  h.startsWith "?sk." && h' == v
+partial def eqSkolem : MLType -> MLType -> Bool
+  | .TVar v, .TVar w => v == w
+  | .TVar v, .TCon h => isSkolemOf h v
+  | .KApp v asT, .KApp w asG
+  | .TApp v asT, .TApp w asG =>
+    v == w 
+    && asT.length == asG.length 
+    && List.all2 eqSkolem asT asG
+  | .KApp v asT, .TApp h asG | .TApp h asG, .KApp v asT =>
+    (isSkolemOf h v || (h.isLowerInit && toString v == h))
+    && asT.length == asG.length
+    && List.all2 eqSkolem asT asG
+  | t₁ ->' t₂, u₁ ->' u₂ | t₁ ×'' t₂, u₁ ×'' u₂ => eqSkolem t₁ u₁ && eqSkolem t₂ u₂
+  | .TCon a, .TCon b => a == b
+  | _, _ => false
+
+def mv? : TV -> Bool
+  | .mkTV s => s.startsWith "?"
+
+@[inline] def isHKVarTV : TV -> Bool
+  | .mkTV s => s.isLowerInit
+
+def templHasVarHead : MLType -> Bool
+  | .TVar _ => true
+  | .KApp _ [] => true
+  | .TApp h [] => h.isLowerInit
+  | _ => false
+
+def eqGoal (templ goal : MLType) : Bool :=
+  match goal with
+  | .TVar v => mv? v || isHKVarTV v && templHasVarHead templ || eqSkolem templ goal
+  | .KApp v [] => isHKVarTV v && templHasVarHead templ || eqSkolem templ goal
+  | .TApp h [] => h.isLowerInit && templHasVarHead templ || eqSkolem templ goal
+  | _ => eqSkolem templ goal
+
+def predEqGoal (templ goal : Pred) : Bool :=
+  templ.cls == goal.cls
+  && templ.args.length == goal.args.length
+  && List.all2 eqGoal templ.args goal.args
+
+def predEqSkolem (templ goal : Pred) : Bool :=
+  templ.cls == goal.cls
+  && templ.args.length == goal.args.length
+  && List.all2 eqSkolem templ.args goal.args
 
 -- linear search, scope is usually tiny.
 def lookupDictVar (scope : DictScope) (goal : Pred) : Option (String × MLType) :=
@@ -108,26 +171,21 @@ def lookupDictVar (scope : DictScope) (goal : Pred) : Option (String × MLType) 
   go
   | [] => none
   | (templ, v) :: xs =>
-    if templ.cls != goal.cls || templ.args.length != goal.args.length then go xs
-    else
-      let (s, ok) := unify2 (∅ : Subst) templ.args goal.args
-      if ok then some (v, apply s (dictTypeOfPred templ)) else go xs
-  unify2 s
-  | ta :: tas, ga :: gas =>
-    match unify (apply s ta) (apply s ga) with
-    | .ok s' => unify2 (s' ∪' s) tas gas
-    | .error _ => (s, false)
-  | _, _ => (s, true)
+    if predEqSkolem templ goal || predEqGoal templ goal then some (v, dictTypeOfPred templ)
+    else go xs
+#eval lookupDictVar 
+  [({ cls := "Monad", args := [MLType.KApp (TV.mkTV "α") []] }, "d_Monad_0")] 
+  { cls := "Monad", args := [MLType.KApp (TV.mkTV "m") []] }
 
 @[inline] def isGroundPred (p : Pred) : Bool :=
   (fv p.args).isEmpty
 
 @[inline] def patOfIdx (ctor : Symbol) (idx : Nat) (sz : Nat) : Pattern :=
-  .PCtor ctor $ Array.replicate sz .PWild |>.set! idx (.PVar s!"__m_{ctor}_{idx}")
+  .PCtor ctor $ Array.replicate sz .PWild |>.set! idx (.PVar s!"m_{ctor}_{idx}")
 
 def mvs (p : Pred) : List TV :=
   let vs := fv p.args
-  vs.fold (fun a tv@(.mkTV s) => if s.startsWith "?m" then tv :: a else a) []
+  vs.fold (fun a tv => if mv? tv then tv :: a else a) []
 
 def stuckMessage (p : Pred) (method : String) : TypingError :=
   let metas := mvs p
@@ -146,9 +204,6 @@ def peelFun (acc : List (String × MLType)) : FExpr -> List (String × MLType) �
 def peelSch1 : MLType -> Option (List TV × List Pred × MLType)
   | .TSch (.Forall vs ps t) => some (vs, ps, t)
   | _ => none
-@[inline] def monoOfTSch : MLType -> MLType
-  | .TSch (.Forall _ _ t) => t
-  | t => t
 
 def pvs : Pattern -> Array String
   | .PVar x => #[x] | .PWild => #[]
@@ -157,14 +212,12 @@ def pvs : Pattern -> Array String
 
 def wrapExtracted (sch : Scheme) (e : FExpr) : FExpr :=
   match sch with
-  | .Forall tvs ctx b =>
-    if tvs.isEmpty && ctx.isEmpty then
-      match peelSch1 b with
-      | some (innerTVs, innerPs, _) =>
-        if innerPs.isEmpty then wrapTyLams innerTVs e
-        else e
-      | none => e
-    else e
+  | .Forall _ _ b =>
+    match peelSch1 b with
+    | some (innerTVs, innerPs, _) =>
+      if innerPs.isEmpty then wrapTyLams innerTVs e
+      else e
+    | none => e
 
 end Helper
 
@@ -194,15 +247,13 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
     <$> elaborate Γsch scope blocked Γfull c
     <*> elaborate Γsch scope blocked Γfull t
     <*> elaborate Γsch scope blocked Γfull e
-  | .Var x sch@(TSch ..) => return (.Var x sch)
   | .Var x ty =>
     if x ∈ blocked then return (.Var x ty)
     else
       match Γsch[x]? with
       | none => return (.Var x ty)
       | some (.Forall qs ctx bodyTy) => do
-        let (tArgs, sub) <- instantiateArgs qs bodyTy ty
-        let instCtx := apply sub ctx
+        let (tArgs, sub, instCtx) <- instantiateArgs qs ctx bodyTy ty
         let method? : Option (ClassInfo × MethodInfo) :=
           Γfull.clsInfo.fold (init := none) fun acc _ ci =>
             match acc with
@@ -222,8 +273,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
             | none =>
               if isGroundPred classPred then
                 elaborateDict Γsch scope classPred Γfull
-              else
-                throw $ stuckMessage classPred x
+              else throw $ stuckMessage classPred x
           let ar := ci.methods.size
           let methodTyFull := apply sub m.mty
           let (projTy, wrapPoly) :=
@@ -237,7 +287,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
             | none => (methodTyFull, pure ∘ id)
           let pat := patOfIdx ci.cname m.idx ar
           let projMono : FExpr :=
-            .Match #[dict] #[(#[pat], .Var s!"__m_{ci.cname}_{m.idx}" projTy)]
+            .Match #[dict] #[(#[pat], .Var s!"m_{ci.cname}_{m.idx}" projTy)]
               projTy none #[]
           let others := instCtx.filter (·.cls != ci.cname)
           let projWithDicts <-
@@ -254,9 +304,10 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
     let Γsch := binds.foldl (fun g (x, sch, _) => g.insert x sch) Γsch
     let (localScope, out) <-
       binds.foldlM (init := (scope, #[])) fun (localScope, out) (x, sch@(.Forall qs ctx bTy), rhs) => do
-        let dictVars := ctx.mapIdx fun i p => (p, s!"__d_{p.cls}_{i}")
+        let dictVars := ctx.mapIdx fun i p => (p, s!"d_{p.cls}_{i}")
         let scopeForRhs := dictVars.foldl (flip List.cons) localScope
         let rhsCore <- elaborate Γsch scopeForRhs blocked Γfull rhs
+        let rhsCore := wrapExtracted sch rhsCore
         let bodyWithDicts :=
           if ctx.isEmpty then rhsCore
           else dictVars.foldr
@@ -264,7 +315,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
               let dty := dictTypeOfPred p
               .Fun nm dty acc (dty ->' acc.getTy))
             rhsCore
-        let rhsFinal := wrapExtracted sch $ wrapTyLams qs bodyWithDicts
+        let rhsFinal := wrapTyLams qs bodyWithDicts
         return (scopeForRhs, out.push (x, sch, rhsFinal))
     let bodyF <- elaborate Γsch localScope blocked Γfull body
     return (.Let out bodyF ty)
@@ -299,9 +350,10 @@ partial def elaborateWithScope
     (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (te : TExpr) (sch : Scheme) (Γfull : Env)
     : F FExpr := do
     let (.Forall qs ctx _) := sch
-    let dictVars := ctx.mapIdx fun i p => (p, s!"__d_{p.cls}_{i}")
+    let dictVars := ctx.mapIdx fun i p => (p, s!"d_{p.cls}_{i}")
     let scopeFor := dictVars.foldl (flip List.cons) scope
     let core <- elaborate Γsch scopeFor blocked Γfull te
+    let core := wrapExtracted sch core
     let coreWithDicts :=
       if ctx.isEmpty then core
       else
@@ -325,7 +377,7 @@ partial def elaborateWithScope
             let dty := dictTypeOfPred p
             .Fun nm dty acc (dty ->' acc.getTy))
           core
-    return wrapExtracted sch $ wrapTyLams qs coreWithDicts
+    return wrapTyLams qs coreWithDicts
 
 end
 
@@ -372,14 +424,14 @@ local instance : Std.ToFormat Pattern where
   format := .text ∘ Pattern.toStr
 open Std Std.Format in
 partial def FExpr.unexpand : FExpr -> Format
-  | .CI i _ | .CS i _ | .CB i _ => format i
+  | .CI i _ | .CB i _ | .CS i _ => repr i
   | .CUnit _ => format ()
   | .App f a _ =>
     let rec parenR?
-      | p@(.App ..) | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) => paren (unexpand p)
+      | p@(.App ..) | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
       | p => unexpand p
     let rec parenL?
-      | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) => paren (unexpand p)
+      | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
       | p => unexpand p
     parenL? f <> parenR? a
   | .Cond c t e _ =>
@@ -424,3 +476,4 @@ in instance : ToFormat FExpr := ⟨FExpr.unexpand⟩
 in instance : ToFormat TopDeclF := ⟨TopDeclF.unexpand⟩
 in
 def unexpandDeclsF (arr : Array TopDeclF) : Format := joinSep' arr (line ++ line)
+

@@ -272,7 +272,7 @@ def takeBindingOp? (minPrec : Nat) : TParser σ (Option (String × OpEntry)) :=
     else
       string sym *> return some (sym, entry)
 
-def hole i := s!"__?x{Nat.toSubscriptString i}"
+def hole i := s!"?x{Nat.toSubscriptString i}"
 
 --instance prodSizeOf [SizeOf α] [SizeOf β] : SizeOf $ α × β where
 --  sizeOf p := sizeOf p.fst + sizeOf p.snd + 1

@@ -1,0 +1,103 @@
+class Functor (f : 1) =
+  {map : forall a b, (a -> b) -> f a -> f b}
+class Applicative (f : 1) =
+  { pure : ∀ a, a -> f a
+    -- lazy to preserve eval semantics
+  , seq : ∀a b, f (a -> b) -> (Unit -> f a) -> f b
+  }
+class Monad (m : 1) =
+  { bind : ∀a b, m a -> (a -> m b) -> m b
+  , return : ∀a, a -> m a}
+
+infixl 55 ">>=" => bind
+
+instance ∀(m : 1) [Monad m], Applicative m =
+  { pure = return
+  , seq f x = f >>= fun f => x () >>= fun x => return $ f x
+  }
+instance ∀(f : 1) [Applicative f], Functor f =
+  {map f x = seq (pure f) fun _ => x}
+
+type Option a = None | Some a
+
+instance Applicative Option =
+   { pure = Some
+   , seq
+     | None, x => None
+     | Some f, x =>
+       match x () with
+       | None => None
+       | Some x => pure (f x)
+   }
+instance Monad Option =
+  { return = Some
+  , bind
+    | None, _ => None
+    | Some x, f => f x}
+let id x = x
+let bindOp = (bind : ∀a b, Option a -> (a -> Option b) -> Option b)
+let seqOp = seq (Some id)
+  -- uses the first instance, instead of the most specific one.
+
+---------------- SysF IR ----------------
+
+let (>>=) : ∀ α [Monad α], ∀ a b, α a → (a → α b) → α b =
+  Λ α.fun d_Monad_0 =>
+    Λ a.Λ b.match d_Monad_0 with
+    | Monad m_Monad_0 _ =>
+      m_Monad_0
+
+let i_Applicative_0 : ∀ α [Monad α], Applicative α =
+  Λ α.fun d_Monad_0 =>
+    Applicative match d_Monad_0 with
+    | Monad _ m_Monad_1 =>
+      m_Monad_1 (fun f =>
+       fun x =>
+         match d_Monad_0 with
+         | Monad m_Monad_0 _ =>
+           m_Monad_0 f (fun f =>
+            match d_Monad_0 with
+            | Monad m_Monad_0 _ =>
+              m_Monad_0 (x ()) (fun x => match d_Monad_0 with | Monad _ m_Monad_1 => m_Monad_1 (f x))))
+
+let i_Functor_0 : ∀ α [Applicative α], Functor α =
+  Λ α.fun d_Applicative_0 =>
+    Functor (fun f =>
+       fun x =>
+         match d_Applicative_0 with
+         | Applicative _ m_Applicative_1 =>
+           m_Applicative_1 (match d_Applicative_0 with
+          | Applicative m_Applicative_0 _ =>
+            m_Applicative_0 f) (fun _ => x))
+
+let i_Applicative_1 : Applicative Option =
+  Applicative Some (fun ?x₀ =>
+     fun ?x₁ =>
+       match ?x₀, ?x₁ with
+       | None, x =>
+         None
+       | Some f, x =>
+         match x () with
+         | None =>
+           None
+         | Some x =>
+           match i_Applicative_0 i_Monad_0 with
+           | Applicative m_Applicative_0 _ =>
+             m_Applicative_0 (f x))
+
+let i_Monad_0 : Monad Option =
+  Monad (fun ?x₀ => fun ?x₁ => match ?x₀, ?x₁ with | None, _ => None | Some x, f => f x) Some
+
+let id : ∀ α, α → α =
+  Λ α.fun x =>
+    x
+
+let bindOp : ∀ a b, Option a → (a → Option b) → Option b =
+  Λ a.Λ b.match i_Monad_0 with
+  | Monad m_Monad_0 _ =>
+    m_Monad_0
+
+let seqOp : ∀ α, (Unit → Option α) → Option α =
+  Λ α.match i_Applicative_0 i_Monad_0 with
+  | Applicative _ m_Applicative_1 =>
+    m_Applicative_1 (Some id)
