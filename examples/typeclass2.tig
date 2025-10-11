@@ -22,46 +22,40 @@ let _ = (_ + 1) <$> (1 :: 2 :: 3 :: 4 :: 5 :: Nil)
 
 ------------------ SysF IR -----------------
 
-let (::) : ∀ α, α → List α → List α =
-  Λ α.Cons
+let (::) : ∀ α, α → List α → List α = (Λ α. Cons@α)
 
 let (<$>) : ∀ α [Functor α], ∀ a b, (a → b) → α a → α b =
-  Λ α.fun d_Functor_0 =>
-    Λ a.Λ b.match d_Functor_0 with
-    | Functor m_Functor_0 =>
-      m_Functor_0
+  (Λ α. fun d_Functor_0 : Functor α => (Λ a b. d_Functor_0[0, map]@α))
 
 let optionMap : ∀ α β, (β → α) → Option β → Option α =
-  Λ α.Λ β.fun f =>
-    fun ?x₀ =>
-      match ?x₀ with
-      | None =>
-        None
-      | Some a =>
-        Some (f a)
+  (Λ α β.
+     fun f : β → α =>
+       fun ?x₀ : Option β =>
+         match ?x₀ with | None => None@α | Some a => Some@α (f a))
 
-let listMap : ∀ α β, (α → β) → List α → List β =
-  Λ α.Λ β.fun listMap =>
-    fun f =>
-      fun ?x₀ =>
-        match ?x₀ with
-        | Nil =>
-          Nil
-        | Cons x xs =>
-          Cons (f x) (listMap f xs)
+let listMap : ∀ α β, (β → α) → List β → List α =
+  (Λ α β.
+     fun listMap : (β → α) → List β → List α =>
+       fun f : β → α =>
+         fun ?x₀ : List β =>
+           match ?x₀ with
+           | Nil => Nil@α
+           | Cons x xs => Cons@α (f x) (listMap f xs))
 
-let i_Functor_0 : Functor List =
-  Functor listMap
+let i_Functor_0 : Functor List = Functor@List (Λ a b. listMap@b@a)
 
-let i_Functor_1 : Functor Option =
-  Functor optionMap
+let i_Functor_1 : Functor Option = Functor@Option (Λ a b. optionMap@b@a)
 
 let _ : Option Int =
-  match i_Functor_1 with
-  | Functor m_Functor_0 =>
-    m_Functor_0 (fun ?x₀ => add ?x₀ 1) (Some 20)
+  let rd_Functor_0 : Functor Option = i_Functor_1
+  in rd_Functor_0[0, map]@Option (fun ?x₀ : Int => add ?x₀ 1) (Some@Int 20)
 
 let _ : List Int =
-  match i_Functor_0 with
-  | Functor m_Functor_0 =>
-    m_Functor_0 (fun ?x₀ => add ?x₀ 1) (Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))))
+  let rd_Functor_0 : Functor List = i_Functor_0
+  in rd_Functor_0[0, map]@List
+    (fun ?x₀ : Int =>
+       add
+         ?x₀
+         1)
+    (Cons@Int 1 (Cons@Int 2 (Cons@Int 3 (Cons@Int 4 (Cons@Int 5 Nil@Int)))))
+

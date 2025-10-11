@@ -36,25 +36,38 @@ def infixrDecl : TParser σ Binding := do
 
 def let1Decl : TParser σ $ Binding := do
   let id <- ID; let pre <- takeMany funBinderID
+  let ann? <- option? (COLON *> (PType.tyScheme))
   match <- test BAR with
   | true =>
     let a <- sepBy1 BAR matchDiscr
-    return (id, transMatch pre $ pointedExp a)
+    let core := transMatch pre $ pointedExp a
+    let rhs := match ann? with | some sch => Expr.Ascribe core (.TSch sch) | none => core
+    return (id, rhs)
   | false =>
     EQ; let a <- parseExpr
-    return (id, transMatch pre a)
+    let core := transMatch pre a
+    let rhs := match ann? with | some sch => Expr.Ascribe core (.TSch sch) | none => core
+    return (id, rhs)
 
 def letrec1Decl : TParser σ $ Binding := do
   let id <- ID; let pre <- takeMany funBinderID
+  let ann? <- option? (COLON *> PType.tyScheme)
   match <- test BAR with
   | true =>
     let a <- sepBy1 BAR matchDiscr
-    return (id, Fix $ Fun id $ transMatch pre $ pointedExp a)
+    let core := Fix $ Fun id $ transMatch pre $ pointedExp a
+    let rhs := match ann? with | some sch => .Ascribe core (.TSch sch) | none => core
+    return (id, rhs)
   | false =>
     EQ let a <- parseExpr
     if pre.isEmpty && !a matches Fun .. then
-      return (id, transMatch pre a)
-    else return (id, Fix $ Fun id $ transMatch pre a)
+      let core := transMatch pre a
+      let rhs := match ann? with | some sch => .Ascribe core (.TSch sch) | none => core
+      return (id, rhs)
+    else
+      let core := Fix $ Fun id $ transMatch pre a
+      let rhs := match ann? with | some sch => .Ascribe core (.TSch sch) | none => core
+      return (id, rhs)
 
 def letDeclDispatch : TParser σ $ Array Binding := do
   LET;

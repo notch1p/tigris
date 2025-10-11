@@ -144,10 +144,11 @@ abbrev Subst := Std.TreeMap TV MLType
 
 class Rewritable (α : Type) where
   apply : Subst -> α -> α
-  fv    : α -> Std.HashSet TV
+  fv    : α -> Std.TreeSet TV
 
 namespace Rewritable open MLType
-
+instance [Ord α] : Union (Std.TreeSet α) := ⟨.merge⟩
+instance [Ord α] : SDiff (Std.TreeSet α) := ⟨fun s₁ s₂ => s₂.foldl .erase s₁⟩
 instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨fun s₁ s₂ => s₂.fold .erase s₁⟩
 
 mutual
@@ -166,7 +167,7 @@ partial def applyT : Subst -> MLType -> MLType
     | _ => KApp v as
   | s, TSch sch => TSch (applyS s sch)
 
-partial def fvT : MLType -> Std.HashSet TV
+partial def fvT : MLType -> Std.TreeSet TV
   | TCon _ => ∅ | TVar a => {a}
   | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
   | TApp _ as => as.foldl (· ∪ fvT ·) ∅
@@ -174,10 +175,10 @@ partial def fvT : MLType -> Std.HashSet TV
   | TSch sch => fvS sch
 
 partial def applyP : Subst -> Pred -> Pred := (Pred.mapArgs $ applyT ·)
-partial def fvP : Pred -> Std.HashSet TV
+partial def fvP : Pred -> Std.TreeSet TV
   | {args,..} => args.foldl (· ∪ fvT ·) ∅
 
-partial def fvS : Scheme -> Std.HashSet TV
+partial def fvS : Scheme -> Std.TreeSet TV
   | .Forall tvs ps t =>
     let inner := ps.foldr (fvP · ∪ ·) ∅ ∪ fvT t
     tvs.foldl .erase inner
@@ -204,13 +205,12 @@ namespace MLType open Rewritable
   s₂.foldl (init := s₁) fun acc k v =>
     acc.insert k (apply s₁ v)
 infixl : 65 " ∪' " => merge
-
 def gensym (n : Nat) : String :=
   let (q, r) := (n / 25, n % 25)
   let s := Char.ofNat $ r + 0x03b1
   if q == 0 then s.toString
   else s.toString ++ q.toSubscriptString
-
+def strLE x y := decide $ String.le x y
 partial def normalize : Scheme -> Scheme
   | .Forall _ ps body =>
     let ts := fv ps ∪ fv body |>.toList
@@ -233,6 +233,48 @@ partial def normalize : Scheme -> Scheme
     let ps := ps.map fun p => p.mapArgs $ normtype ∅
   .Forall (ord.map Prod.snd) ps (normtype ∅ body)
 
+partial def normalizeWithRen : Scheme -> (Scheme × Subst)
+  | .Forall _ ps body =>
+    let ts := fv ps ∪ fv body |>.toList
+    let ord : List (TV × TV) := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
+    let rename a := ord.lookup a |>.getD a
+    let rec normtype (blocked : Std.HashSet TV)
+      | a ->' b => normtype blocked a ->' normtype blocked b
+      | a ×'' b => normtype blocked a ×'' normtype blocked b
+      | .TVar a => .TVar $ if a ∈ blocked then a else rename a
+      | .TApp h as => .TApp h (as.map (normtype blocked))
+      | .KApp v as =>
+        let v := if v ∈ blocked then v else rename v
+        .KApp v (as.map (normtype blocked))
+      | .TSch (.Forall tvs ps ty) =>
+        let blocked := blocked.insertMany tvs
+        let ps := ps.map fun p => p.mapArgs (normtype blocked)
+        .TSch (.Forall tvs ps (normtype blocked ty))
+      | t => t
+    let ps' := ps.map fun p => p.mapArgs (normtype ∅)
+    let body' := normtype ∅ body
+    let vs' := ord.map Prod.snd
+    let renSub : Subst := ord.foldl (init := ∅) (fun s (a,b) => s.insert a (MLType.TVar b))
+    (.Forall vs' ps' body', renSub)
+
+def normalizeT (t : MLType) : MLType :=
+  match normalize (.Forall [] [] t) with
+  | .Forall _ _ t' => t'
+
+mutual
+partial def unSkolem : MLType -> MLType
+  | .TVar v => .TVar v
+  | .TCon h =>
+    if h.startsWith "?sk." then .TVar (.mkTV (h.drop 4)) else .TCon h
+  | a ->' b => unSkolem a ->' unSkolem b
+  | a ×'' b => unSkolem a ×'' unSkolem b
+  | .TApp h as => .TApp h (as.map unSkolem)
+  | .KApp v as => .KApp v (as.map unSkolem)
+  | .TSch sch => .TSch (unSkolemS sch)
+partial def unSkolemP (p : Pred) : Pred := p.mapArgs unSkolem
+partial def unSkolemS : Scheme -> Scheme
+  | .Forall vs ps t => .Forall vs (ps.map unSkolemP) (unSkolem t)
+end
 def isRecRhs : Expr -> Bool
   | .Fix _ | .Fixcomb _ => true
   | _ => false

@@ -8,7 +8,7 @@ infixl 35 "&&" => boolAnd
 instance Eq Int = {eq = __eqInt}
 instance ∀a [Eq a], HEq a a = {heq = eq}
 instance HAdd Int Int Int = {hadd = add}
-instance forall m k [Eq m, Eq k], Eq (m * k) =
+instance forall a b [Eq a, Eq b], Eq (a * b) =
   {eq (x, y) (x', y') = x = x' && y = y'}
 
 let f = heq ((hadd 1 2) : Int) 3
@@ -20,45 +20,36 @@ let f' = heq (hadd 2 3) 5 -- Ambiguous: HEq ?m6 Int: typeclass elaboration is st
 ------------------------ SysF IR -------------------
 
 let boolAnd : Bool → Bool → Bool =
-  fun ?x₀ =>
-    fun ?x₁ =>
-      match ?x₀, ?x₁ with
-      | true, true =>
-        true
-      | _, _ =>
-        false
+  fun ?x₀ : Bool =>
+    fun ?x₁ : Bool => match ?x₀, ?x₁ with | true, true => true | _, _ => false
 
-let (&&) : Bool → Bool → Bool =
-  boolAnd
+let (&&) : Bool → Bool → Bool = boolAnd
 
-let i_Eq_0 : Eq Int =
-  Eq __eqInt
+let i_Eq_0 : Eq Int = Eq@Int __eqInt
 
-let i_HEq_0 : ∀ α [Eq α], HEq α α =
-  Λ α.fun d_Eq_0 =>
-    HEq match d_Eq_0 with
-    | Eq m_Eq_0 =>
-      m_Eq_0
+let i_HEq_0 : ∀ a [Eq a], HEq a a =
+  (Λ a. fun d_Eq_0 : Eq a => HEq@a@a d_Eq_0[0, eq]@a)
 
-let i_HAdd_0 : HAdd Int Int Int =
-  HAdd add
+let i_HAdd_0 : HAdd Int Int Int = HAdd@Int@Int@Int add
 
-let i_Eq_1 : ∀ α β [Eq β, Eq α], Eq (β × α) =
-  Λ α.Λ β.fun d_Eq_0 =>
-    fun d_Eq_1 =>
-      Eq (fun ?x₀ =>
-         fun ?x₁ =>
-           match ?x₀, ?x₁ with
-           | (x, y), (x', y') =>
-             boolAnd (match d_Eq_0 with | Eq m_Eq_0 => m_Eq_0 x x') (match d_Eq_1 with | Eq m_Eq_0 => m_Eq_0 y y'))
+let i_Eq_1 : ∀ a b [Eq a, Eq b], Eq (a × b) =
+  (Λ a b.
+     fun d_Eq_0 : Eq a =>
+       fun d_Eq_1 : Eq b =>
+         Eq@(a × b)
+           (fun ?x₀ : a × b =>
+              fun ?x₁ : a × b =>
+                match ?x₀, ?x₁ with
+                | (x, y), (x', y') =>
+                  boolAnd (d_Eq_0[0, eq]@a x x') (d_Eq_1[0, eq]@b y y')))
 
 let f : Bool =
-  match i_HEq_0 i_Eq_0 with
-  | HEq m_HEq_0 =>
-    m_HEq_0 (match i_HAdd_0 with | HAdd m_HAdd_0 => m_HAdd_0 1 2) 3
+  let rd_HAdd_2 : HAdd Int Int Int = i_HAdd_0
+  and rd_HEq_1 : HEq Int Int =
+    let rd_Eq_0 : Eq Int = i_Eq_0
+    in i_HEq_0@Int rd_Eq_0
+  in rd_HEq_1[0, heq]@Int@Int (rd_HAdd_2[0, hadd]@Int@Int@Int 1 2) 3
 
 let f' : ∀ α [HEq Int α], α → Bool =
-  Λ α.fun d_HEq_0 =>
-    match d_HEq_0 with
-    | HEq m_HEq_0 =>
-      m_HEq_0 0
+  (Λ α. fun d_HEq_0 : HEq Int α => d_HEq_0[0, heq]@Int@α 0)
+

@@ -40,14 +40,18 @@ def mkTupExpr (arr : Array Expr) : Expr :=
 
 open TConst in
 @[inline] def funBinder : TParser σ Pattern := spaces *> first'
-  #[ PConst <$> PInt <$> intLit
+  #[ patRecordTyped
+   , patRecord
+   , PConst <$> PInt <$> intLit
    , PConst <$> PStr <$> strLit
    , parenthesized patProd
    , parenthesized parsePattern]
   simpErrorCombine
 in
 @[inline] def funBinderID : TParser σ Pattern := spaces *> first'
-  #[ PConst <$> PInt <$> intLit
+  #[ patRecordTyped
+   , patRecord
+   , PConst <$> PInt <$> intLit
    , PConst <$> PStr <$> strLit
    , PVar <$> ID
    , parenthesized patProd
@@ -146,26 +150,40 @@ partial def matchExp    : TParser σ Expr := do
 
 partial def let1 : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
+  let ann? <- option? (COLON *> PType.tyForall false ∅)
   match <- test BAR with
   | true =>
     let br <- sepBy1 BAR matchDiscr
-    return Prod.mk id (transMatch pre $ pointedExp br)
+    let core := transMatch pre $ pointedExp br
+    let rhs := match ann? with | some ty => Expr.Ascribe core ty
+                               | none => core
+    return Prod.mk id rhs
   | false =>
     EQ; let e₁ <- parseExpr;
-    return Prod.mk id (transMatch pre e₁)
+    let core := transMatch pre e₁
+    let rhs := match ann? with | some ty => .Ascribe core ty | none => core
+    return Prod.mk id rhs
 
 partial def letrec1 : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
+  let ann? <- option? (COLON *> PType.tyForall false ∅)
   match <- test BAR with
   | true =>
     let br <- sepBy1 BAR matchDiscr
-    return Prod.mk id (Fix $ Fun id $ transMatch pre $ pointedExp br)
+    let core := Fix $ Fun id $ transMatch pre $ pointedExp br
+    let rhs := match ann? with | some ty => .Ascribe core ty | none => core
+    return Prod.mk id rhs
   | false =>
     EQ; let e₁ <- parseExpr
     if pre.isEmpty && !e₁ matches Fun .. then
       warn s!"Use let instead of letrec for nonrecursive definition of '{id}'\n"
-      return Prod.mk id (transMatch pre e₁)
-    else return Prod.mk id (Fix $ Fun id $ transMatch pre e₁)
+      let core := transMatch pre e₁
+      let rhs := match ann? with | some ty => .Ascribe core ty | none => core
+      return Prod.mk id rhs
+    else 
+      let core := Fix $ Fun id $ transMatch pre e₁
+      let rhs := match ann? with | some ty => .Ascribe core ty | none => core
+      return Prod.mk id rhs
 
 partial def letDispatch : TParser σ Expr := do
   LET

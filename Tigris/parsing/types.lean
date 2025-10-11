@@ -74,6 +74,8 @@ def Pattern.render : Pattern -> String
 instance : ToString Pattern := ⟨Pattern.toStr⟩
 inductive TV where
   | mkTV : String -> TV deriving Repr, Ord, Hashable
+
+def TV.elimStr | (mkTV s) => s
 instance : BEq TV := ⟨fun (.mkTV s) (.mkTV s') => s == s'⟩
 instance : ToString TV := ⟨fun (.mkTV s) => s⟩
 instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩

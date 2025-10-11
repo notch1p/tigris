@@ -60,11 +60,17 @@ partial def patProd : TParser σ Pattern := do
 
 partial def patRecord : TParser σ Pattern := do
   resolveBareRecordPat =<< braced do sepBy COMMA do
-    let f <- ID; EQ; let e <- parsePattern; return (f, e)
+    let f <- ID; 
+    match <- option? $ EQ *> parsePattern with
+    | none => return (f, PVar f)
+    | some e => return (f, e)
 
 partial def patRecordTyped : TParser σ Pattern := do
   let ps <- braced do sepBy COMMA do
-    let f <- ID; EQ; let e <- parsePattern; return (f, e)
+    let f <- ID; EQ;
+    match <- option? $ EQ *> parsePattern with
+    | none => return (f, PVar f)
+    | some e => return (f, e)
   COLON
   match <- PType.tyExp ∅ with
   | .TCon s | .TApp s _ => reorderRecordPat s ps

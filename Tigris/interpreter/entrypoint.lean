@@ -133,10 +133,6 @@ def checkFile (s : String) : IO Unit := do
   let stage0 <- inferToplevelC topdecl defaultE' |> IO.ofExcept
   let (toplevel, logger) <- inferToplevelF stage0 |> IO.ofExcept
   println! logger
-  println! unexpandDeclsF toplevel
+  println! Std.Format.pretty (width := 80) $ unexpandDeclsF toplevel
 end MLType
-
-#eval MLType.checkFile
-"
-"
 
