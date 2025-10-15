@@ -122,7 +122,7 @@ partial def instanceExp (ctor : Symbol)
 
 open PType in
 def instanceDecl : TParser σ TopDecl := do
-  INSTANCE
+  INSTANCE; optional COLON
   let (.Forall _ ctxPreds ty) <- tyScheme
   let (.TApp cname args) := ty.getRightmost | error "not a valid class" *> throwUnexpected
   EQ;

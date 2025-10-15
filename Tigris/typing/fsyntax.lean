@@ -11,10 +11,6 @@ def String.isSkolemOf (h : String) (v : TV) : Bool :=
 def MLType.isTApp : MLType -> Bool
   | .TApp .. => true | _ => false
 
-namespace SysF open MLType TExpr Rewritable
-open ConstraintInfer (unify)
-open Resolve (resolvePred)
-
 inductive FExpr where
   | CI     (i : Int)    (ty : MLType)
   | CS     (s : String) (ty : MLType)
@@ -50,6 +46,10 @@ def FExpr.getTy
     -- TyApp currently doesn't carry result type.
     -- f.getTy should NOT yield a arrow type as polys are erased after instantiation
 
+namespace SysF open MLType TExpr Rewritable
+open ConstraintInfer (unify)
+open Resolve (resolvePred)
+
 abbrev FEnv := Std.TreeMap String Scheme
 abbrev DictScope := List (Pred × String)  -- predicate template + dict variable name
 
@@ -73,15 +73,6 @@ abbrev Blocked := Std.HashSet String
 
 @[inline] def memoInsert (p : Pred) (entry : String × Scheme × FExpr) : F Unit :=
   modify fun st => {st with memo := st.memo.insert p entry}
-
-def withMemoScope (act : F FExpr) : F FExpr := fun st =>
-  match act {st with memo := ∅} with
-  | .error e st => .error e st
-  | .ok e st' =>
-    let binds := st'.memo.valuesArray.qsort (strLE.on Prod.fst)
-    let st := {st' with memo := st.memo}
-    if binds.isEmpty then .ok e st
-    else .ok (.Let binds e e.getTy) st
 
 instance : MonadLift (Except TypingError) F where
   monadLift
@@ -315,6 +306,24 @@ partial def ηReduce : FExpr -> FExpr
 
 end Helper
 
+def withMemoScope (act : F FExpr) : F FExpr := fun st =>
+  match act {st with memo := ∅} with
+  | .error e st => .error e st
+  | .ok e st' =>
+    let binds := st'.memo.valuesArray.qsort (strLE.on Prod.fst)
+    let st := {st' with memo := st.memo}
+    if binds.isEmpty then .ok e st
+    else .ok (place binds e) st where
+place binds
+  | .TyLam a b => .TyLam a (place binds b)
+  | .Fix (.Fun self selfTy funChain _) fixTy =>
+    let (params, core) := Helper.peelFun [] funChain
+    let core := .Let binds core core.getTy
+    let rebuilt := params.foldr (fun (n, ty) acc => .Fun n ty acc (ty ->' acc.getTy)) core
+    let newSelfFun := .Fun self selfTy rebuilt (selfTy ->' rebuilt.getTy)
+    .Fix newSelfFun fixTy
+  | other => .Let binds other other.getTy
+
 local instance : Std.ToFormat Pattern where
   format := .text ∘ Pattern.toStr
 open Std Std.Format in
@@ -326,7 +335,7 @@ partial def FExpr.unexpand : FExpr -> Format
   | .Cond c t e _ =>
     "if" <> unexpand c <+> "then" ++ indentD (unexpand t)
     <+> "else" ++ indentD (unexpand e)
-  | .Fix e _ => unexpand e
+  | .Fix e _ => "rec" <> unexpand e
   | .Var x _ => format x
   | .Prod' p q _ => paren $ unexpand p <> "," <> unexpand q
   | .Fun param pTy body _ =>

@@ -8,12 +8,6 @@ import PP
 namespace IR variable {σ}
 
 namespace Helper open MLType (decomposeArr)
-def constOf : TConst -> Const × PrimOp
-  | .PUnit     => (.unit  , .eqInt)
-  | .PInt i    => (.int i , .eqInt)
-  | .PBool b   => (.bool b, .eqBool)
-  | .PStr s    => (.str s , .eqStr)
-@[inline] def constOnly := Prod.fst ∘ constOf
 /- must be homogeneous -/
 def primOfName (s : String) (t : MLType) : Option PrimOp :=
   match s, t with
@@ -72,23 +66,6 @@ def matchCtorApp (ctorArity : Std.HashMap String Nat) (e : TExpr)
     | none    => none
   | _ => none
 
-def realizeSel (roots : Array Name) : Sel -> (Name -> M σ LExpr) -> M σ LExpr
-  | .base i, k => k roots[i]!
-  | .field s i, k => realizeSel roots s fun v => do
-    let p <- fresh "p"
-    let cont <- k p
-    return .letRhs p (.proj v i) cont
-
-def collectTopPatBinds (p : Pattern) (s : Sel) : Array (String × Sel) := go p s where
-  go
-  | .PVar x, sel      => #[(x, sel)]
-  | .PWild, _         => #[]
-  | .PConst _, _      => #[]
-  | .PProd' p q, sel  => go p (.field sel 0) ++ go q (.field sel 1)
-  | .PCtor _ as, sel  =>
-    as.size.fold (init := #[]) fun i _ acc =>
-      acc ++ go as[i] (.field sel i)
-
 def splitLetGroup
   (xs : Array (Name × Scheme × TExpr))
   -- recs                                      nonrecs
@@ -102,32 +79,6 @@ def splitLetGroup
         | some (selfN, params, core) => (recs.push (x, selfN, params, core), nonrecs)
         | none => (recs, nonrecs.push (x, e))
       | _ => (recs, nonrecs.push (x, e))
-
-def destructArgsPrelude (tuple : Name) (params : Array Name) (core : LExpr) : LExpr :=
-  let sz := params.size
-  if sz = 0 then
-    core
-  else if _ : sz = 1 then
-    let p0 := params[0]
-    let l  := s!"_pL#{p0}"
-    let r  := s!"_pR#{p0}"   -- dummy unit tail
-    .letRhs l (.proj tuple 0)
-    $ .letRhs r (.proj tuple 1)
-    $ .letVal p0 (.var l) core
-  else
-    let rec go (t : Name) (i : Nat) (h : i <= sz) : LExpr :=
-      match h' : i with
-      | 0 => core
-      | 1 => .letVal params[sz - 1] (.var t) core
-      | n + 2 =>
-        let x := params[sz - i]
-        let l := s!"_pL#{x}"
-        let r := s!"_pR#{x}"
-        .letRhs l (.proj t 0)
-        $ .letRhs r (.proj t 1)
-        $ .letVal x (.var l)
-        $ go r i.pred (Nat.le_trans (Nat.pred_le i) (h' ▸ h))
-    go tuple sz Nat.le.refl
 
 partial def findReturnedVar : TExpr -> Option (String × MLType × (TExpr -> TExpr))
   | .Var v ty => some (v, ty, id)
@@ -169,15 +120,24 @@ def etaExpandParams (params : Array String) (core : TExpr) : (Array String × TE
       let allParams := params ++ newPs
       (allParams, rebuild applied)
 
+def realizeSel (roots : Array Name) : Sel -> (Name -> M σ LExpr) -> M σ LExpr
+  | .base i, k => k roots[i]!
+  | .field s i, k => realizeSel roots s fun v => do
+    let p <- fresh "p"
+    let cont <- k p
+    return .letRhs p (.proj v i) cont
+
+def collectTopPatBinds (p : Pattern) (s : Sel) : Array (String × Sel) := go p s where
+  go
+  | .PVar x, sel      => #[(x, sel)]
+  | .PWild, _         => #[]
+  | .PConst _, _      => #[]
+  | .PProd' p q, sel  => go p (.field sel 0) ++ go q (.field sel 1)
+  | .PCtor _ as, sel  =>
+    as.size.fold (init := #[]) fun i _ acc => acc ++ go as[i] (.field sel i)
+
 end Helper
 
-
-def buildPairs (kont : Name -> M σ LExpr) : (name : List Name) -> M σ LExpr
-  | [] => unreachable!
-  | [x] => kont x
-  | x :: xs => do
-    let t <- fresh "pair"
-    buildPairs (name := xs) fun y => .letRhs t (.mkPair x y) <$> kont t
 
 open Function (uncurry) in
 open Helper in
@@ -254,37 +214,6 @@ partial def lowerFunApp
       lowerMany args ρ ctors fun supplied => do
         let missing := n - args.size
 
---        let rec buildLam (i : Nat) (captured : Array Name) : M σ Value := do
---          let p <- fresh "arg"
---          if i + 1 < missing then
---            let inner <- buildLam i.succ $ captured.push p
---            let v <- fresh "lam"
---            let body := .letVal v inner $ .seq #[] $ (.ret v)
---            return .lam p body
---          else
---            let res <- fresh "r"
---            let allArgs := supplied ++ captured.push p
---            .lam p <$>
---              buildPairs (name := allArgs.toList) fun tuple =>
---                pure $ .letRhs res (.call vf tuple) (.seq #[] (.ret res))
---        let lamV <- buildLam 0 #[]
---        let out <- fresh "clos"
---        let cont <- k out
---        return .letVal out lamV cont
-        let rec destructTuple (root : Name) (names : Array Name) (idx : Nat) : LExpr -> LExpr :=
-          if h : idx < names.size then
-            if names.size - idx = 1 then
-              -- last name just aliases root
-              fun core => .letVal (names[idx]) (.var root) core
-            else
-              fun core =>
-                let l := s!"_pL#{names[idx]}"
-                let r := s!"_pR#{names[idx]}"
-                .letRhs l (.proj root 0) $
-                .letRhs r (.proj root 1) $
-                .letVal (names[idx]) (.var l) $
-                  destructTuple r names (idx + 1) core
-          else id
         if missing = 1 then
           /- Old behavior (single missing arg): produce unary curried closure. -/
           let lamV <- do
@@ -302,7 +231,7 @@ partial def lowerFunApp
              expecting all remaining arguments packed as a right-associated pair chain. -/
           let param <- fresh "rest"      -- single payload of remaining args
           -- create fresh names for each remaining argument
-          let restNames : Array Name <- missing.foldM (init := #[]) fun _ _ a =>
+          let restNames : Array Name <- missing.foldM (init := supplied) fun _ _ a =>
             a.push <$> fresh
           let allArgs := supplied ++ restNames
           let res <- fresh "r"

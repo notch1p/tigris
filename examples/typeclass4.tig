@@ -1,0 +1,20 @@
+class Eq a = {eq : a -> a -> Bool}
+
+instance Eq Int = {eq = fun x y => __eqInt x y}
+
+type List a = Nil | Cons a (List a)
+infixr 67 "::" => Cons
+
+let rec listEq
+  | Nil, Nil => true
+  | x :: xs, y :: ys =>
+    if x = y then listEq xs ys else false
+  | _, _ => false
+
+instance forall a [Eq a], Eq (List a) =
+  {eq = listEq}
+
+let main =
+  ( 1 :: 2 :: Nil = 1 :: 2 :: 3 :: Nil
+  , 1 :: 2 :: 3 :: Nil = 1 :: 2 :: 3 :: Nil)
+

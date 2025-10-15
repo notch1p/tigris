@@ -1,0 +1,23 @@
+class Functor (m : 1) = {map : forall a b, (a -> b) -> m a -> m b}
+type Option a = None | Some a
+type List a = Nil | Cons a (List a)
+infixr 100 " <$> " => map
+infixr 67 " :: " => Cons
+
+instance Functor Option =
+  { map f
+    | Some a => Some (f a)
+    | None => None
+  }
+
+let rec listMap f -- : forall a b, (a -> b) -> List a -> List b
+  | Nil => Nil
+  | x :: xs => f x :: listMap f xs
+
+instance Functor List = {map = listMap}
+
+let const x _ = x
+
+let main =
+  ( (2 + _) <$> Some 1
+  , (const true) <$> (1 :: 2 :: 3 :: Nil))
