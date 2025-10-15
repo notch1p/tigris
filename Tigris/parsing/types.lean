@@ -114,6 +114,14 @@ def MLType.decomposeArr : MLType -> (List MLType × MLType)
     let (as, r) := decomposeArr b
     (a :: as, r)
   | t => ([], t)
+def MLType.decomposeArr' : MLType -> (List MLType × MLType)
+  | .TSch (.Forall _ _ps t) => 
+    /-let (as, r) := -/ decomposeArr' t
+    --(ps.map (fun {cls, args} => TApp cls args) ++ as, r)
+  | .TArr a b =>
+    let (as, r) := decomposeArr' b
+    (a :: as, r)
+  | t => ([], t)
 inductive Expr where
   | CI (i : Int)       | CS (s : String)        | CB (b : Bool) | CUnit
   | App (e₁ e₂ : Expr) | Cond (e₁ e₂ e₃ : Expr) | Let (ae : Array $ Symbol × Expr) (e₂ : Expr)

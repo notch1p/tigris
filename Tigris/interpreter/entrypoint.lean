@@ -131,7 +131,7 @@ def check1F (s : String) (E : Env := defaultE) : IO Unit :=
 def checkFile (s : String) : IO Unit := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState |>.toIO .userError
   let stage0 <- inferToplevelC topdecl defaultE' |> IO.ofExcept
-  let (toplevel, logger) <- inferToplevelF stage0 |> IO.ofExcept
+  let (toplevel, logger, _) <- inferToplevelF stage0 |> IO.ofExcept
   println! logger
   println! Std.Format.pretty (width := 80) $ unexpandDeclsF toplevel
 end MLType

@@ -330,25 +330,21 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
   | .error err => throw err
   | .ok (sub, wants) =>
     let applyAll {α} [Rewritable α] : α -> α := apply sub
---    let residual := wants.map Prod.snd
---    let finalize n te ty pl Γ bindsTyped :=
---      let ty := applyAll ty
---      let sch := generalize Γ ty (applyAll pl ++ residual)
---      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
     let predsFor evStart evEnd := 
       wants.foldr (init := []) fun (eid, p) acc =>
         if evStart <= eid && eid < evEnd then (applyAll p) :: acc else acc
-    let finalize n te ty pl evStart evEnd Γ bindsTyped :=
-      let ty := applyAll ty
-      let ownResidual := predsFor evStart evEnd
-      let sch := generalize Γ ty (applyAll pl ++ ownResidual)
-      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
     let (Γ, bindsTyped) :=
       tyRec.foldl (init := (Γ, #[])) fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
-        finalize n te ty ps l r Γ bindsTyped
+      let ty := applyAll ty
+      let ownResidual := predsFor l r
+      let sch := generalize Γ ty (applyAll ps ++ ownResidual)
+      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
     let (Γ, bindsTyped) :=
       tyNon.foldl (init := (Γ, bindsTyped)) fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
-        finalize n te ty ps l r Γ bindsTyped
+      let ty := applyAll ty
+      let ownResidual := predsFor l r
+      let sch := generalize Γ ty (applyAll ps ++ ownResidual)
+      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
     let (tBody, tB, pB) <- inferExpr Γ body
     let tB := applyAll tB
     let tBody := applyAll tBody

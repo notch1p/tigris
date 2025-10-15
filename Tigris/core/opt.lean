@@ -91,13 +91,10 @@ partial def fvExpr : LExpr -> Std.HashSet Name
     letI sb := fvExpr b
     s ∪ sb.erase x
   | .letRec funs b =>
-    letI sb := fvExpr b
-    (·.2) <|
-      funs.foldl
-        (init := ((∅ : Std.HashSet Name), sb))
-        fun (defs, acc) ⟨fid, p, body⟩ =>
-          let fb := (fvExpr body).erase fid |>.erase p
-          (defs.insert fid, acc ∪ fb)
+    let sb  := funs.foldl (·.erase ·.fid) (fvExpr b)
+    funs.foldl (init := sb) fun acc ⟨fid, p, body⟩ =>
+      let fb := fvExpr body |>.erase fid |>.erase p
+      acc ∪ fb
   | .seq binds tail =>
     letI sb := binds.foldl (init := ∅) fun acc (.let1 _ rhs) => acc ∪ (fvRhs rhs)
     sb ∪ (fvTail tail)
@@ -364,6 +361,47 @@ def ηLam? : Value -> Option Value
   | _ => none
 
 mutual
+partial def occursInValue (x : Name) : Value -> Bool
+  | .var y       => x == y
+  | .cst _       => false
+  | .constr _ fs => x ∈ fs
+  | .lam p b     => if p == x then false else occursInExpr x b
+
+partial def occursInRhs (x : Name) : Rhs -> Bool
+  | .prim _ args   => x ∈ args
+  | .proj s _      => x == s
+  | .mkPair a b    => x == a || x == b
+  | .mkConstr _ fs => x ∈ fs
+  | .isConstr s .. => x == s
+  | .call f a      => x == f || x == a
+
+partial def occursInTail (x : Name) : Tail -> Bool
+  | .ret y      => x == y
+  | .app f a    => x == f || x == a
+  | .cond c t e => x == c || occursInExpr x t || occursInExpr x e
+  | .switchConst s cs d? =>
+    x == s || cs.any (occursInExpr x ∘ Prod.snd) || d?.any (occursInExpr x)
+  | .switchCtor s cs d?  =>
+    x == s || cs.any (occursInExpr x ∘ Prod.snd ∘ Prod.snd) || d?.any (occursInExpr x)
+
+partial def occursInExpr (x : Name) : LExpr -> Bool
+  | .letVal y v b =>
+    occursInValue x v || if y == x then false else occursInExpr x b
+  | .letRhs y r b =>
+    occursInRhs x r || if y == x then false else occursInExpr x b
+  | .letRec funs b =>
+    let inBody := occursInExpr x b
+    let inFuns := funs.any fun ⟨fid, p, body⟩ =>
+      if fid == x || p == x then false
+      else occursInExpr x body
+    inBody || inFuns
+  | .seq binds tail =>
+    binds.any (fun (.let1 _ rhs) => occursInRhs x rhs) || occursInTail x tail
+end
+
+@[inline] def occursIn := flip occursInExpr
+
+mutual
 partial def rwValue (env : AEnv) : Value -> Value
   | .var x       => .var (rwName env x)
   | .cst k       => .cst k
@@ -400,9 +438,8 @@ partial def cpdce (env : AEnv) (uses : UMap) : LExpr -> LExpr
     let funs' := funs.map fun ⟨fid, p, b⟩ =>
       ⟨fid, p, cpdce (env.erase fid |>.erase p) uses b⟩
     let body' := cpdce env uses body
-    let keep := funs'.any fun ⟨fid, _, _⟩ => (fvExpr body').contains fid
-    if keep then .letRec funs' body'
-    else body'
+    let keep := funs'.any $ occursIn body' ∘ LFun.fid
+    if keep then .letRec funs' body' else body'
 
   | .seq binds tail =>
     let tail' :=

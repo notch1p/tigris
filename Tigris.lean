@@ -22,6 +22,7 @@ import Tigris.oldcore.matchApp
 --import Tigris.oldcore.opt
 import Tigris.core.lam
 import Tigris.core.transform
+import Tigris.core.ftransform
 import Tigris.core.opt
 import Tigris.core.lift
 import Tigris.cps.ctransform

@@ -35,6 +35,17 @@ def Array.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) (xs : Array
       (go · n $ by omega) =<< f init xs[minSz - i] ys[minSz - i]
   go init minSz Nat.le.refl
 
+def Array.foldl2 (f : γ -> α -> β -> γ) (init : γ) (xs : Array α) (ys : Array β) : γ :=
+  let minSz := Nat.min xs.size ys.size
+  have ⟨h₁, h₂⟩ : minSz <= xs.size ∧ minSz <= ys.size :=
+    ⟨Nat.min_le_left .., Nat.min_le_right ..⟩
+  let rec go init i (h : i <= minSz) :=
+    match h' : i with
+    | 0 => init
+    | n + 1 =>
+      go (f init xs[minSz - i] ys[minSz - i]) n $ by omega
+  go init minSz Nat.le.refl
+
 def List.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : List α) : β :=
   match xs with
   | [] => panic! "empty list"

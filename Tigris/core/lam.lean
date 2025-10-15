@@ -194,7 +194,66 @@ abbrev Env := Std.HashMap String Name
 
 @[inline] def fresh (h := "x") : M σ Name :=
   modifyGet fun n => (h ++ toString n, n + 1)
+
+def buildPairs (kont : Name -> M σ LExpr) : (name : List Name) -> M σ LExpr
+  | [] => unreachable!
+  | [x] => kont x
+  | x :: xs => do
+    let t <- fresh "pair"
+    buildPairs (name := xs) fun y => .letRhs t (.mkPair x y) <$> kont t
+
+namespace Helper
+
+def destructTuple (root : Name) (names : Array Name) (idx : Nat) : LExpr -> LExpr :=
+  if h : idx < names.size then
+    if names.size - idx = 1 then
+      -- last name just aliases root
+      fun core => .letVal (names[idx]) (.var root) core
+    else
+      fun core =>
+        let l := s!"_pL#{names[idx]}"
+        let r := s!"_pR#{names[idx]}"
+        .letRhs l (.proj root 0)
+        $ .letRhs r (.proj root 1)
+        $ .letVal (names[idx]) (.var l)
+        $ destructTuple r names (idx + 1) core
+  else id
+
+def constOf : TConst -> Const × PrimOp
+  | .PUnit     => (.unit  , .eqInt)
+  | .PInt i    => (.int i , .eqInt)
+  | .PBool b   => (.bool b, .eqBool)
+  | .PStr s    => (.str s , .eqStr)
+@[inline] def constOnly := Prod.fst ∘ constOf
+
+def destructArgsPrelude (tuple : Name) (params : Array Name) (core : LExpr) : LExpr :=
+  let sz := params.size
+  if sz = 0 then
+    core
+  else if _ : sz = 1 then
+    let p0 := params[0]
+    let l  := s!"_pL#{p0}"
+    let r  := s!"_pR#{p0}"   -- dummy unit tail
+    .letRhs l (.proj tuple 0)
+    $ .letRhs r (.proj tuple 1)
+    $ .letVal p0 (.var l) core
+  else
+    let rec go (t : Name) (i : Nat) (h : i <= sz) : LExpr :=
+      match h' : i with
+      | 0 => core
+      | 1 => .letVal params[sz - 1] (.var t) core
+      | n + 2 =>
+        let x := params[sz - i]
+        let l := s!"_pL#{x}"
+        let r := s!"_pR#{x}"
+        .letRhs l (.proj t 0)
+        $ .letRhs r (.proj t 1)
+        $ .letVal x (.var l)
+        $ go r i.pred (Nat.le_trans (Nat.pred_le i) (h' ▸ h))
+    go tuple sz Nat.le.refl
+end Helper
 end IR
 
 @[inline] def Array.replaceAt (xs : Array α) (i : Nat) (elems : Array α) : Array α :=
   xs[0:i] ++ elems ++ xs[i+1:]
+

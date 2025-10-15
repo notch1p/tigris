@@ -9,10 +9,10 @@
 (defun |fn1000| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|α| (car |payload|)))
-    (let ((|_pL#__?x₀| (car |α|)))
+    (let ((|_pL#?x₀| (car |α|)))
       (cond
-        ((eq (car |_pL#__?x₀|) '|Some|)
-          (let ((|p2| (svref (cdr |_pL#__?x₀|) 0)))
+        ((eq (car |_pL#?x₀|) '|Some|)
+          (let ((|p2| (svref (cdr |_pL#?x₀|) 0)))
             (funcall |k| |p2|)))
         (t
           (let ((|u1| nil))
@@ -42,9 +42,9 @@
 (defun |fn1005| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|α| (car |payload|)))
-    (let ((|_pL#__?x₀| (car |α|)))
+    (let ((|_pL#?x₀| (car |α|)))
       (let ((|c19| 1))
-        (let ((|p20| (+ |c19| |_pL#__?x₀|)))
+        (let ((|p20| (+ |c19| |_pL#?x₀|)))
           (funcall |k| |p20|))))))
 
 ; entrypoint

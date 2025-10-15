@@ -60,7 +60,6 @@ partial def elaborateDict
       let dsch : Scheme := .Forall [] [] dty
       memoInsert p (nm, dsch, fe)
       return .Var nm dty
---      elaborateWithScope Γsch scope ∅ te sch Γfull
 
 partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γfull : Env) : TExpr -> F FExpr
   | .CI i ty => return .CI i ty
@@ -132,7 +131,6 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
                 let wrapDictsTyLams := (wrapTyLams innerB $ wrapPreds 0 · innerP)
                 (innerTy, pure ∘ wrapDictsTyLams)
             | none => (methodTyFull, pure ∘ id)
-          let pat := patOfIdx ci.cname m.idx ar
           let projMono : FExpr := .Proj dict m.mname m.idx projTy
           let others := instCtx.filter (·.cls != ci.cname)
           let projWithDicts <-
@@ -199,36 +197,16 @@ partial def elaborateWithScope
     let te := match te with | .Ascribe e _ => e | e => e
     let dictVars := ctx.mapIdx fun i p => (p, s!"d_{p.cls}_{i}")
     let scopeFor := dictVars.foldl (flip List.cons) scope
-    let core <- elaborate Γsch scopeFor blocked Γfull te
-    let core := wrapExtracted sch core
-    let coreWithDicts :=
-      if ctx.isEmpty then core
-      else
-        match core with
-        |  .Fix (.Fun self selfTy funChain _) _ =>
-          let (userParams, body) := peelFun [] funChain
-          let userChain := userParams.foldr
-            (fun (n, ty) acc =>
-              .Fun n ty acc (ty ->' acc.getTy))
-            body
-          let fullChain := dictVars.foldr
-            (fun (p, nm) acc =>
-              let dty := dictTypeOfPred p
-              .Fun nm dty acc (dty ->' acc.getTy))
-            userChain
-          let newSelfFun := .Fun self selfTy fullChain (selfTy ->' fullChain.getTy)
-          .Fix newSelfFun newSelfFun.getTy
-        | _ =>
-          dictVars.foldr
+    let core <- wrapExtracted sch <$> elaborate Γsch scopeFor blocked Γfull te
+    let transform kont :=
+      if ctx.isEmpty then kont core
+      else kont $
+        dictVars.foldr
           (fun (p, nm) acc =>
             let dty := dictTypeOfPred p
             .Fun nm dty acc (dty ->' acc.getTy))
           core
-    let coreWithDicts := coreWithDicts
-      |> βReduce
-      |> ηReduce
-      |> stripDupLeadingTyLams qs
-    return wrapTyLams qs coreWithDicts
+    return wrapTyLams qs $ transform (stripDupLeadingTyLams qs ∘ ηReduce ∘ βReduce)
 
 end
 
@@ -258,18 +236,19 @@ inductive TopDeclF
   | patBind : Pattern × FExpr -> TopDeclF
 deriving Repr
 
-def inferToplevelF : Array TopDeclT × Env × Logger -> Except TypingError (Array TopDeclF × Logger)
+def inferToplevelF : Array TopDeclT × Env × Logger -> Except TypingError (Array TopDeclF × Logger × Std.HashMap String Nat)
   | (b, Γ, L) =>
-    b.foldlM (init := (#[], L)) fun (bF, L) b => do
+    b.foldlM (init := (#[], L, ∅)) fun (bF, L, ctorsAcc) b => do
       match b with
       | .idBind binds =>
         let (acc, L) <- binds.foldlM (init := (#[], L)) fun (acc, L) (id, sch, te) =>
           runInfer1F te sch Γ <&> fun (fe, l) => (acc.push (id, sch, fe), L ++ l)
-        return (bF.push $ .idBind acc, L)
+        return (bF.push $ .idBind acc, L, ctorsAcc)
       | .patBind (pat, sch, te) =>
         runInfer1F te sch Γ <&> fun (fe, l) =>
-          (bF.push $ .patBind (pat, fe), L ++ l)
-      | _ => return (bF, L)
+          (bF.push $ .patBind (pat, fe), L ++ l, ctorsAcc)
+      | .tyBind {ctors,..} =>
+        return (bF, L, ctors.foldl (fun acc (name, _, ar) => acc.insert name ar) ctorsAcc)
 
 open Std Std.Format in
 def TopDeclF.unexpand : TopDeclF -> Format

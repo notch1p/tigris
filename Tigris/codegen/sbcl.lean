@@ -259,3 +259,4 @@ def emitModule (m : CModule)
   (hd, funs, main, driver)
 
 end Codegen.CL
+
