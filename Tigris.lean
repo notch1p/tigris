@@ -15,6 +15,8 @@ import Tigris.interpreter.eval
 import Tigris.interpreter.entrypoint
 import Tigris.interpreter.types
 import Tigris.interpreter.app
+import Tigris.interpreter.lapp
+import Tigris.interpreter.leval
 import Tigris.table
 import Tigris.oldcore.matchApp
 --import Tigris.oldcore.transform

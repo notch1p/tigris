@@ -89,6 +89,7 @@ inductive TypingError
   | NoSynthesize (s : String)
   | WrongCardinal (n : Nat)
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
+  | NoMatchL (v : String) (pat : Array String) -- for LExpr interpreter
   | InvalidPat (msg : String)
   | Interrupted
   | NoRankN
@@ -107,6 +108,8 @@ instance : ToString TypingError where
   | .Undefined s   => s!"Symbol\n  {s}\nis not in scope."
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
   | .NoRankN => s!"Rank-n types are not supported yet."
+  | .NoMatchL v pat =>
+    s!"The ctor/constant {v} cannot be matched against\nany of the patterns: {pat}."
   | .NoMatch e v arr =>
     let arr := arr.map $ Array.map Pattern.render ∘ Prod.fst
     s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString arr}."

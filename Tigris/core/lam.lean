@@ -13,6 +13,19 @@ inductive Const where
   | unit | int (i : Int) | bool (b : Bool) | str (s : String)
 deriving Repr, BEq, Inhabited
 
+instance : ToString Const where
+  toString
+  | .unit => "()"
+  | .int i => toString i
+  | .bool b => toString b
+  | .str s => toString s
+
+def Const.toTConst : Const -> TConst
+  | .unit => .PUnit
+  | .int i => .PInt i
+  | .bool b => .PBool b
+  | .str s => .PStr s
+
 mutual
 
 

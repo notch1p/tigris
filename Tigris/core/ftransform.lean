@@ -488,8 +488,7 @@ partial def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat
 
   let fid := "main"
   let param := "arg"
-  let e <- build 0 ∅ none ctors
-  let body := optimizeLam e
+  let body <- optimizeLam <$> build 0 ∅ none ctors
   let main : LFun := {fid, param, body}
   let mod := ⟨#[], main⟩
   let modCC := runST fun _ => (IR.closureConvert mod).run' 1000
