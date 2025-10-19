@@ -92,7 +92,7 @@ def cpsModule : LModule -> M σ CModule
     |> Functor.map CPS.optimizeCModule
 
 @[inline] def toCPS (m : LModule) : CModule :=
-  runST fun _ => cpsModule m |>.run' 0
+  runST fun _ => cpsModule m |>.run' (0, ∅)
 
 def addEntrypoint (m : CModule) (useUnit? := true) : CModule :=
   let startFid := "__start"

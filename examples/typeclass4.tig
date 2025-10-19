@@ -1,7 +1,7 @@
 class Eq a = {eq : a -> a -> Bool}
-
 instance Eq Int = {eq = fun x y => __eqInt x y}
 
+type Option a = None | Some a
 type List a = Nil | Cons a (List a)
 infixr 67 "::" => Cons
 
@@ -10,11 +10,21 @@ let rec listEq
   | x :: xs, y :: ys =>
     if x = y then listEq xs ys else false
   | _, _ => false
-
+instance ∀a [Eq a], Eq (Option a) =
+  { eq
+    | None, None => true
+    | Some a, Some b => a = b
+    | _, _ => false
+  }
 instance forall a [Eq a], Eq (List a) =
   {eq = listEq}
 
+
 let main =
   ( 1 :: 2 :: Nil = 1 :: 2 :: 3 :: Nil
-  , 1 :: 2 :: 3 :: Nil = 1 :: 2 :: 3 :: Nil)
+  , 1 :: 2 :: 3 :: Nil = 1 :: 2 :: 3 :: Nil
+  , Some 1 = Some 2
+  , Some 1 = Some 1
+  , Some 1 = None
+  , Some 2, None)
 

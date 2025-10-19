@@ -10,7 +10,7 @@ instance Functor Option =
     | None => None
   }
 
-let rec listMap f -- : forall a b, (a -> b) -> List a -> List b
+let rec listMap f : forall a b, (a -> b) -> List a -> List b
   | Nil => Nil
   | x :: xs => f x :: listMap f xs
 

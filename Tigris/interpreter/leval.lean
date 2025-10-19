@@ -27,15 +27,16 @@ abbrev FunTab := Std.HashMap Name LFun
 -/
 macro "impossible!" v:interpolatedStr(term) : term =>
   ``(throw $ TypingError.Impossible (s! $v))
-
-def Val.toStr : Val -> String
-  | .unit => "()" | .int i => toString i
-  | .bool b => toString b | .str s => reprStr s
-  | .pair a b => s!"({a.toStr}, {b.toStr})"
-  | .ctor t fs => fs.foldl (· ++ " " ++ toStr ·) t
+open Std Format in
+def Val.toFormat : Val -> Std.Format
+  | .unit => "()" | .int i => format i
+  | .bool b => format b | .str s => repr s
+  | .pair a b => toFormat a ++ "," <> toFormat b
+  | .ctor t fs => t ++ sbracket (joinSep' (fs.map toFormat) ",")
   | .code fid => s!"#<{fid}>"
 
-instance : ToString Val := ⟨Val.toStr⟩
+instance : ToString Val := ⟨Std.Format.pretty ∘ Val.toFormat⟩
+instance : Std.ToFormat Val := ⟨Val.toFormat⟩
 
 def expectInt : Val -> Except TypingError Int
   | .int i => return i
@@ -67,17 +68,17 @@ def evalPrim (op : PrimOp) (args : Array Val) : Except TypingError Val :=
     => return (.bool (a == b))
   | _, _ => impossible! "invalid primitive application {repr op} on {args}"
 
-def proj (idx : Nat) (v : Val) : Except TypingError Val :=
+def proj (idx : Nat) (s : Name) (v : Val)  : Except TypingError Val :=
   match v with
   | .pair a b =>
     match idx with
     | 0 => return a
     | 1 => return b
-    | _ => impossible! "pair projection out of bounds: {idx}"
+    | _ => impossible! "pair projection {idx} out of bounds on {s} = {v}"
   | .ctor _ fs =>
     if h : idx < fs.size then return fs[idx]
-    else impossible! "ctor projection out of bounds: {idx}"
-  | _ => impossible! "projection on non-aggregate {v}"
+    else impossible! "ctor projection {idx} out of bounds on {s} = {v}"
+  | _ => impossible! "projection on non-aggregate {s} = {v}"
 
 instance : MonadLift (Except ε) (EIO ε) where
   monadLift
@@ -89,7 +90,7 @@ partial def evalRhs (ft : FunTab) (ρ : Env)
   : Rhs -> EIO TypingError Val := fun rhs => checkInterrupt *>
   match rhs with
   | .prim op xs => xs.mapM (liftM ∘ getVar ρ ft) >>= liftM ∘ evalPrim op
-  | .proj s i => liftM ∘ proj i =<< getVar ρ ft s
+  | .proj s i => liftM ∘ proj i s =<< getVar ρ ft s
   | .mkPair a b => pure .pair <*> getVar ρ ft a <*> getVar ρ ft b
   | .mkConstr t fs => .ctor t <$> fs.mapM (liftM ∘ getVar ρ ft)
   | .isConstr s t ar =>

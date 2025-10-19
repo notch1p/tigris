@@ -11,9 +11,9 @@ def interpreterL (s : String) : IO Unit := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState |>.toIO .userError
   let topdeclC <- inferToplevelC topdecl MLType.defaultE' |> IO.ofExcept
   let (topdeclF, logger, ctors) <- inferToplevelF topdeclC |> IO.ofExcept
+  println! unexpandDeclsF topdeclF
   println! logger
   let (_, cc) := IR.toLamModuleF topdeclF ctors
   let val <- LInterpreter.evalModule cc |>.toIO $ .userError ∘ toString
   println! val
-
 

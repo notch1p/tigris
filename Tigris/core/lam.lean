@@ -202,11 +202,22 @@ def fmtModule : LModule -> Std.Format
       ++ fmtFun main
 end PP
 
-abbrev M σ := StateRefT Nat (ST σ)
-abbrev Env := Std.HashMap String Name
+abbrev AMap := Std.HashMap Name Nat
+abbrev M (σ) := StateRefT (Nat × AMap) (ST σ)
 
 @[inline] def fresh (h := "x") : M σ Name :=
-  modifyGet fun n => (h ++ toString n, n + 1)
+  modifyGet (fun (n, am) => (h ++ toString n, (n + 1, am)))
+
+@[inline] def setArity (n : Name) (k : Nat) : M σ Unit :=
+  modify fun (i, am) => (i, am.insert n k)
+@[inline] def getArity (n : Name) : M σ (Option Nat) :=
+  get <&> (·.2.get? n)
+@[inline] def copyArity (x y : Name) : M σ Unit := do
+  if let some a <- getArity x
+  then setArity y a
+  else pure ()
+
+abbrev Env := Std.HashMap String Name
 
 def buildPairs (kont : Name -> M σ LExpr) : (name : List Name) -> M σ LExpr
   | [] => unreachable!

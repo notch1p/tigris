@@ -547,15 +547,15 @@ partial def lowerModule (decls : Array TopDeclT) : M σ (LModule × LModule) := 
   let body <- optimizeLam <$> build 0 ∅ none ∅
   let main : LFun := {fid, param, body}
   let mod := ⟨#[], main⟩
-  return Prod.mk mod (runST fun _ => (IR.closureConvert mod).run' 1000)
+  return Prod.mk mod (runST fun _ => (IR.closureConvert mod).run' (1000, ∅))
 
 end
 
-def toLamModuleT decls := runST fun _ => IR.lowerModule decls |>.run' 0
-def toLamT s e := runST fun _ => lower e (ctors := s) |>.run' 0
+def toLamModuleT decls := runST fun _ => IR.lowerModule decls |>.run' (0, ∅)
+def toLamT s e := runST fun _ => lower e (ctors := s) |>.run' (0, ∅)
 def toLamTO s e := optimizeLam (toLamT s e)
 def dumpLamModuleT decls := toLamModuleT decls |>.map fmtModule fmtModule
 def toLamModuleT1 s e :=
-  letI e := optimizeLam $ runST fun _ => lower e (ctors := s) |>.run' 0
-  runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' 0
+  letI e := optimizeLam $ runST fun _ => lower e (ctors := s) |>.run' (0, ∅)
+  runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' (0, ∅)
 attribute [inline] toLamModuleT toLamT toLamTO dumpLamModuleT toLamModuleT1

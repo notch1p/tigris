@@ -31,8 +31,7 @@ abbrev CodeSet := Std.TreeSet Name
 
 def sortedNames (s : Std.HashSet Name) : Array Name := s.toArray.qsort
 
-def fresh (h := "cc") : M σ Name :=
-  modifyGet fun n => (h ++ toString n, n + 1)
+nonrec def fresh (h := "cc") : M σ Name := fresh h
 
 def mkEnv (envTag : Name) (fields : Array Name) (kont : Name -> LExpr) : LExpr :=
   letI envName := "Γ"
@@ -55,37 +54,39 @@ def projPair (src : Name) (kont : Name -> Name -> LExpr) : LExpr :=
 def freeVars (e : LExpr) : Std.HashSet Name :=
   fvExpr e
 
-def tailAppDirect
+def tailAppDirectM
   (payload : Name) (envVar? : Option Name)
-  (f : Name) (a : Name) : (Array Stmt × Tail) :=
-  letI env := "Γ"
-  letI pl  := "ρ"
-  if let some e := envVar? then
-    (#[.let1 pl (.mkPair a e)], .app f pl)
-  else
-    (#[.let1 env (.proj payload 1), .let1 pl (.mkPair a env)], .app f pl)
+  (f : Name) (a : Name) : M σ (Array Stmt × Tail) := do
+  match envVar? with
+  | some e =>
+    let pl <- fresh "ρ"
+    return (#[.let1 pl (.mkPair a e)], .app f pl)
+  | none =>
+    let env <- fresh "Γ"
+    let pl <- fresh "ρ"
+    return (#[.let1 env (.proj payload 1), .let1 pl (.mkPair a env)], .app f pl)
 
-def tailAppViaClosure (clos : Name) (a : Name) : (Array Stmt × Tail) :=
-  letI code := "_code"
-  letI env  := "Γc"
-  letI pl   := "ρc"
-  ( #[ .let1 code (.proj clos 0)
-     , .let1 env  (.proj clos 1)
-     , .let1 pl   (.mkPair a env)]
-  , Tail.app code pl)
+def tailAppViaClosureM (clos : Name) (a : Name) : M σ (Array Stmt × Tail) := do
+  let code <- fresh "_code"
+  let env  <- fresh "Γc"
+  let pl   <- fresh "ρc"
+  return ( #[ .let1 code (.proj clos 0)
+            , .let1 env  (.proj clos 1)
+            , .let1 pl   (.mkPair a env)]
+         , Tail.app code pl)
 
-def tailAppGlobal (f : Name) (a : Name) : (Array Stmt × Tail) :=
-  let env := "Γ₀"
-  let pl  := "ρ"
-  ( #[ .let1 env (.mkConstr "𝐄" #[])
-     , .let1 pl  (.mkPair a env)]
-  , Tail.app f pl)
+def tailAppGlobalM (f : Name) (a : Name) : M σ (Array Stmt × Tail) := do
+  let env <- fresh "Γ₀"
+  let pl  <- fresh "ρ"
+  return ( #[ .let1 env (.mkConstr "𝐄" #[])
+            , .let1 pl  (.mkPair a env)]
+         , Tail.app f pl)
 
 attribute [inline]
   proj  bindClos   mkPayload
-  fresh freeVars tailAppDirect
-  mkEnv projPair tailAppViaClosure
-  tailAppGlobal sortedNames
+  fresh freeVars
+  mkEnv projPair
+  sortedNames
 
 /-- Monadic rewriting of a tail inside a code body (can lift lambdas in branches).
     selfVar? = some v means: if callee == v, rewrite as a direct call to the current code pointer `selfCode`.
@@ -96,18 +97,18 @@ partial def rewriteTailInCodeM
   (cc : LExpr -> M σ (LExpr × Array LFun))
   : Tail -> M σ (Array Stmt × Tail × Array LFun)
   | .ret x => pure (#[], .ret x, #[])
-  | .app f a =>
+  | .app f a => do
     if selfVar?.isEqSome f then
-      let (bs, t) := tailAppDirect payload envVar? selfCode a
+      let (bs, t) <- tailAppDirectM payload envVar? selfCode a
       return (bs, t, #[])
-    else if codeSet.contains f then
-      let (bs, t) := tailAppDirect payload envVar? f a
+    else if f ∈ codeSet then
+      let (bs, t) <- tailAppDirectM payload envVar? f a
       return (bs, t, #[])
-    else if gCodes.contains f then
-      let (bs, t) := tailAppGlobal f a
+    else if f ∈ gCodes then
+      let (bs, t) <- tailAppGlobalM f a
       return (bs, t, #[])
     else
-      let (bs, t) := tailAppViaClosure f a
+      let (bs, t) <- tailAppViaClosureM f a
       return (bs, t, #[])
   | .cond c t e => do
     let (t', ft) <- cc t
@@ -148,41 +149,43 @@ partial def rewriteTailInCodeM
 def emitLetCallInCode
   (payload : Name) (envVar? : Option Name) (codeSet gCodes : CodeSet)
   (selfVar? : Option Name) (selfCode : Name)
-  (x f a : Name) (k : LExpr) : LExpr :=
+  (x f a : Name) (k : LExpr) : M σ LExpr := do
   if selfVar?.isEqSome f then
-    let (pl, env) := ("ρ", "Γ")
+    let pl <- fresh "ρ"
+    match envVar? with
+    | some e => 
+      return .letRhs pl (.mkPair a e) 
+           $ .letRhs x  (.call selfCode pl) k
+    | none =>
+      let env <- fresh "Γ"
+      return .letRhs env (.proj payload 1)
+           $ .letRhs pl  (.mkPair a env)
+           $ .letRhs x   (.call selfCode pl) k
+  else if f ∈ codeSet then
+    let pl <- fresh "ρ"
     match envVar? with
     | some e =>
-      .letRhs pl (.mkPair a e) $
-      .letRhs x  (.call selfCode pl) k
+      return .letRhs pl (.mkPair a e) 
+           $ .letRhs x  (.call f pl) k
     | none =>
-      .letRhs env (.proj payload 1) $
-      .letRhs pl  (.mkPair a env) $
-      .letRhs x   (.call selfCode pl) k
-  else if codeSet.contains f then
-    let (pl, env) := ("ρ", "Γ")
-    match envVar? with
-    | some e =>
-      .letRhs pl (.mkPair a e) $
-      .letRhs x  (.call f pl) k
-    | none =>
-      .letRhs env (.proj payload 1) $
-      .letRhs pl  (.mkPair a env) $
-      .letRhs x   (.call f pl) k
-  else if gCodes.contains f then
-    let env := "Γ₀"
-    let pl  := "ρ"
-    .letRhs env (.mkConstr "𝐄" #[]) $
-    .letRhs pl  (.mkPair a env) $
-    .letRhs x   (.call f pl) k
+      let env <- fresh "Γ"
+      return .letRhs env (.proj payload 1)
+           $ .letRhs pl  (.mkPair a env)
+           $ .letRhs x   (.call f pl) k
+  else if f ∈ gCodes then
+    let env <- fresh "Γ₀"
+    let pl  <- fresh "ρ"
+    return .letRhs env (.mkConstr "𝐄" #[])
+         $ .letRhs pl  (.mkPair a env)
+         $ .letRhs x   (.call f pl) k
   else
-    let code := "_code"
-    let env  := "Γc"
-    let pl   := "ρc"
-    .letRhs code (.proj f 0) $
-    .letRhs env  (.proj f 1) $
-    .letRhs pl   (.mkPair a env) $
-    .letRhs x    (.call code pl) k
+    let code <- fresh "_code"
+    let env  <- fresh "Γc"
+    let pl   <- fresh "ρc"
+    return .letRhs code (.proj f 0)
+         $ .letRhs env  (.proj f 1)
+         $ .letRhs pl   (.mkPair a env)
+         $ .letRhs x    (.call code pl) k
 
 /-- Peephole:
   if body is `xᵀ(a)` and `x` is the closure we just bound for code `fid`
@@ -260,7 +263,7 @@ partial def ccCodeBodyM
       ccCodeBodyM
         gCodes fid paramPayload origParam
         capVars codeSet selfVar? envVar? body
-    let e' := emitLetCallInCode paramPayload envVar? codeSet gCodes selfVar? fid x f a b'
+    let e' <- emitLetCallInCode paramPayload envVar? codeSet gCodes selfVar? fid x f a b'
     return (e', fs)
 
   | .letRhs x rhs body => do
@@ -294,7 +297,7 @@ partial def ccLiftedFunBodyM
     .letVal origParam (.var aN) $
       capVars.size.fold
         (init := inner)
-        (fun i _ acc => .letRhs capVars[i]! (.proj envN i) acc)
+        (fun i _ acc => .letRhs capVars[i] (.proj envN i) acc)
   return (wrapped, fs)
 
 /-- Rewrite tails in non-code contexts (e.g., main)-/
@@ -302,8 +305,8 @@ partial def rewriteTailOutsideM
   (cc : LExpr -> M σ (LExpr × Array LFun))
   : Tail -> M σ (Array Stmt × Tail × Array LFun)
   | .ret x => pure (#[], .ret x, #[])
-  | .app f a =>
-    let (bs, t) := tailAppViaClosure f a
+  | .app f a => do
+    let (bs, t) <- tailAppViaClosureM f a
     return (bs, t, #[])
   | .cond c t e => do
     let (t', ft) <- cc t
@@ -366,10 +369,10 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     let pl   <- fresh "ρc"
     let (b', fs) <- ccExpr gCodes body
     let e' :=
-      .letRhs code (.proj f 0) $
-      .letRhs env  (.proj f 1) $
-      .letRhs pl   (.mkPair a env) $
-      .letRhs x    (.call code pl) b'
+      .letRhs code (.proj f 0)
+      $ .letRhs env  (.proj f 1)
+      $ .letRhs pl   (.mkPair a env)
+      $ .letRhs x    (.call code pl) b'
     return (e', fs)
 
   | .letRhs x rhs body => do
@@ -379,9 +382,8 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
   | .letRec funs body => do
     -- Possibly mutual group
     let ids := funs.map (·.1)
-    let fvBodies :=
-      funs.foldl (init := (∅ : Std.HashSet Name)) fun acc ⟨_, p, b⟩ =>
-        acc ∪ (fvExpr b).erase p
+    let fvBodies : Std.HashSet Name :=
+      funs.foldl (fun acc ⟨_, p, b⟩ => acc ∪ (fvExpr b).erase p) ∅
     let capsSet := ids.foldl (·.erase) fvBodies
     let capVars := sortedNames capsSet
     let codeSet : CodeSet := ids.foldl (·.insert) ∅

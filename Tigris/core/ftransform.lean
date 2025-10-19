@@ -35,16 +35,17 @@ where go
   | .Fun q _ b _, acc => go b (acc.push q)
   | e, acc => (acc, e)
 
+def isDictName : String -> Bool := fun x => x.startsWith "d_" || x.startsWith "rd_"
+def isDictArg : FExpr -> Bool
+  | .Var x _ => isDictName x
+  | _ => false
+
 def arrArity : MLType -> Nat
   | .TSch (.Forall _ _ t) => arrArity t
   | .TArr _ b => 1 + arrArity b
   | _         => 0
 def getArrArity : FExpr -> Nat := arrArity ∘ FExpr.getTy
 
-def isDictArg : FExpr -> Bool
-  | .Var x _ => x.startsWith "d_" || x.startsWith "rd_"
-  | _ => false
-  
 def matchCtorApp (ctorArity : Std.HashMap String Nat) (e : FExpr)
   : Option (String × Array FExpr × Nat) :=
   let (h, args) := decomposeApp e
@@ -158,26 +159,12 @@ partial def lowerMany
     if h : i < es.size then lowerF es[i] ρ ctors $ go i.succ ∘ acc.push
     else k acc
 
-/-- Dictionary-aware + partial-application aware application:
-  1. Split args into dict prefix (vars named d_* or rd_*) and user args (the rest).
-  2. Apply all dict args one-by-one (each as unary payload ⟨arg, ()⟩).
-  3. Let n = getArrArity(head) (user-argument arity; types carry user args only here).
-    - If userArgs.size = 0: return the function after dicts (a closure expecting n args).
-    - If userArgs.size < n: produce an uncurried closure expecting the remaining (n - size) args.
-    - If userArgs.size = n: make one uncurried call packing all user args.
-    - If userArgs.size > n: call with the first n args, then apply the rest to the result.
-
-  - Not exactly a clean solution because the name-based assumption about dict args falls apart
-    if there's a name clash.
--/
 partial def lowerFunApp
   (head : FExpr) (args : Array FExpr)
   (ρ : Env) (ctors : Std.HashMap String Nat)
   (k : Name -> M σ LExpr) : M σ LExpr :=
   let n := getArrArity head
-  let (dictArgs, userArgs) := args.partition isDictArg
 
-  -- apply a single unary argument `aName` to callee `vfName`
   let applyUnary (vfName aName : Name) (cont : Name -> M σ LExpr) : M σ LExpr := do
     let u <- fresh "u"
     let pair <- fresh "pair"
@@ -188,7 +175,6 @@ partial def lowerFunApp
     $ .letRhs pair (.mkPair aName u)
     $ .letRhs r (.call vfName pair) body
 
-  -- apply a function value `fv` to a list of user-arg names in one shot
   let callWithMany (fv : Name) (ns : Array Name) : M σ LExpr := do
     if ns.isEmpty then k fv
     else if h : ns.size = 1 then
@@ -198,15 +184,20 @@ partial def lowerFunApp
         let r0 <- fresh "r"
         .letRhs r0 (.call fv tuple) <$> k r0
 
-  -- generate an uncurried closure expecting `missing` user args, pre-supplying `supplied`
   let mkPartial (fv : Name) (supplied : Array Name) (missing : Nat) : M σ LExpr := do
     let lamV <- do
       if missing = 1 then
-        let p <- fresh "arg"
+        let p   <- fresh "arg"
+        let aL  <- fresh "_pL#arg"
+        let _aR <- fresh "_pR#arg"
         let res <- fresh "r"
-        let allArgs := supplied.push p
-        let body <- buildPairs (name := allArgs.toList) fun tuple =>
+        let allArgs := supplied.push aL
+        let callCore <- buildPairs (name := allArgs.toList) fun tuple =>
           pure $ .letRhs res (.call fv tuple) (.seq #[] (.ret res))
+        let body :=
+          .letRhs aL  (.proj p 0) $
+          .letRhs _aR (.proj p 1) $
+          callCore
         pure (.lam p body)
       else
         let param <- fresh "rest"
@@ -216,42 +207,70 @@ partial def lowerFunApp
         let res <- fresh "r"
         let callCore <- buildPairs (name := allArgs.toList) fun tuple =>
           pure $ .letRhs res (.call fv tuple) (.seq #[] (.ret res))
-        let lamBody := destructTuple param restNames 0 callCore
+        let lamBody := destructTuple param (restNames.push param) 0 callCore
         pure (.lam param lamBody)
     let out <- fresh "clos"
     let cont <- k out
     pure (.letVal out lamV cont)
 
-  -- after dicts applied, handle user args with arity-aware staging
-  let applyUsers (fv : Name) : M σ LExpr :=
-    if userArgs.isEmpty then k fv
+  let applyRest (fv : Name) (rest : Array Name) : M σ LExpr := do
+    if rest.isEmpty then k fv
+    else if h : rest.size = 1 then applyUnary fv rest[0] k
     else
-      lowerMany userArgs ρ ctors fun ns => do
-        if n = 0 then callWithMany fv ns
-        else if ns.size < n then mkPartial fv ns (n - ns.size)
-        else if ns.size = n then callWithMany fv ns
-        else
-          let now := ns.extract 0 n
-          let rest := ns.extract n ns.size
-          buildPairs (name := now.toList) fun tuple => do
-            let r0 <- fresh "r"
-            let after <-
-              if rest.size = 0 then k r0
-              else if rest.size = 1 then applyUnary r0 rest[0]! k
-              else
-                buildPairs (name := rest.toList) fun tuple2 => do
-                  let r1 <- fresh "r"
-                  .letRhs r1 (.call r0 tuple2) <$> k r1
-            pure (.letRhs r0 (.call fv tuple) after)
+      buildPairs (name := rest.toList) fun tuple2 => do
+        let r1 <- fresh "r"
+        .letRhs r1 (.call fv tuple2) <$> k r1
 
-  lowerF head ρ ctors fun vf0 =>
-    let rec applyDicts (i : Nat) (vf : Name) : M σ LExpr := do
-      if h : i < dictArgs.size then
-        lowerF dictArgs[i] ρ ctors fun a =>
-          applyUnary vf a (applyDicts (i + 1))
+  let applyAllWithTotal (total : Nat) (vf : Name) (ns : Array Name) : M σ LExpr := do
+    if total = 0 then callWithMany vf ns
+    else if ns.size < total then mkPartial vf ns (total - ns.size)
+    else if ns.size = total then callWithMany vf ns
+    else
+      let now  := ns[:total]
+      let rest := ns[total:]
+      buildPairs (name := now.toList) fun tuple => do
+        let r0 <- fresh "r"
+        let after <- applyRest r0 rest
+        pure (.letRhs r0 (.call vf tuple) after)
+
+  let applyByType (vf : Name) (ns : Array Name) : M σ LExpr := do
+    if n = 0 then callWithMany vf ns
+    else if ns.size < n then mkPartial vf ns (n - ns.size)
+    else if ns.size = n then callWithMany vf ns
+    else
+      let now := ns[:n]
+      let rest := ns[n:]
+      buildPairs (name := now.toList) fun tuple => do
+        let r0 <- fresh "r"
+        let after <- applyRest r0 rest
+        pure (.letRhs r0 (.call vf tuple) after)
+
+  let applyBroken (total : Nat) (vf0 : Name) : M σ LExpr := do
+    let dp := Nat.min total args.size
+    have := Nat.min_le_right total args.size
+    let rec applyD (i : Nat) (vf : Name) : M σ LExpr := do
+      if h : i < dp then
+        have := Nat.lt_of_lt_of_le h this
+        lowerF args[i] ρ ctors fun a => applyUnary vf a (applyD (i + 1))
       else
-        applyUsers vf
-    applyDicts 0 vf0
+        let rest := args[dp:]
+        if rest.isEmpty then k vf
+        else
+          lowerMany rest ρ ctors fun ns =>
+            applyByType vf ns
+    applyD 0 vf0
+
+  lowerF head ρ ctors fun vf0 => do
+    let ar? <- getArity vf0
+    lowerMany args ρ ctors fun ns => do
+      match ar? with
+      | some total =>
+        if total < n then
+          applyBroken total vf0
+        else
+          applyAllWithTotal total vf0 ns
+      | none =>
+        applyByType vf0 ns
 
 partial def lowerF
   (e : FExpr) (ρ : Env)
@@ -308,6 +327,7 @@ partial def lowerF
         let loweredCore <- lowerFCore core ρ ctors
         let body := destructArgsPrelude tupleParam allParams loweredCore
         let f <- fresh "lam"
+        setArity f allParams.size
         let kbody <- k f
         return .letVal f (.lam tupleParam body) kbody
 
@@ -387,12 +407,14 @@ partial def lowerRecFun
   if params.size = 0 then
     let p <- fresh "arg"
     let body <- lowerFCore core (ρ.insert p p) ctors
+    setArity fid 0
     return ⟨fid, p, body⟩
   else
     let tupleParam <- fresh "args"
     let ρ := params.foldl (fun acc p => acc.insert p p) ρ
     let loweredCore <- lowerFCore core ρ ctors
     let body := destructArgsPrelude tupleParam params loweredCore
+    setArity fid params.size
     return ⟨fid, tupleParam, body⟩
 
 partial def lowerNonRecBinds
@@ -401,7 +423,7 @@ partial def lowerNonRecBinds
   if h : defs.size = 0 then k ρ
   else
     let (x, e) := defs[0]
-    lowerF e ρ ctors fun v =>
+    lowerF e ρ ctors fun v => copyArity v x *>
       .letVal x (.var v) <$> lowerNonRecBinds defs[1:] (ρ.insert x x) ctors k
 
 partial def lowerDT
@@ -491,7 +513,7 @@ partial def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat
   let body <- optimizeLam <$> build 0 ∅ none ctors
   let main : LFun := {fid, param, body}
   let mod := ⟨#[], main⟩
-  let modCC := runST fun _ => (IR.closureConvert mod).run' 1000
+  let modCC := runST fun _ => (IR.closureConvert mod).run' (1000, ∅)
   return (mod, modCC)
 
 partial def lowerTopPatBind
@@ -547,10 +569,10 @@ open IRf
   let decls := decls.map fun
     | .idBind b => .idBind $ b.map fun (id, sch, fe) => (id, sch, HelperF.stripTy fe)
     | .patBind (pat, fe) => .patBind (pat, HelperF.stripTy fe)
-  runST fun _ => lowerModule decls ctors |>.run' 0
+  runST fun _ => lowerModule decls ctors |>.run' (0, ∅)
 
 @[inline] def toLamF (ctors : Std.HashMap String Nat) (e : FExpr) : LExpr :=
-  runST fun _ => lowerFCore e (ctors := ctors) ∅ |>.run' 0
+  runST fun _ => lowerFCore e (ctors := ctors) ∅ |>.run' (0, ∅)
 
 @[inline] def toLamFO (ctors : Std.HashMap String Nat) (e : FExpr) : LExpr :=
   optimizeLam (toLamF ctors e)
