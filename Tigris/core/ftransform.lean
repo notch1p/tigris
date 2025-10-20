@@ -417,6 +417,23 @@ partial def lowerRecFun
     setArity fid params.size
     return ⟨fid, tupleParam, body⟩
 
+partial def lowerNonRecFun
+  (fid : Name) (params : Array String) (core : FExpr) (ρ : Env)
+  (ctors : Std.HashMap String Nat)
+  : M σ LFun := do
+  if params.size = 0 then
+    let p <- fresh "arg"
+    let body <- lowerFCore core (ρ.insert p p) ctors
+    setArity fid 0
+    return ⟨fid, p, body⟩
+  else
+    let tupleParam <- fresh "args"
+    let ρ := params.foldl (fun acc p => acc.insert p p) ρ
+    let loweredCore <- lowerFCore core ρ ctors
+    let body := destructArgsPrelude tupleParam params loweredCore
+    setArity fid params.size
+    return ⟨fid, tupleParam, body⟩
+
 partial def lowerNonRecBinds
   (defs : Subarray (String × FExpr)) (ρ : Env) (ctors : Std.HashMap String Nat)
   (k : Env -> M σ LExpr) : M σ LExpr :=
@@ -576,4 +593,45 @@ open IRf
 
 @[inline] def toLamFO (ctors : Std.HashMap String Nat) (e : FExpr) : LExpr :=
   optimizeLam (toLamF ctors e)
+
+namespace Incremental
+structure LoweringState where
+  gensym : Nat
+  env    : Env
+  ctors  : Std.HashMap String Nat
+  arity  : Std.HashMap String Nat
+deriving Inhabited
+
+@[inline] def withTyDecl (st : LoweringState) (ctors : Std.HashMap String Nat) : LoweringState :=
+  {st with ctors}
+
+def lowerIdBind (st : LoweringState) (binds : Array BindingF) : LoweringState × Array LFun :=
+  let binds := binds.map fun (id, sch, fe) => (id, sch, HelperF.stripTy fe)
+  let (recs, nonrecs) := HelperF.splitLetGroup binds
+  let env :=
+    recs.foldl (fun ρ (fid, _, _, _) => ρ.insert fid fid)
+    $ nonrecs.foldl (fun ρ (x, _) => ρ.insert x x) st.env
+  let (funs, gensym, arity) :=
+    runST fun _ => (do
+      let recs <- recs.mapM fun (fid, selfN, ps, core) => do
+        let (ps, core) := HelperF.etaExpandParams ps core
+        lowerRecFun fid selfN ps core env st.ctors
+      let nonrecs <- nonrecs.foldlM (init := #[]) fun (acc : Array LFun) (x, rhs) => do
+        match h : rhs with
+        | FExpr.Fun .. =>
+          let (p0, rest, core) := HelperF.decomposeLamChain rhs h
+          let base := #[p0] ++ rest
+          let (allParams, core) := HelperF.etaExpandParams base core
+          let f <- lowerNonRecFun x allParams core env st.ctors
+          pure (acc.push f)
+        | _ => pure acc
+      pure $ recs ++ nonrecs).run (st.gensym, st.arity)
+  ({st with gensym, env, arity}, funs)
+
+def lower1 (st : LoweringState) (e : FExpr) : LoweringState × LExpr :=
+  let (le, (gensym, arity)) :=
+    runST fun _ => lowerFCore e st.env st.ctors |>.run (st.gensym, st.arity)
+  ({st with gensym, arity}, le)
+
+end Incremental
 end IR

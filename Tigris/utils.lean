@@ -35,6 +35,20 @@ def Array.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) (xs : Array
       (go · n $ by omega) =<< f init xs[minSz - i] ys[minSz - i]
   go init minSz Nat.le.refl
 
+/-
+  map 2 arrays with `f` then append them, in one go.
+  `seq2 f as bs` is `map f as ++ map f bs`, but faster.
+-/
+def Array.seq2 (f : α -> β) : Array α -> Array α -> Array β
+  | as, bs =>
+    let ass := as.size
+    let bss := bs.size
+    ass + bss |>.fold (init := #[]) fun i h a =>
+      if h' : i < ass then
+        a.push $ f as[i]
+      else
+        a.push $ f bs[i - ass]
+
 def Array.foldl2 (f : γ -> α -> β -> γ) (init : γ) (xs : Array α) (ys : Array β) : γ :=
   let minSz := Nat.min xs.size ys.size
   have ⟨h₁, h₂⟩ : minSz <= xs.size ∧ minSz <= ys.size :=

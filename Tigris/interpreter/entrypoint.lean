@@ -93,6 +93,11 @@ def parseModuleIR (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) 
   match runST fun _ => toplevelFile <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
+
+def parseREPL (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
+  match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
+  | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
+  | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 end Parsing
 
 namespace MLType

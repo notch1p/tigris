@@ -82,14 +82,30 @@ def emitConst : IR.Const -> String
   | .bool false => "nil"
   | .str s    => reprStr s
 
+/-- NOTE: [EQUALITY](https://stackoverflow.com/a/548774)
+
+| To compare against.. | Use..                                        |
+|----------------------|----------------------------------------------|
+| Objects/Structs      | `EQ`                                         |
+| NIL                  | `EQ`/`NULL`                                  |
+| T                    | `EQ`                                         |
+| Precise numbers      | `EQL`                                        |
+| Floats               | `=`                                          |
+| Char                 | `EQL`/`CHAR=`                                |
+| List/Cons/Seq        | `EQUAL`                                      |
+| String               | `EQUAL`/`EQUALP`/`STRING=` (symbols as well) |
+| Tree                 | `TREE-EQUAL`                                 |
+
+- performance: eq > eql > equal > equalp
+-/
 def emitPrim : IR.PrimOp -> String
-  | .add => "+"
-  | .sub => "-"
-  | .mul => "*"
-  | .div => "/"
-  | .eqInt  => "="
-  | .eqBool => "eql"
-  | .eqStr  => "string="
+  | .add => "sb-kernel:two-arg-+"
+  | .sub => "sb-kernel:two-arg--"
+  | .mul => "sb-kernel:two-arg-*"
+  | .div => "sb-kernel:two-arg-/"
+  | .eqInt  => "eql"
+  | .eqBool => "eq"
+  | .eqStr  => "equal"
 
 def isBoundVar : Name -> S Bool :=
   (get <&> (Std.HashMap.contains ∘ Ctx.shapes) <*> pure ·)

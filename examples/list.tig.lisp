@@ -95,7 +95,7 @@
           (funcall |k| |p51|))))))
 
 ; entrypoint
-(defun |main| (|arg| |k|)
+(defun |main| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|Γ| (cons '|𝐄| (vector))))
     (let ((|map| (cons '|𝐂| (vector #'|map| |Γ|))))

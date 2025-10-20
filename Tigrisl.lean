@@ -74,10 +74,6 @@ def main (fp : List String) : IO Unit := do
 
           let mod := CPS.toCPS cc
 
-          if let some ffip := ffi? then
-            h.putStrLn ";; == external FFI ==\n"
-            h.putStrLn s!"(load \"{ffip}\")\n"
-
           if lam? then
             h.putStrLn ";; == Optimized IR ==\n"
             h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule ir
@@ -87,6 +83,10 @@ def main (fp : List String) : IO Unit := do
           if cps? then
             h.putStrLn ";; == CPS IR ==\n"
             h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
+
+          if let some ffip := ffi? then
+            h.putStrLn ";; == external FFI ==\n"
+            h.putStrLn s!"(load \"{ffip}\")\n"
 
           if cl? then
             h.putStrLn ";; == Common Lisp ==\n"

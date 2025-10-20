@@ -87,7 +87,7 @@
                             (funcall |_code1020| |ρc1022| |k|)))))))))))))))
 
 ; entrypoint
-(defun |main| (|arg| |k|)
+(defun |main| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|Γ| (cons '|𝐄| (vector |%println| |%string-append| |%to-string|))))
     (let ((|lam29| (cons '|𝐂| (vector #'|fn1000| |Γ|))))

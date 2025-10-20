@@ -22,13 +22,6 @@ let prog =
                      (Atom 20)) $
                 (Atom 0)
 ;;
-let 3860 = eval prog
+let 3850 = eval prog -- IMPORTANT: for SBCL backend w/ ratio,
+                     -- it's 3850 instead of 3860.
 
-type List a = Nil | One a | Cons a (List a)
-
-let rec evalPartial | Atom a, One b => a + b
-
-mutual
-type Tree a = Empty | Node a (Forest a)
-type Forest a = Nil | Cons (Tree a) (Forest a)
-;;

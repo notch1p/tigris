@@ -82,7 +82,7 @@
                     (funcall |_code1014| |ρc1016| |k|)))))))))))
 
 ; entrypoint
-(defun |main| (|arg| |k|)
+(defun |main| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|Γ| (cons '|𝐄| (vector))))
     (let ((|listMap| (cons '|𝐂| (vector #'|listMap| |Γ|))))

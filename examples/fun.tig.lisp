@@ -31,7 +31,7 @@
                           (funcall |_code1002| |ρc1004| |k|))))))))))))))
 
 ; entrypoint
-(defun |main| (|arg| |k|)
+(defun |main| (|payload| |k|)
   (declare (optimize (speed 3) (safety 0) (debug 0)))
   (let ((|Γ| (cons '|𝐄| (vector))))
     (let ((|lam2| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
@@ -41,17 +41,17 @@
             (let ((|c13| 20))
               (let ((|pair15| (cons |c12| |c13|)))
                 (let ((|pair14| (cons |con3| |pair15|)))
-                  (let ((|ρc1007| (cons |pair14| |Γ|)))
+                  (let ((|ρc1010| (cons |pair14| |Γ|)))
                     (labels ((|k1| (|v0|)
                       (let ((|c17| 30))
                         (let ((|c18| 30))
                           (let ((|pair19| (cons |c17| |c18|)))
-                            (let ((|ρc1010| (cons |pair19| |Γ|)))
+                            (let ((|ρc1007| (cons |pair19| |Γ|)))
                               (labels ((|k3| (|v2|)
                                 (let ((|p21| (cons |v0| |v2|)))
                                   (funcall |k| |p21|))))
-                                (funcall #'|fn1000| |ρc1010| #'|k3|))))))))
-                      (funcall #'|fn1001| |ρc1007| #'|k1|))))))))))))
+                                (funcall #'|fn1000| |ρc1007| #'|k3|))))))))
+                      (funcall #'|fn1001| |ρc1010| #'|k1|))))))))))))
 
 ; driver
 (defun |__start| ()

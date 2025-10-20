@@ -91,6 +91,7 @@ inductive TypingError
   | NoMatch (e : Array Expr) (v : String) (arr : Array $ Array Pattern × Expr)
   | NoMatchL (v : String) (pat : Array String) -- for LExpr interpreter
   | InvalidPat (msg : String)
+  | Lowlevel (msg : String)
   | Interrupted
   | NoRankN
   | Ambiguous (msg : String)
@@ -100,6 +101,7 @@ open Logging
 instance : ToString TypingError where
   toString
   | .Ambiguous msg => s!"Ambiguous: {msg}"
+  | .Lowlevel msg => s!"Low-level error: {msg}"
   | .Impossible s => s!"Impossible: {s}"
   | .Interrupted   => s!"Interrupted."
   | .InvalidPat s  => s!"Invalid Pattern: {s}"

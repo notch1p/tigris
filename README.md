@@ -29,7 +29,7 @@ thanks to
 
 there are 2 parser implemetations:
 
-- `pratt` branch, use a simplified version of pratt parser (i.e. without per-side binding power)
+- ~`pratt`~ -> `cwc` branch, use a simplified version of pratt parser (i.e. without per-side binding power)
 - `master` branch, use a easy-to-reason precedence-climbing-like parser based on `chainl1` `chainr1`, also uses a stack machine similar to shunting-yard.
   Rebuilds the parser based on the operator precedence table on-the-fly and at every call to `parseExpr`.
 

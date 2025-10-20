@@ -31,6 +31,10 @@ abbrev CodeSet := Std.TreeSet Name
 
 def sortedNames (s : Std.HashSet Name) : Array Name := s.toArray.qsort
 
+/-- we reuse the `M` monad found in lam.lean which carries a state where
+  - gensym: counter
+  - AMap: useless in CC/opt.
+-/
 nonrec def fresh (h := "cc") : M σ Name := fresh h
 
 def mkEnv (envTag : Name) (fields : Array Name) (kont : Name -> LExpr) : LExpr :=
@@ -302,12 +306,19 @@ partial def ccLiftedFunBodyM
 
 /-- Rewrite tails in non-code contexts (e.g., main)-/
 partial def rewriteTailOutsideM
+  (gCodes : CodeSet)
   (cc : LExpr -> M σ (LExpr × Array LFun))
   : Tail -> M σ (Array Stmt × Tail × Array LFun)
   | .ret x => pure (#[], .ret x, #[])
   | .app f a => do
-    let (bs, t) <- tailAppViaClosureM f a
-    return (bs, t, #[])
+--    let (bs, t) <- tailAppViaClosureM f a
+--    return (bs, t, #[])
+    if f ∈ gCodes then
+      let (bs, t) <- tailAppGlobalM f a
+      return (bs, t, #[])
+    else
+      let (bs, t) <- tailAppViaClosureM f a
+      return (bs, t, #[])
   | .cond c t e => do
     let (t', ft) <- cc t
     let (e', fe) <- cc e
@@ -342,7 +353,7 @@ Returns converted expr + any lifted functions to add to the module.
 -/
 partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
   | .seq binds tail => do
-    let (extra, tail', ft) <- rewriteTailOutsideM (ccExpr gCodes) tail
+    let (extra, tail', ft) <- rewriteTailOutsideM gCodes (ccExpr gCodes) tail
     return (.seq (binds ++ extra) tail', ft)
 
   | .letVal x (.lam p b) body => do
@@ -364,16 +375,26 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     return (.letVal x v b', fs)
 
   | .letRhs x (.call f a) body => do
-    let code <- fresh "_code"
-    let env  <- fresh "Γc"
-    let pl   <- fresh "ρc"
-    let (b', fs) <- ccExpr gCodes body
-    let e' :=
-      .letRhs code (.proj f 0)
-      $ .letRhs env  (.proj f 1)
-      $ .letRhs pl   (.mkPair a env)
-      $ .letRhs x    (.call code pl) b'
-    return (e', fs)
+    if f ∈ gCodes then
+      let env0 <- fresh "Γ₀"
+      let pl   <- fresh "ρ"
+      let (b', fs) <- ccExpr gCodes body
+      let e' :=
+        .letRhs env0 (.mkConstr "𝐄" #[])
+        $ .letRhs pl   (.mkPair a env0)
+        $ .letRhs x    (.call f pl) b'
+      return (e', fs)
+    else
+      let code <- fresh "_code"
+      let env  <- fresh "Γc"
+      let pl   <- fresh "ρc"
+      let (b', fs) <- ccExpr gCodes body
+      let e' :=
+        .letRhs code (.proj f 0)
+        $ .letRhs env  (.proj f 1)
+        $ .letRhs pl   (.mkPair a env)
+        $ .letRhs x    (.call code pl) b'
+      return (e', fs)
 
   | .letRhs x rhs body => do
     let (b', fs) <- ccExpr gCodes body
@@ -412,8 +433,12 @@ section open CC variable {σ}
 - the variant `closureConvert` converts a whole module. Usually this should be used.
 -/
 def closureConvertFun (gCodes : CC.CodeSet) (f : LFun) : M σ (LFun × Array LFun) := do
-  let (body, fs) <- ccExpr gCodes f.body
-  return ({f with body}, fs)
+  let pl := "payload"
+  let capVars : Array Name := #[]
+  let {fid, param, body} := f
+  let codeSet : CodeSet := {f.fid}
+  let (body, lifted) <- ccLiftedFunBodyM gCodes fid pl param capVars codeSet none body
+  return ({fid, param := pl, body}, lifted)
 
 @[inherit_doc closureConvertFun]
 def closureConvert (m : LModule) : M σ LModule := do
@@ -425,8 +450,39 @@ def closureConvert (m : LModule) : M σ LModule := do
       return lifted.foldl (init := (gCodes, outFuns)) fun a lf =>
         (a.1.insert lf.fid, a.2.push lf)
   let (main', liftedMain) <- closureConvertFun gCodes m.main
-  let funs := outFuns ++ liftedMain |>.map fun lf => {lf with body := optimizeLam lf.body}
+  -- `seq2 f as bs` is `map f as ++ map f bs` but in one go.
+  let funs := Array.seq2 (fun lf => {lf with body := optimizeLam lf.body}) outFuns liftedMain
   let main := {main' with body := optimizeLam main'.body}
   return {funs, main}
 end
+
+namespace Incremental
+structure CCState where
+  gensym : Nat
+  gCodes : CC.CodeSet
+deriving Inhabited
+
+@[inline] def seedWith (st : CCState) (ids : Array Name) : CCState :=
+  {st with gCodes := ids.foldl .insert st.gCodes}
+@[inline] def seedModule (st : CCState) (m : LModule) : CCState :=
+  {st with gCodes := m.funs.foldl (·.insert ·.fid) st.gCodes |>.insert m.main.fid}
+
+def stepFuns (st : CCState) (funs : Array LFun) : (CCState × Array LFun) :=
+  let ((gCodes, out), gensym, _) :=
+    runST fun _ => (do
+      funs.foldlM (init := (st.gCodes, #[])) fun (g, acc) f => do
+        let (f, lifted) <- IR.closureConvertFun g f
+        let optf := {f with body := IR.optimizeLam f.body}
+        let optLifted := lifted.map fun (f : LFun) => {f with body := IR.optimizeLam f.body}
+        let g := optLifted.foldl (Std.TreeSet.insert · $ LFun.fid ·) (g.insert f.fid)
+        pure (g, (acc : Array LFun).push optf ++ optLifted)).run (st.gensym, ∅)
+  ({gensym, gCodes}, out)
+
+def stepExpr (st : CCState) (e : LExpr) : CCState × LExpr × Array LFun :=
+  let ((e, lifted), gensym, _) := runST fun _ => (IR.CC.ccExpr st.gCodes e).run (st.gensym, ∅)
+  let lifted := lifted.map fun f => {f with body := IR.optimizeLam f.body}
+  let gCodes := lifted.foldl (·.insert ·.fid) st.gCodes
+  ({gensym, gCodes}, e, lifted)
+end Incremental
+
 end IR

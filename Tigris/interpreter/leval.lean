@@ -21,12 +21,13 @@ deriving Repr, BEq, Inhabited
 
 abbrev Env    := Std.HashMap Name Val
 abbrev FunTab := Std.HashMap Name LFun
+abbrev GlobalEnv := Std.HashMap Name Val
 
-/-- any error tagged impossbible should be (but isn't) caught by a previous pass
+/-- any error tagged Lowlevel should be (but isn't) caught by a previous pass
    e.g. typechecker
 -/
 macro "impossible!" v:interpolatedStr(term) : term =>
-  ``(throw $ TypingError.Impossible (s! $v))
+  ``(throw $ TypingError.Lowlevel $ "Interpreter: " ++ (s! $v))
 open Std Format in
 def Val.toFormat : Val -> Std.Format
   | .unit => "()" | .int i => format i
@@ -44,17 +45,22 @@ def expectInt : Val -> Except TypingError Int
 def expectBool : Val -> Except TypingError Bool
   | .bool b => return b
   | v => impossible! "expected Bool, found {v}"
-def asConst? : Val -> Option Const
-  | .unit => some .unit
-  | .int i => some (.int i)
-  | .bool b => some (.bool b)
-  | .str s => some (.str s)
-  | _ => none
+def asConst? : Val -> Const ⊕ Val
+  | .unit => .inl .unit
+  | .int i => .inl (.int i)
+  | .bool b => .inl (.bool b)
+  | .str s => .inl (.str s)
+  | v => .inr v
 
-def getVar (ρ : Env) (ft : FunTab) (x : Name) : Except TypingError Val :=
+def getVar (ρ : Env) (ft : FunTab) (gρ : GlobalEnv) (x : Name) : Except TypingError Val :=
   match ρ[x]? with
    | some v => .ok v
-   | none => if x ∈ ft then .ok (.code x) else impossible! "unbound variable {x}"
+   | none => 
+    if x ∈ ft then .ok (.code x)
+    else
+      match gρ[x]? with
+      | some v => .ok v
+      | none => impossible! "unbound variable {x}"
 
 def evalPrim (op : PrimOp) (args : Array Val) : Except TypingError Val :=
   match op, args.toList with
@@ -86,99 +92,98 @@ instance : MonadLift (Except ε) (EIO ε) where
   | .error e => throw e
 
 mutual
-partial def evalRhs (ft : FunTab) (ρ : Env)
+partial def evalRhs (ft : FunTab) (ρ : Env) (gρ : GlobalEnv)
   : Rhs -> EIO TypingError Val := fun rhs => checkInterrupt *>
   match rhs with
-  | .prim op xs => xs.mapM (liftM ∘ getVar ρ ft) >>= liftM ∘ evalPrim op
-  | .proj s i => liftM ∘ proj i s =<< getVar ρ ft s
-  | .mkPair a b => pure .pair <*> getVar ρ ft a <*> getVar ρ ft b
-  | .mkConstr t fs => .ctor t <$> fs.mapM (liftM ∘ getVar ρ ft)
+  | .prim op xs => xs.mapM (liftM ∘ getVar ρ ft gρ) >>= liftM ∘ evalPrim op
+  | .proj s i => liftM ∘ proj i s =<< getVar ρ ft gρ s
+  | .mkPair a b => .pair <$> getVar ρ ft gρ a <*> getVar ρ ft gρ b
+  | .mkConstr t fs => .ctor t <$> fs.mapM (liftM ∘ getVar ρ ft gρ)
   | .isConstr s t ar =>
-    getVar ρ ft s <&> fun
+    getVar ρ ft gρ s <&> fun
     | .ctor t' fs => .bool (t' == t && fs.size == ar)
     | _ => .bool false
   | .call f a =>
-    getVar ρ ft f >>= fun
-    | .code fid => evalFun ft fid =<< getVar ρ ft a
+    getVar ρ ft gρ f >>= fun
+    | .code fid => evalFun ft gρ fid =<< getVar ρ ft gρ a
     | f' => impossible! "callee {f} = {f'} is not a code pointer"
 
-partial def evalStmt (ft : FunTab) (ρ : Env) 
+partial def evalStmt (ft : FunTab) (gρ : GlobalEnv) (ρ : Env)
   : Stmt -> EIO TypingError Env := fun (.let1 x rhs) =>
-  checkInterrupt *> ρ.insert x <$> evalRhs ft ρ rhs
+  checkInterrupt *> ρ.insert x <$> evalRhs ft ρ gρ rhs
 
-partial def evalTail (ft : FunTab) (ρ : Env) 
+partial def evalTail (ft : FunTab) (ρ : Env) (gρ : GlobalEnv)
   : Tail -> EIO TypingError Val := fun t => checkInterrupt *>
   match t with
-  | .ret x => getVar ρ ft x
+  | .ret x => getVar ρ ft gρ x
   | .app f a =>
-    getVar ρ ft f >>= fun
-    | .code fid => evalFun ft fid =<< getVar ρ ft a
+    getVar ρ ft gρ f >>= fun
+    | .code fid => evalFun ft gρ fid =<< getVar ρ ft gρ a
     | f' => impossible! "callee {f} = {f'} is not a code pointer"
   | .cond c t e =>
-    getVar ρ ft c >>= liftM ∘ expectBool >>= fun
-    | true => evalExpr ft ρ t
-    | false => evalExpr ft ρ e
+    getVar ρ ft gρ c >>= liftM ∘ expectBool >>= fun
+    | true => evalExpr ft ρ gρ t
+    | false => evalExpr ft ρ gρ e
   | .switchConst s cases d? => do
-    match asConst? (<- getVar ρ ft s) with
-    | none => impossible! "discrminant is not a constant"
-    | some k =>
+    match asConst? (<- getVar ρ ft gρ s) with
+    | .inr v => impossible! "discrminant {v} is not a constant"
+    | .inl k =>
       match cases.findSome? fun (kc, b) => if kc == k then some b else none
       with
-      | some branch => evalExpr ft ρ branch
+      | some branch => evalExpr ft ρ gρ branch
       | none =>
         match d? with
-        | some b => evalExpr ft ρ b
+        | some b => evalExpr ft ρ gρ b
         | none => throw
                 $ .NoMatchL (toString k)
                 $ cases.map
                 $ toString ∘ Prod.fst
   | .switchCtor s cases d? => do
-    match <- getVar ρ ft s with
+    match <- getVar ρ ft gρ s with
     | .ctor tag fs =>
       let ar := fs.size
       match cases.findSome? fun (t, arity, b) => 
         if t == tag && arity == ar then some b else none
       with
-      | some b => evalExpr ft ρ b
+      | some b => evalExpr ft ρ gρ b
       | none =>
         match d? with
-        | some b => evalExpr ft ρ b
+        | some b => evalExpr ft ρ gρ b
         | none => throw
                 $ .NoMatchL s!"{tag}/{ar}"
                 $ cases.map fun (n, ar, _) => s!"{n}/{ar}"
-    | _ => impossible! "discriminant is not a constructor"
+    | v => impossible! "discriminant {v} is not a constructor"
 
-partial def evalExpr (ft : FunTab) (ρ : Env) 
+partial def evalExpr (ft : FunTab) (ρ : Env) (gρ : GlobalEnv)
   : LExpr -> EIO TypingError Val := fun e => checkInterrupt *>
   match e with
-  | .seq binds t => binds.foldlM (evalStmt ft) ρ >>= fun ρ => evalTail ft ρ t
-  | .letVal x v b =>
-    let vx :=
+  | .seq binds t => binds.foldlM (evalStmt ft gρ) ρ >>= fun ρ => evalTail ft ρ gρ t
+  | .letVal x v b => do
+    let vx <-
       match v with
-      | .var y => ρ.getD y (if y ∈ ft then .code y else .unit)
-      | .cst .unit => .unit
-      | .cst (.int i) => .int i
-      | .cst (.bool b) => .bool b
-      | .cst (.str s) => .str s
-      | .constr t fs =>
-        .ctor t $ fs.map fun n => ρ.getD n (if n ∈ ft then .code n else .unit)
-      | .lam .. => panic! "unexpected lambda after closure conversion"
-    evalExpr ft (ρ.insert x vx) b
+      | .var y => getVar ρ ft gρ y
+      | .cst .unit => pure .unit
+      | .cst (.int i) => pure $ .int i
+      | .cst (.bool b) => pure $ .bool b
+      | .cst (.str s) => pure $ .str s
+      | .constr t fs => .ctor t <$> fs.mapM (liftM ∘ getVar ρ ft gρ)
+      | .lam .. => impossible! "unexpected lambda after closure conversion"
+    evalExpr ft (ρ.insert x vx) gρ b
   | .letRhs x rhs b =>
-    ρ.insert x <$> evalRhs ft ρ rhs >>= (evalExpr ft · b)
+    ρ.insert x <$> evalRhs ft ρ gρ rhs >>= (evalExpr ft · gρ b)
   | .letRec funs b =>
-    evalExpr (funs.foldl (fun a f => a.insert f.fid f) ft) ρ b
+    evalExpr (funs.foldl (fun a f => a.insert f.fid f) ft) ρ gρ b
 
-partial def evalFun (ft : FunTab) (fid : Name) (payload : Val) : EIO TypingError Val := do
+partial def evalFun (ft : FunTab) (gρ : GlobalEnv) (fid : Name) (payload : Val) : EIO TypingError Val := do
   checkInterrupt
   let some {param, body,..} := ft.get? fid
     | impossible! "unknown code pointer {fid}"
-  evalExpr ft {(param, payload)} body
+  evalExpr ft {(param, payload)} gρ body
 end
 
-def evalModule (m : LModule) : EIO TypingError Val := checkInterrupt *>
+def evalModule (m : LModule) (gρ : GlobalEnv := ∅) : EIO TypingError Val := checkInterrupt *>
   let ft : FunTab := m.funs.foldl (fun a f => a.insert f.fid f) {(m.main.fid, m.main)}
   let payload := Val.pair .unit (.ctor "𝐄" #[])
-  evalFun ft m.main.fid payload
+  evalFun ft gρ m.main.fid payload
 
 end LInterpreter
