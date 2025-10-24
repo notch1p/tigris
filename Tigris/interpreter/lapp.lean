@@ -36,7 +36,7 @@ private def pickIdBind (binds : Array BindingF) : Array ((Name × FExpr) ⊕ Nam
   $ nonrecs.foldl (fun a s => a.push $ .inl s) #[]
 
 open IR.Incremental in
-def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.Val) := do
+def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.Val × Scheme) := do
   let (PE', topdecl) <- Parsing.parseREPL code st.PE |>.toIO .userError
   let res@(_, E', _) <- inferToplevelC topdecl st.E |> IO.ofExcept
   let (topdeclF, logger, ctors) <- inferToplevelF res |> IO.ofExcept
@@ -45,13 +45,15 @@ def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.
   let mut lower := IR.Incremental.withTyDecl st.lower ctors
   let mut {cc, funs, gvals,..} := st
   let mut mainBody? : Option IR.LExpr := none
+  let mut sch : Scheme := .Forall [] [] .tUnit
   for d in topdeclF do
     match d with
     | .idBind binds =>
       let (lower', newL) := lowerIdBind lower binds
       let (cc', newCC) := stepFuns cc newL
-      lower := lower'
-      cc    := cc'
+      lower       := lower'
+      cc          := cc'
+      (_, sch, _) := binds.back!
       for f in newCC do
         funs := funs.insert f.fid f
       for b in pickIdBind binds do
@@ -66,7 +68,6 @@ def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.
             cc := cc'
             for lf in lifted do funs := funs.insert lf.fid lf
             let m := asModule {st with funs} le'
-            println! IR.fmtModule m
             let v <- LInterpreter.evalModule m gvals |>.toIO (.userError ∘ toString)
             gvals := gvals.insert name v
             mainBody? := some le'
@@ -86,8 +87,9 @@ def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.
       -- default to () when nothing to run
       let u := "u"; .letVal u (.cst .unit) (.seq #[] (.ret u))
   let m := asModule {st with funs} mainBody
+  println! IR.fmtModule m
   let v <- LInterpreter.evalModule m gvals |>.toIO (.userError ∘ toString)
-  return ({st with PE := PE', E := E', lower, cc, funs, gvals}, v)
+  return ({st with PE := PE', E := E', lower, cc, funs, gvals}, v, sch)
 
 def interpretL (s : String) (PE : PEnv) (E : Env) : IO (PEnv × Env × LInterpreter.Val) := do
   let (PE', topdecl) <- Parsing.parseREPL s PE |>.toIO .userError
@@ -95,6 +97,8 @@ def interpretL (s : String) (PE : PEnv) (E : Env) : IO (PEnv × Env × LInterpre
   let (topdeclF, logger, ctors) <- inferToplevelF res |> IO.ofExcept
   IO.print logger
   let (_, cc) := IR.toLamModuleF topdeclF ctors
+  println! IR.fmtModule cc
   let val <- LInterpreter.evalModule cc |>.toIO $ .userError ∘ toString
   return (PE', E', val)
+
 

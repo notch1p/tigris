@@ -28,6 +28,7 @@ We also:
 namespace CC
 variable {σ}
 abbrev CodeSet := Std.TreeSet Name
+abbrev AvoidSet := Std.HashSet Name
 
 def sortedNames (s : Std.HashSet Name) : Array Name := s.toArray.qsort
 
@@ -157,8 +158,8 @@ def emitLetCallInCode
   if selfVar?.isEqSome f then
     let pl <- fresh "ρ"
     match envVar? with
-    | some e => 
-      return .letRhs pl (.mkPair a e) 
+    | some e =>
+      return .letRhs pl (.mkPair a e)
            $ .letRhs x  (.call selfCode pl) k
     | none =>
       let env <- fresh "Γ"
@@ -169,7 +170,7 @@ def emitLetCallInCode
     let pl <- fresh "ρ"
     match envVar? with
     | some e =>
-      return .letRhs pl (.mkPair a e) 
+      return .letRhs pl (.mkPair a e)
            $ .letRhs x  (.call f pl) k
     | none =>
       let env <- fresh "Γ"
@@ -195,13 +196,55 @@ def emitLetCallInCode
   if body is `xᵀ(a)` and `x` is the closure we just bound for code `fid`
     and env `envName`, rewrite the tail to `fidᵀ(⟨a, envName⟩)` and let DCE remove the closure. -/
 def fuseImmediateTailCall (envName x fid : Name) : LExpr -> LExpr
-  | .seq binds (Tail.app f a) =>
+  | .seq binds (.app f a) =>
     if f == x then
       let pl := "ρ"
       .seq (binds.push (.let1 pl (.mkPair a envName))) (.app fid pl)
-    else
-      .seq binds (.app f a)
+    else .seq binds (.app f a)
+  | .letVal y v b => .letVal y v (fuseImmediateTailCall envName x fid b)
+  | .letRhs y r b => .letRhs y r (fuseImmediateTailCall envName x fid b)
+  | .letRec fs b => .letRec fs (fuseImmediateTailCall envName x fid b)
   | e => e
+
+namespace Rename
+abbrev NMap := Std.HashMap Name Name
+
+@[inline] def rw (m : NMap) (x : Name) : Name :=
+  match m.get? x with | some y => y | none => x
+mutual
+partial def value (m : NMap) : Value -> Value
+  | .var x       => .var (rw m x)
+  | .cst k       => .cst k
+  | .constr t fs => .constr t (fs.map (rw m))
+  | .lam p b     => .lam p (expr (m.erase p) b)
+
+partial def rhs (m : NMap) : Rhs -> Rhs
+  | .prim op args     => .prim op (args.map (rw m))
+  | .proj s i         => .proj (rw m s) i
+  | .mkPair a b       => .mkPair (rw m a) (rw m b)
+  | .mkConstr t fs    => .mkConstr t (fs.map (rw m))
+  | .isConstr s t ar  => .isConstr (rw m s) t ar
+  | .call f a         => .call (rw m f) (rw m a)
+
+partial def tail (m : NMap) : Tail -> Tail
+  | .ret x      => .ret (rw m x)
+  | .app f a    => .app (rw m f) (rw m a)
+  | .cond c t e => .cond (rw m c) (expr m t) (expr m e)
+  | .switchConst s cases d? =>
+    .switchConst (rw m s) (cases.map (fun (k,b) => (k, expr m b))) (d? |>.map (expr m))
+  | .switchCtor s cases d? =>
+    .switchCtor (rw m s) (cases.map (fun (c,ar,b) => (c, ar, expr m b))) (d? |>.map (expr m))
+
+partial def expr (m : NMap) : LExpr -> LExpr
+  | .letVal x v b => .letVal x (value m v) (expr (m.erase x) b)
+  | .letRhs x r b => .letRhs x (rhs m r) (expr (m.erase x) b)
+  | .letRec fs b =>
+    let m' := fs.foldl (init := m) (fun acc f => acc.erase f.fid |>.erase f.param)
+    let fs' := fs.map (fun ⟨fid,p,body⟩ => ⟨fid, p, expr (m'.erase p) body⟩)
+    .letRec fs' (expr m' b)
+  | .seq binds t => .seq (binds.map (fun (.let1 x r) => .let1 x (rhs m r))) (tail m t)
+end
+end Rename
 
 mutual
 /--
@@ -249,9 +292,12 @@ partial def ccCodeBodyM
       ccCodeBodyM
         gCodes fid paramPayload origParam
         capVars codeSet selfVar? envVar? body
+--    let newBody :=
+--      mkEnv "𝐄" capVars' fun env =>
+--        bindClos x fid' env body'
     let newBody :=
       mkEnv "𝐄" capVars' fun env =>
-        bindClos x fid' env body'
+        bindClos x fid' env (fuseImmediateTailCall env x fid' body')
     return (newBody, liftedFuns.push funDef ++ fs)
 
   | .letVal x v body => do
@@ -415,13 +461,24 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
         pure $ #[⟨fid, payload, body'⟩] ++ fs
     let (body', tailFuns) <- ccExpr gCodes body
 
+    let wrappers : Array (Name × Name) <- ids.mapM (fun fid => (fid, ·) <$> fresh (fid ++ "#clo"))
+    let renameMap : Rename.NMap := wrappers.foldl (fun m (fid, w) => m.insert fid w) ∅
+    let bodyRenamed := Rename.expr renameMap body'
+
     let rec bindClosures (i : Nat) (envName : Name) (k : LExpr) : LExpr :=
-      if h : i < funs.size then
-        let fid := funs[i].1
-        bindClos fid fid envName (bindClosures (i + 1) envName k)
+      if h : i < wrappers.size then
+        let (fid, w) := wrappers[i]
+        bindClos w fid envName (bindClosures (i + 1) envName k)
       else k
     let groupIntro :=
-      mkEnv "𝐄" capVars fun envName => bindClosures 0 envName body'
+      mkEnv "𝐄" capVars fun envName =>
+        let fused :=
+          funs.foldl
+            (init := bodyRenamed)
+            (fun acc ⟨fid, _, _⟩ => fuseImmediateTailCall envName fid fid acc)
+        bindClosures 0 envName fused
+    --let groupIntro :=
+    --  mkEnv "𝐄" capVars fun envName => bindClosures 0 envName body'
     return (groupIntro, funs' ++ tailFuns)
 end
 end CC

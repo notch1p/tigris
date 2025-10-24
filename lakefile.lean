@@ -9,6 +9,8 @@ lean_exe "tigris" where
   root := `Main
 lean_exe "tigrisc" where
   root := `Tigrisc
+lean_exe "tigrisi" where
+  root := `Tigrisi
 @[default_target]
 lean_exe "tigrisl" where
   root := `Tigrisl
@@ -72,4 +74,4 @@ extern_lib libleanffi pkg := do
   let name := nameToStaticLib "leanffi"
   buildStaticLib (pkg.staticLibDir / name) #[ffiO]
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"04dab179aa3d9a7150f105ddba70738098bd68d4"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"1df69ca8eb5a66ab0c97dc54bf281194dd714a40"

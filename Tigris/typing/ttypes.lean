@@ -307,17 +307,14 @@ abbrev dE : List (String × Scheme) :=
   , ("succ" , .Forall []    [] $ tInt ->' tInt)]
 
 abbrev dE' : List (String × Scheme) :=
-  [ ("rec"  , .Forall ["α"] [] $ ("α" ->' "α") ->' "α")
-  , ("__add", .Forall []    [] $ tInt ×'' tInt ->' tInt)
+  [ ("__add", .Forall []    [] $ tInt ×'' tInt ->' tInt)
   , ("__sub", .Forall []    [] $ tInt ×'' tInt ->' tInt)
   , ("__mul", .Forall []    [] $ tInt ×'' tInt ->' tInt)
   , ("__div", .Forall []    [] $ tInt ×'' tInt ->' tInt)
   , ("__eqInt", .Forall [] [] $ tInt ->' tInt ->' tBool)
   , ("__eqBool", .Forall [] [] $ tBool ->' tBool ->' tBool)
   , ("__eqString", .Forall [] [] $ tString ->' tString ->' tBool)
---  , ("__eq" , .Forall ["α"] [.unary "Eq" "α"] $ "α" ×'' "α" ->' tBool)
-  , ("elim" , .Forall ["α"] [] $ tEmpty ->' "α")
-  , ("succ" , .Forall []    [] $ tInt ->' tInt)]
+  ]
 
 def mkCurriedE (e : List (String × Scheme)) : Env :=
   ⟨ .ofList $

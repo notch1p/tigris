@@ -44,7 +44,7 @@
   (let ((|α| (car |payload|)))
     (let ((|_pL#?x₀| (car |α|)))
       (let ((|c19| 1))
-        (let ((|p20| (+ |c19| |_pL#?x₀|)))
+        (let ((|p20| (sb-kernel:two-arg-+ |c19| |_pL#?x₀|)))
           (funcall |k| |p20|))))))
 
 ; entrypoint

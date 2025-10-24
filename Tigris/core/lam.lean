@@ -167,7 +167,7 @@ partial def fmtLExpr : LExpr -> Format
   | .seq binds tail =>
     if binds.isEmpty then fmtTail tail
     else group $ joinSep
-      (binds.foldr (List.cons ∘ nestD ∘ fmtStmt) [fmtTail tail]) "\n"
+      (binds.foldr (List.cons ∘ nestD ∘ fmtStmt) [fmtTail tail]) ";\n"
   | .letVal x v b =>
     group $ "letι"
       <> group (fmtName x <> "=" ++ indentD (fmtValue v))
@@ -280,4 +280,3 @@ end IR
 
 @[inline] def Array.replaceAt (xs : Array α) (i : Nat) (elems : Array α) : Array α :=
   xs[0:i] ++ elems ++ xs[i+1:]
-

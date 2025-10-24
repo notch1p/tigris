@@ -11,7 +11,7 @@
   (let ((|α| (car |payload|)))
     (let ((|_pL#?x₀| (car |α|)))
       (let ((|_pR#?x₀| (cdr |α|)))
-        (let ((|p1| (+ |_pL#?x₀| |_pR#?x₀|)))
+        (let ((|p1| (sb-kernel:two-arg-+ |_pL#?x₀| |_pR#?x₀|)))
           (funcall |k| |p1|))))))
 
 (defun |fn1001| (|payload| |k|)
