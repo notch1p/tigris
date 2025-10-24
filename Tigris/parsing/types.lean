@@ -10,10 +10,10 @@ namespace Logging open PrettyPrint Text
 def blue s := (show SString from ⟨s, [], .blue, .defaultColor⟩).render
 def cyan s := (show SString from ⟨s, [], .green, .defaultColor⟩).render
 def magenta s := (show SString from ⟨s, [], .magenta, .defaultColor⟩).render
-def note s := (show SString from ⟨"[NOTE] ", [.bold], .cyan, .defaultColor⟩).render ++ s
-def info s := (show SString from ⟨"[INFO] ", [.bold], .blue, .defaultColor⟩).render ++ s
-def warn s := (show SString from ⟨"[WARN] ", [.bold], .yellow, .defaultColor⟩).render ++ s
-def error s := (show SString from ⟨"[ERROR] ", [.bold], .red, .defaultColor⟩).render ++ s
+def note s := "[NOTE] " ++ s
+def info s := "[INFO] " ++ s
+def warn s := "[WARN] " ++ s
+def error s := "[ERROR] " ++ s
 end Logging
 
 inductive TConst where
@@ -115,7 +115,7 @@ def MLType.decomposeArr : MLType -> (List MLType × MLType)
     (a :: as, r)
   | t => ([], t)
 def MLType.decomposeArr' : MLType -> (List MLType × MLType)
-  | .TSch (.Forall _ _ps t) => 
+  | .TSch (.Forall _ _ps t) =>
     /-let (as, r) := -/ decomposeArr' t
     --(ps.map (fun {cls, args} => TApp cls args) ++ as, r)
   | .TArr a b =>
@@ -189,15 +189,24 @@ def Lean.Data.Trie.findD (t : Trie α) (s : String) (dflt : α) : α := t.find? 
 in
 attribute [inline] ofList findD
 
+abbrev tabWidth : Nat := 2
 structure PEnv where
   ops : OpTable
   tys : TyArity
   undTy : List Symbol
   recordFields : Std.HashMap Symbol (Array Symbol) := {}
+  indentStack : List Nat := [0]
 
 --abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT Substring Char
                   $ StateRefT (PEnv × String) (ST σ)
+
+def warn (s : String) : TParser σ Unit :=
+  modify fun (pe, a) =>
+    (pe, a ++ Logging.warn s)
+def error (s : String) : TParser σ Unit :=
+  modify fun (pe, a) =>
+    (pe, a ++ Logging.error s)
 
 structure TyDecl where
   tycon : String

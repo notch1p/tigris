@@ -20,6 +20,9 @@ def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "alphabetic character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
+def oneOf [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m] (l : List Char)
+  : ParserT ε σ Char m Char := withErrorMessage "expected one of {l}" $ tokenFilter (· ∈ l)
+
 section
 variable {σ}
 def void : TParser σ β -> TParser σ Unit := (() <$ ·)
@@ -33,6 +36,92 @@ def comment : TParser σ Unit :=
 
 def spaces : TParser σ Unit :=
   dropMany <| MLCOMMENTR <|> MLCOMMENTL <|> void ASCII.whitespace <|> comment <|> void eol
+
+def hspaces : TParser σ Unit :=
+  dropMany <| MLCOMMENTR
+          <|> MLCOMMENTL
+          <|> (void $ tokenFilter fun c => c == ' ' || c == '\t')
+          <|> comment
+
+def eol1 : TParser σ Unit := void eol
+
+partial def vspaces : TParser σ Unit :=
+  eol *> go where go := do if <- test (hspaces *> eol1) then go
+
+/-- consume **one of** ' ' '\n' consecutively -/
+@[inline] partial
+def indentCol : TParser σ Nat := go 0 where go n := 
+  try
+    oneOf [' ', '\t'] >>= fun
+    | ' ' => char ' ' *> go (n + 1)
+    | '\t' => char '\t' *> go (n + tabWidth)
+    | _ => return n
+  catch _ => return n
+  
+def indentGuard (cmp : Nat -> Nat -> Bool) (rel : String) (ref : Nat) : TParser σ Unit := withBacktracking do
+  let col <- indentCol
+  if cmp col ref then return ()
+  else 
+    error s!"indentation mismatch: got {col}, expected indentation {rel} {ref}"
+    throwUnexpected
+
+def colGt (n : Nat) : TParser σ Unit := indentGuard (· > ·) ">" n
+def colGe (n : Nat) : TParser σ Unit := indentGuard (· >= ·) ">=" n
+def colEq (n : Nat) : TParser σ Unit := indentGuard (· == ·) "==" n
+def currentCol : TParser σ Nat :=
+  get <&> fun ({indentStack,..}, _) => indentStack.headD 0
+def pushCol (n : Nat) : TParser σ Unit :=
+  modify fun (pe, log) =>
+    ({pe with indentStack := n :: pe.indentStack}, log)
+def colGtCur : TParser σ Unit := colGt =<< currentCol
+def colGeCur : TParser σ Unit := colGe =<< currentCol
+def colEqCur : TParser σ Unit := colEq =<< currentCol
+def popCol : TParser σ Unit := modify
+  fun (pe, log) => ({pe with indentStack := pe.indentStack.tail}, log)
+
+attribute [inline]
+  colGt colGe colEq
+  colGtCur colGeCur colEqCur
+  pushCol currentCol popCol 
+
+/-- After a linebreak,
+    measure and consume the indentation on the next line,
+    then run `p baseline`. -/
+def withBaseline (p : Nat -> TParser σ α) : TParser σ α := vspaces *> indentCol >>= p
+
+/-- Enter a new layout block after a linebreak.
+    - Require the next line's indentation to be strictly greater than the current baseline (strict=true),
+      or ≥ current baseline (strict=false).
+    - Push that indentation as the new baseline while parsing `p`.
+    - Pop it afterwards.
+-/
+def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
+  vspaces
+  let base <- indentCol
+  let cur  <- currentCol
+  if strict then
+    if base <= cur then
+      error s!"expected indentation > {cur} to start a block, got {base}"
+      throwUnexpected 
+  else
+    if base < cur then
+      error s!"expected indentation >= {cur} to start a block, got {base}"
+      throwUnexpected 
+  pushCol base *> p <* popCol
+
+/--
+  Parse 1+ aligned (to baseline) items (with backtracking).
+  - Assumes indentation is already consumed prior to parsing the 1st item
+  - then repeatedly:
+    - linebreak
+    - another item
+  - stops on dedent/different indentation.
+
+  - `foldl` is backtracking.
+-/
+def alignedMany1 (baseline : Nat) (item : TParser σ α) : TParser σ (Array α) :=
+  item >>= fun init =>
+    foldl Array.push #[init] $ vspaces *> colEq baseline *> item
 
 abbrev ws (t : TParser σ α) := spaces *> t <* spaces
 
@@ -83,13 +172,13 @@ def kw (s : String) : TParser σ Unit := spaces *>
                                     *> notFollowedBy alphanum')
 
 def kwOpExact (s : String) : TParser σ Unit := spaces *>
-   (withBacktracking
+  ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ void
   $ string s)
 
 def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := spaces *>
-   (withBacktracking
+  ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ string s *> notFollowedBy (tokenFilter badNext))
 abbrev LET    : TParser σ Unit := kw "let"
