@@ -7,14 +7,14 @@
 ; hoisted functions
 
 (defun |countTree| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|α| (car |payload|)))
     (let ((|Γ| (cdr |payload|)))
       (let ((|_pL#?x₀| (car |α|)))
         (cond
           ((eq (car |_pL#?x₀|) '|Empty|)
             (let ((|c1| 0))
-              (funcall |k| |c1|)))
+              (funcall (the function |k|) |c1|)))
           ((eq (car |_pL#?x₀|) '|Node|)
             (let ((|p2| (svref (cdr |_pL#?x₀|) 1)))
               (let ((|c3| 1))
@@ -23,18 +23,18 @@
                     (let ((|ρ1000| (cons |pair5| |Γ|)))
                       (labels ((|k1| (|v0|)
                         (let ((|p7| (%int+ |c3| |v0|)))
-                          (funcall |k| |p7|))))
+                          (funcall (the function |k|) |p7|))))
                         (funcall #'|countForest| |ρ1000| #'|k1|)))))))))))))
 
 (defun |countForest| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|α| (car |payload|)))
     (let ((|Γ| (cdr |payload|)))
       (let ((|_pL#?x₀| (car |α|)))
         (cond
           ((eq (car |_pL#?x₀|) '|Nil|)
             (let ((|c9| 0))
-              (funcall |k| |c9|)))
+              (funcall (the function |k|) |c9|)))
           ((eq (car |_pL#?x₀|) '|Cons|)
             (let ((|p10| (svref (cdr |_pL#?x₀|) 0)))
               (let ((|p11| (svref (cdr |_pL#?x₀|) 1)))
@@ -47,13 +47,13 @@
                             (let ((|ρ1001| (cons |pair16| |Γ|)))
                               (labels ((|k5| (|v4|)
                                 (let ((|p18| (%int+ |v2| |v4|)))
-                                  (funcall |k| |p18|))))
+                                  (funcall (the function |k|) |p18|))))
                                 (funcall #'|countForest| |ρ1001| #'|k5|)))))))
                         (funcall #'|countTree| |ρ1002| #'|k3|)))))))))))))
 
 ; entrypoint
 (defun |main| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|Γ| (cons '|𝐄| (vector))))
     (let ((|countTree#clo1006| (cons '|𝐂| (vector #'|countTree| |Γ|))))
       (let ((|c19| 1))
@@ -82,7 +82,7 @@
                                                     (let ((|_code1003| (svref (cdr |countTree#clo1006|) 0)))
                                                       (let ((|Γc1004| (svref (cdr |countTree#clo1006|) 1)))
                                                         (let ((|ρc1005| (cons |pair41| |Γc1004|)))
-                                                          (funcall |_code1003| |ρc1005| |k|))))))))))))))))))))))))))))))
+                                                          (funcall (the function |_code1003|) |ρc1005| |k|))))))))))))))))))))))))))))))
 
 ; driver
 (defun |__start| ()

@@ -18,7 +18,7 @@
          (a0    (car alpha))
          (a1    (cdr alpha))
          (gamma (cdr payload)))
-    (funcall kont a0 a1 gamma)))
+    (funcall (the function kont) a0 a1 gamma)))
 
 (defmacro with-args (payload arg-list &body body)
   "The macro WITH-ARGS destructures (payload = (cons α Γ)) and binds:
@@ -49,91 +49,98 @@
 (defparameter empty-𝐄 empty-gamma)
 
 (defun make-closure (f &optional (gamma empty-gamma))
-  (cons '|𝐂| (vector f gamma)))
+  (cons '|𝐂| (vector (the function f) gamma)))
 
 ;; e.g. println, print : ∀a, a -> Unit
 (defun %println (payload k)
   (with-arg2 payload
              (lambda (x _ gamma)
-               (declare (ignore gamma) (ignore _))
+               (declare (ignore gamma _))
                (princ x)
                (terpri)
                (funcall k nil))))
 (defun %print (payload k)
   (with-arg2 payload
              (lambda (x _ gamma)
-               (declare (ignore gamma) (ignore _))
+               (declare (ignore gamma _))
                (princ x)
                (funcall k nil))))
 ;; e.g. toString : ∀a, a -> String
 (defun %to-string (payload k)
   (with-arg2 payload
              (lambda (x _ gamma)
-               (declare (ignore gamma) (ignore _))
+               (declare (ignore gamma _))
                (funcall k (princ-to-string x)))))
 ;; e.g. string-append : String -> String -> String
 (defun %string-append (payload k)
   (with-arg2 payload
              (lambda (x y gamma)
-               (declare (ignore gamma) (type string x) (type string y))
+               (declare (ignore gamma) (type string x y))
                (funcall k (concatenate 'string x y)))))
 
 ;; e.g. read (unsafe) : ∀a, Unit -> a
 (defun %read (payload k)
   (with-arg2 payload
              (lambda (_ __ gamma)
-               (declare (ignore gamma) (ignore _) (ignore __))
+               (declare (ignore gamma _ __))
                (funcall k (read)))))
 
 ;; e.g. read-line : Unit -> String
 (defun %read-line (payload k)
   (with-arg2 payload
              (lambda (_ __ gamma)
-               (declare (ignore gamma) (ignore _) (ignore __))
+               (declare (ignore gamma _ __))
                (funcall k (read-line)))))
 
 ;; e.g. modulus: Int -> Int -> Int
 (defun %int-mod (payload k)
   (with-args payload (x y)
-    (declare (type integer x) (type integer y))
+    (declare (type integer x y))
     (funcall k (mod x y))))
 
+(declaim (inline %string=))
 (defun %string= (s1 s2)
   (declare (type simple-string s1) (type simple-string s2))
   (the boolean (sb-kernel:%sp-string= s1 s2 0 nil 0 nil)))
 
-(declaim (ftype (function (integer integer) integer) %int+))
+(declaim (ftype (function (integer integer) integer) %int+)
+         (inline %int+))
 (defun %int+ (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (sb-kernel:two-arg-+ a b))
 
-(declaim (ftype (function (integer integer) integer) %int-))
+(declaim (ftype (function (integer integer) integer) %int-)
+         (inline %int-))
 (defun %int- (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (sb-kernel:two-arg-- a b))
 
-(declaim (ftype (function (integer integer) integer) %int*))
+(declaim (ftype (function (integer integer) integer) %int*)
+         (inline %int*))
 (defun %int* (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (sb-kernel:two-arg-* a b))
 
-(declaim (ftype (function (integer integer) integer) %int/))
+(declaim (ftype (function (integer fixnum) integer) %int/)
+         (inline %int/))
 (defun %int/ (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (if (zerop b) 0 (truncate a b)))
+  (if (zerop b) 0
+      (floor a b)))
 
-(declaim (ftype (function (integer integer) boolean) %int=))
+(declaim (ftype (function (integer integer) boolean) %int=)
+         (inline %int=))
 (defun %int= (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (sb-kernel:two-arg-= a b))
 
 (define-condition match-failure (error)
-  ((discrminant 
+  ((discrminant
       :initarg :discr
       :reader discrminant
       :type string))
-  (:report 
-   (lambda (condition stream) 
+  (:report
+   (lambda (condition stream)
      (format stream "No branch can be matched against ~A" (discrminant condition)))))
 
 ;; the closure object of println, print ...

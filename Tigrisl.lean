@@ -13,6 +13,7 @@ structure ArgParserFlag where
   legacy? : Bool := false
   sysf?   : Bool := false
   cl?     : Bool := true
+  fasl?   : Bool := false
   ffi?    : Option String := "ffi.lisp"
 
 def mkSBCL (ifile ofile sbcl : String) : Process.SpawnArgs where
@@ -33,7 +34,9 @@ def validate args := do
     if is.size = 0 then return none
     else if is.size < os.size then throwServerError s!"received {is.size} file(s) but need {os.size}"
     else
-      let left := is.foldl (Array.push · $ String.append · ".lisp") #[] os.size
+      let left :=
+        let ext := if spec.fasl? then ".fasl" else ".lisp"
+        is.foldl (Array.push · $ String.append · ext) #[] os.size
       return some (spec, is, os ++ left)
   else return none
 where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
@@ -45,6 +48,7 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
   | "--sysf" :: xs => argParser {spec with sysf? := true} is os xs
   | "--cc" :: xs => argParser {spec with lamcc? := true} is os xs
   | "--cps" :: xs => argParser {spec with cps? := true} is os xs
+  | "--fasl" :: xs => argParser {spec with fasl? := true} is os xs
   | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
   | "-lf" :: x :: xs | "--link-ffi" :: x :: xs => argParser {spec with ffi? := x} is os xs
   | "-nlf" :: xs | "--no-link-ffi" :: xs => argParser {spec with ffi? := none} is os xs
@@ -70,6 +74,7 @@ def main (fp : List String) : IO Unit := do
                 , ffi?
                 , cl?
                 , sysf?
+                , fasl?
                 , legacy?}
               , is
               , os) <- validate fp then
@@ -78,7 +83,7 @@ def main (fp : List String) : IO Unit := do
         try
           let s <- FS.readFile ⟨i⟩
           let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
-          if o.endsWith ".fasl" then 
+          if o.endsWith ".fasl" || fasl? then 
             let temp <- withTempFile' fun h temp => do
               let (_, cc) <- do
                 let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
@@ -101,7 +106,6 @@ def main (fp : List String) : IO Unit := do
               pure temp
 
             FS.writeBinFile ⟨o⟩ ∅
-
             let os <- toString <$> FS.realPath (System.FilePath.mk o)
             let {exitCode, stdout, stderr} <- spawnSBCL temp.toString os
             print stderr

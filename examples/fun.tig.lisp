@@ -7,15 +7,15 @@
 ; hoisted functions
 
 (defun |fn1000| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|α| (car |payload|)))
     (let ((|_pL#?x₀| (car |α|)))
       (let ((|_pR#?x₀| (cdr |α|)))
         (let ((|p1| (%int+ |_pL#?x₀| |_pR#?x₀|)))
-          (funcall |k| |p1|))))))
+          (funcall (the function |k|) |p1|))))))
 
 (defun |fn1001| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|α| (car |payload|)))
     (let ((|_pL#?x₀| (car |α|)))
       (let ((|_pR#?x₀| (cdr |α|)))
@@ -28,11 +28,11 @@
                     (let ((|_code1002| (svref (cdr |p5|) 0)))
                       (let ((|Γc1003| (svref (cdr |p5|) 1)))
                         (let ((|ρc1004| (cons |pair6| |Γc1003|)))
-                          (funcall |_code1002| |ρc1004| |k|))))))))))))))
+                          (funcall (the function |_code1002|) |ρc1004| |k|))))))))))))))
 
 ; entrypoint
 (defun |main| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|Γ| (cons '|𝐄| (vector))))
     (let ((|lam2| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
       (let ((|con3| (cons '|Boxed| (vector |lam2|))))
@@ -49,7 +49,7 @@
                             (let ((|ρc1007| (cons |pair18| |Γ|)))
                               (labels ((|k3| (|v2|)
                                 (let ((|p20| (cons |v0| |v2|)))
-                                  (funcall |k| |p20|))))
+                                  (funcall (the function |k|) |p20|))))
                                 (funcall #'|fn1000| |ρc1007| #'|k3|))))))))
                       (funcall #'|fn1001| |ρc1010| #'|k1|))))))))))))
 

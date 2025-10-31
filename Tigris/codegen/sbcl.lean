@@ -100,7 +100,10 @@ def emitConst : IR.Const -> String
 - performance: `eq` > `eql` > `equal` > `equalp`
 
 - `%intOP` calls `sb-kernel:two-arg-OP`
-  - `%int/` returns `0` when divided by zero otherwise calls `truncate`
+  - `%int/` returns `0` when
+    - divided by zero
+    - otherwise calls `floor`
+    - divisor should be a `fixnum`
 - `%string=` calls `sb-kernel:%sp-string=`
 
 -/
@@ -202,14 +205,14 @@ partial def emitTail : CTail -> S String
     get <&> fun {kontParam, knownFuns, shapes,..} =>
       let callee :=
         match shapes.get? f with
-        | some .fn => sym f
-        | _ => if f ∈ knownFuns then funDesig f else sym f
+        | some .fn => s!"(the function {sym f})"
+        | _ => if f ∈ knownFuns then funDesig f else s!"(the function {sym f})"
       let kArg := if k == kontParam then sym k else funDesig k
       s!"(funcall {callee} {sym p} {kArg})"
   | .appKont k v =>
     get <&> fun {localKont,..} =>
       if k ∈ localKont then s!"({sym k} {sym v})"
-      else s!"(funcall {sym k} {sym v})"
+      else s!"(funcall (the function {sym k}) {sym v})"
   | .halt v => return s!"(progn {sym v})"
   | .ite c t e => do
     let ii <- ind
@@ -263,7 +266,8 @@ def emitFun (knownFuns : FunSet) : CFun -> String
       , kontParam
       , knownFuns
       , shapes}
-    let pragma := "(declare (optimize (speed 3) (safety 0) (debug 0)))"
+    let pragma := s!"(declare (optimize (speed 3) (safety 0) (debug 0)) \
+                              (ignorable {sym payloadParam}))"
     s!"(defun {sym fid} ({sym payloadParam} {sym kontParam})\n  {pragma}\n  {body})\n"
 
 def emitModule (m : CModule)
@@ -283,3 +287,4 @@ def emitModule (m : CModule)
   (hd, funs, main, driver)
 
 end Codegen.CL
+

@@ -1,8 +1,13 @@
+;; == external FFI ==
+
+(load "ffi.lisp")
+
+;; == Common Lisp ==
 
 ; hoisted functions
 
 (defun |eval| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|α| (car |payload|)))
     (let ((|Γ| (cdr |payload|)))
       (let ((|_pL#?x₀| (car |α|)))
@@ -18,8 +23,8 @@
                           (let ((|pair7| (cons |p2| |u6|)))
                             (let ((|ρ1000| (cons |pair7| |Γ|)))
                               (labels ((|k3| (|v2|)
-                                (let ((|p9| (tigris-ffi:%int+ |v0| |v2|)))
-                                  (funcall |k| |p9|))))
+                                (let ((|p9| (%int+ |v0| |v2|)))
+                                  (funcall (the function |k|) |p9|))))
                                 (funcall #'|eval| |ρ1000| #'|k3|)))))))
                         (funcall #'|eval| |ρ1001| #'|k1|))))))))
           ((eq (car |_pL#?x₀|) '|Div|)
@@ -33,8 +38,8 @@
                           (let ((|pair16| (cons |p11| |u15|)))
                             (let ((|ρ1002| (cons |pair16| |Γ|)))
                               (labels ((|k7| (|v6|)
-                                (let ((|p18| (tigris-ffi:%int/ |v4| |v6|)))
-                                  (funcall |k| |p18|))))
+                                (let ((|p18| (%int/ |v4| |v6|)))
+                                  (funcall (the function |k|) |p18|))))
                                 (funcall #'|eval| |ρ1002| #'|k7|)))))))
                         (funcall #'|eval| |ρ1003| #'|k5|))))))))
           ((eq (car |_pL#?x₀|) '|Mul|)
@@ -48,13 +53,13 @@
                           (let ((|pair25| (cons |p20| |u24|)))
                             (let ((|ρ1004| (cons |pair25| |Γ|)))
                               (labels ((|k11| (|v10|)
-                                (let ((|p27| (tigris-ffi:%int* |v8| |v10|)))
-                                  (funcall |k| |p27|))))
+                                (let ((|p27| (%int* |v8| |v10|)))
+                                  (funcall (the function |k|) |p27|))))
                                 (funcall #'|eval| |ρ1004| #'|k11|)))))))
                         (funcall #'|eval| |ρ1005| #'|k9|))))))))
           ((eq (car |_pL#?x₀|) '|Atom|)
             (let ((|p28| (svref (cdr |_pL#?x₀|) 0)))
-              (funcall |k| |p28|)))
+              (funcall (the function |k|) |p28|)))
           ((eq (car |_pL#?x₀|) '|Sub|)
             (let ((|p29| (svref (cdr |_pL#?x₀|) 0)))
               (let ((|p30| (svref (cdr |_pL#?x₀|) 1)))
@@ -66,14 +71,14 @@
                           (let ((|pair35| (cons |p30| |u34|)))
                             (let ((|ρ1006| (cons |pair35| |Γ|)))
                               (labels ((|k15| (|v14|)
-                                (let ((|p37| (tigris-ffi:%int- |v12| |v14|)))
-                                  (funcall |k| |p37|))))
+                                (let ((|p37| (%int- |v12| |v14|)))
+                                  (funcall (the function |k|) |p37|))))
                                 (funcall #'|eval| |ρ1006| #'|k15|)))))))
                         (funcall #'|eval| |ρ1007| #'|k13|)))))))))))))
 
 ; entrypoint
 (defun |main| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|Γ| (cons '|𝐄| (vector))))
     (let ((|c38| 20))
       (let ((|con39| (cons '|Atom| (vector |c38|))))
@@ -103,9 +108,9 @@
                                                       (let ((|ρc1010| (cons |pair62| |Γ|)))
                                                         (labels ((|k17| (|v16|)
                                                           (let ((|c64| 3860))
-                                                            (let ((|cmp65| (tigris-ffi:%int= |v16| |c64|)))
+                                                            (let ((|cmp65| (%int= |v16| |c64|)))
                                                               (if |cmp65|
-                                                                (funcall |k| |con60|)
+                                                                (funcall (the function |k|) |con60|)
                                                                 (error +NOMATCH+ :discr "#[Toplevel]"))))))
                                                           (funcall #'|eval| |ρc1010| #'|k17|))))))))))))))))))))))))))))))
 
