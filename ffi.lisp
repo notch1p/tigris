@@ -1,4 +1,5 @@
 ;;;; * Gadgets for defining FFI functions
+;;;; Also served as a prelude.
 ;;;; - Entry: ~(defun fname (payload k))~
 ;;;; - payload = ~(cons α Γ)~
 ;;;;    - α: user args where
@@ -19,7 +20,7 @@
          (gamma (cdr payload)))
     (funcall kont a0 a1 gamma)))
 
-(defmacro with-args ((payload k) arg-list &body body)
+(defmacro with-args (payload arg-list &body body)
   "The macro WITH-ARGS destructures (payload = (cons α Γ)) and binds:
     - each user argument to the symbols provided,
     - a special variable GAMMA to the captured environment."
@@ -41,7 +42,7 @@
               (gamma  (cdr ,payload))
               (,tmp   ,alpha)
               ,@(build-binds arg-list))
-         (declare (ignorable gamma ,k))
+         (declare (ignorable gamma))
          ,@body))))
 
 (defparameter empty-gamma (cons '|𝐄| (vector)))
@@ -93,11 +94,50 @@
 
 ;; e.g. modulus: Int -> Int -> Int
 (defun %int-mod (payload k)
-  (with-args (payload k) (x y)
+  (with-args payload (x y)
     (declare (type integer x) (type integer y))
     (funcall k (mod x y))))
 
+(defun %string= (s1 s2)
+  (declare (type simple-string s1) (type simple-string s2))
+  (the boolean (sb-kernel:%sp-string= s1 s2 0 nil 0 nil)))
+
+(declaim (ftype (function (integer integer) integer) %int+))
+(defun %int+ (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-+ a b))
+
+(declaim (ftype (function (integer integer) integer) %int-))
+(defun %int- (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-- a b))
+
+(declaim (ftype (function (integer integer) integer) %int*))
+(defun %int* (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-* a b))
+
+(declaim (ftype (function (integer integer) integer) %int/))
+(defun %int/ (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (if (zerop b) 0 (truncate a b)))
+
+(declaim (ftype (function (integer integer) boolean) %int=))
+(defun %int= (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-= a b))
+
+(define-condition match-failure (error)
+  ((discrminant 
+      :initarg :discr
+      :reader discrminant
+      :type string))
+  (:report 
+   (lambda (condition stream) 
+     (format stream "No branch can be matched against ~A" (discrminant condition)))))
+
 ;; the closure object of println, print ...
+(defconstant +NOMATCH+ 'match-failure)
 (defparameter |%println| (make-closure #'%println))
 (defparameter |%print| (make-closure #'%print))
 (defparameter |%to-string| (make-closure #'%to-string))

@@ -50,10 +50,10 @@ partial def getPair (env : KEnv) (x : Name) : Option (Name × Name) :=
 def fvRhs : Rhs -> Std.HashSet Name
   | .prim _ args   => args.foldl (·.insert ·) ∅
   | .proj s _      => {s}
-  | .mkPair a b    => ({a} : Std.HashSet Name).insert b
-  | .mkConstr _ fs => fs.foldl (init := ∅) (·.insert ·)
+  | .mkPair a b    => {a, b}
+  | .mkConstr _ fs => fs.foldl (·.insert ·) ∅
   | .isConstr s .. => {s}
-  | .call f a      => ({f} : Std.HashSet Name).insert a
+  | .call f a      => {f, a}
 
 @[inline] def isPureRhs : Rhs -> Bool
   | .call .. => false
@@ -63,12 +63,13 @@ mutual
 partial def fvValue : Value -> Std.HashSet Name
   | .var x       => {x}
   | .cst _       => ∅
-  | .constr _ fs => fs.foldl (init := ∅) (·.insert ·)
+  | .constr _ fs => fs.foldl (·.insert ·) ∅
   | .lam p b     => fvExpr b |>.erase p
 
 partial def fvTail : Tail -> Std.HashSet Name
+  | .matchFail .. => ∅
   | .ret x      => {x}
-  | .app f a    => ({f} : Std.HashSet Name).insert a
+  | .app f a    => {f, a}
   | .cond c t e => fvExpr t ∪ fvExpr e |>.insert c
   | .switchConst s cases d? =>
     let acc := cases.foldl (· ∪ fvExpr ·.2) {s}
@@ -205,6 +206,7 @@ partial def cfTail (env : KEnv) : Tail -> Tail
     letI cases' := cases.map fun (c, ar, b) => (c, ar, cfExpr env b)
     letI d' := d? |>.map (cfExpr env)
     .switchCtor s' cases' d'
+  | mf => mf -- matchFail
 
 partial def cfExpr (env : KEnv) : LExpr -> LExpr
   | .letVal x v body =>
@@ -235,7 +237,8 @@ partial def cfExpr (env : KEnv) : LExpr -> LExpr
     | .switchConst s cases d? =>
       match getConst env s with
       | some k =>
-        match cases.findSome? fun (k', b) => if k' == k then some b else none with
+        match cases.findSome? fun (k', b) => if k' == k then some b else none
+        with
         | some b => applyBinds binds b
         | none   => match d? with
                     | some b => applyBinds binds b
@@ -283,17 +286,13 @@ abbrev UMap := Std.HashMap Name Nat
 
 @[inline] def decByValue (m : UMap) : Value -> UMap
   | .var y        => dec m y
-  | .cst _        => m
   | .constr _ fs  => decMany m fs
-  | .lam _ _      => m
+  | _             => m -- lam, cst
 
 @[inline] def decByRhs (m : UMap) : Rhs -> UMap
-  | .prim _ args     => decMany m args
-  | .proj s _        => dec m s
-  | .mkPair a b      => dec (dec m a) b
-  | .mkConstr _ fs   => decMany m fs
-  | .isConstr s ..   => dec m s
-  | .call f a        => dec (dec m f) a
+  | .prim _ fs  | .mkConstr _ fs => decMany m fs
+  | .proj s _   | .isConstr s .. => dec m s
+  | .mkPair a b | .call a b      => dec (dec m a) b
 
 mutual
 partial def countValue : Value -> UMap -> UMap
@@ -303,14 +302,12 @@ partial def countValue : Value -> UMap -> UMap
   | .lam _ b, m     => countExpr b m
 
 partial def countRhs : Rhs -> UMap -> UMap
-  | .prim _ args, m    => bumpMany m args
-  | .proj s _, m       => bump m s
-  | .mkPair a b, m     => bump (bump m a) b
-  | .mkConstr _ fs, m  => bumpMany m fs
-  | .isConstr s .., m  => bump m s
-  | .call f a, m       => bump (bump m f) a
+  | .prim _ fs, m  | .mkConstr _ fs, m => bumpMany m fs
+  | .proj s _, m   | .isConstr s .., m => bump m s
+  | .mkPair a b, m | .call a b, m      => bump (bump m a) b
 
 partial def countTail : Tail -> UMap -> UMap
+  | .matchFail .., m => m
   | .ret x, m        => bump m x
   | .app f a, m      => bump (bump m f) a
   | .cond c t e, m   =>
@@ -368,17 +365,15 @@ partial def occursInValue (x : Name) : Value -> Bool
   | .lam p b     => if p == x then false else occursInExpr x b
 
 partial def occursInRhs (x : Name) : Rhs -> Bool
-  | .prim _ args   => x ∈ args
-  | .proj s _      => x == s
-  | .mkPair a b    => x == a || x == b
-  | .mkConstr _ fs => x ∈ fs
-  | .isConstr s .. => x == s
-  | .call f a      => x == f || x == a
+  | .prim _ fs  | .mkConstr _ fs => x ∈ fs
+  | .proj s _   | .isConstr s .. => x == s
+  | .mkPair a b | .call a b      => x == a || x == b
 
 partial def occursInTail (x : Name) : Tail -> Bool
-  | .ret y      => x == y
-  | .app f a    => x == f || x == a
-  | .cond c t e => x == c || occursInExpr x t || occursInExpr x e
+  | .matchFail .. => false
+  | .ret y        => x == y
+  | .app f a      => x == f || x == a
+  | .cond c t e   => x == c || occursInExpr x t || occursInExpr x e
   | .switchConst s cs d? =>
     x == s || cs.any (occursInExpr x ∘ Prod.snd) || d?.any (occursInExpr x)
   | .switchCtor s cs d?  =>
@@ -457,6 +452,7 @@ partial def cpdce (env : AEnv) (uses : UMap) : LExpr -> LExpr
           (rwName env s)
           (cases.map (fun (c, ar, b) => (c, ar, cpdce env uses b)))
           (d? |>.map (cpdce env uses))
+      | mf => mf -- matchFail
     let (_ , binds') :=
       binds.foldl (init := (uses, (#[] : Array Stmt))) fun (u, acc) (.let1 y rhs) =>
         let rhs' := rwRhs env rhs
@@ -471,18 +467,16 @@ end
   cpdce (∅ : AEnv) (.ofExpr e) e
 
 def bindsArePureNoUse (x : Name) (binds : Array Stmt) : Bool :=
-  binds.all fun (.let1 _ rhs) => isPureRhs rhs && !(fvRhs rhs).contains x
+  binds.all fun (.let1 _ rhs) => isPureRhs rhs && x ∉ fvRhs rhs
 
 def peelAfterCall (x : Name) : LExpr -> Option (Array Stmt)
   | .seq binds (Tail.ret y) =>
     if y == x && bindsArePureNoUse x binds then some binds else none
   | .letRhs _ rhs rest =>
-    if isPureRhs rhs && !(fvRhs rhs).contains x then
-      peelAfterCall x rest
+    if isPureRhs rhs && x ∉ fvRhs rhs then peelAfterCall x rest
     else none
   | .letVal _ v rest =>
-    if !(fvValue v).contains x then
-      peelAfterCall x rest
+    if x ∉ fvValue v then peelAfterCall x rest
     else none
   | _ => none
 

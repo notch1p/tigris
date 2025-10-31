@@ -22,6 +22,5 @@ let prog =
                      (Atom 20)) $
                 (Atom 0)
 ;;
-let 3850 = eval prog -- IMPORTANT: for SBCL backend w/ ratio,
-                     -- it's 3850 instead of 3860.
+let 3860 = eval prog
 

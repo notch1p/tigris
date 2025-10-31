@@ -43,6 +43,7 @@ inductive CTail where
                 (cases : Array (Name × Nat × CExpr))
                 (default? : Option CExpr)
   | halt        (value : CName)
+  | matchFail   (pat : Array Name)
 deriving Repr, Inhabited, BEq
 
 /-- CPS expression in ANF: pure let1 / letKont / local fun groups, ending with a tail. -/
@@ -83,6 +84,7 @@ def fmtCRhs : CRhs -> Format
 
 mutual
 partial def fmtCTail : CTail -> Format
+  | .matchFail _ => format "MATCHFAILURE"
   | .appFun f p k =>
     fmtName f ++ paren (fmtName p ++ comma ++ fmtName k)
   | .appKont k v =>

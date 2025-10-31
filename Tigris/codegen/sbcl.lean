@@ -87,6 +87,7 @@ def emitConst : IR.Const -> String
 | To compare against.. | Use..                                        |
 |----------------------|----------------------------------------------|
 | Objects/Structs      | `EQ`                                         |
+| Symbols              | `EQ`                                         |
 | NIL                  | `EQ`/`NULL`                                  |
 | T                    | `EQ`                                         |
 | Precise numbers      | `EQL`                                        |
@@ -96,16 +97,21 @@ def emitConst : IR.Const -> String
 | String               | `EQUAL`/`EQUALP`/`STRING=` (symbols as well) |
 | Tree                 | `TREE-EQUAL`                                 |
 
-- performance: eq > eql > equal > equalp
+- performance: `eq` > `eql` > `equal` > `equalp`
+
+- `%intOP` calls `sb-kernel:two-arg-OP`
+  - `%int/` returns `0` when divided by zero otherwise calls `truncate`
+- `%string=` calls `sb-kernel:%sp-string=`
+
 -/
 def emitPrim : IR.PrimOp -> String
-  | .add => "sb-kernel:two-arg-+"
-  | .sub => "sb-kernel:two-arg--"
-  | .mul => "sb-kernel:two-arg-*"
-  | .div => "sb-kernel:two-arg-/"
-  | .eqInt  => "eql"
+  | .add => "%int+"
+  | .sub => "%int-"
+  | .mul => "%int*"
+  | .div => "%int/"
+  | .eqInt  => "%int="
   | .eqBool => "eq"
-  | .eqStr  => "equal"
+  | .eqStr  => "%string="
 
 def isBoundVar : Name -> S Bool :=
   (get <&> (Std.HashMap.contains ∘ Ctx.shapes) <*> pure ·)
@@ -190,6 +196,8 @@ partial def emitLetKont (kid param : Name) (kBody body : CExpr) : S String := do
               {ii}{<- withIndent (emitCExpr body)})"
 
 partial def emitTail : CTail -> S String
+  | .matchFail discr =>
+    return s!"(error +NOMATCH+ :discr \"{discr}\")"
   | .appFun f p k =>
     get <&> fun {kontParam, knownFuns, shapes,..} =>
       let callee :=
@@ -275,4 +283,3 @@ def emitModule (m : CModule)
   (hd, funs, main, driver)
 
 end Codegen.CL
-

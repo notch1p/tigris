@@ -12,6 +12,7 @@ def occursVarCRhs (x : CName) : CRhs -> Bool
 
 mutual
 partial def occursVarCTail (x : CName) : CTail -> Bool
+  | .matchFail _ => false
   | .appFun f p k => f == x  || p == x || k == x
   | .appKont k v => k == x || v == x
   | .ite c t e => c == x || occursVarCExpr x t || occursVarCExpr x e
@@ -51,7 +52,7 @@ partial def occursKontUse (k : CName) : CExpr -> Bool
       cs.any (occursKontUse k ∘ Prod.snd) || d?.any (occursKontUse k)
     | .switchCtor _ ar d? =>
       ar.any (occursKontUse k ∘ Prod.snd ∘ .snd) || d?.any (occursKontUse k)
-    | .halt _ => false
+    | _ => false -- halt, matchFail
 
 partial def replaceKont (kOld kNew : CName) : CExpr -> CExpr
   | .let1 x rhs b =>
@@ -76,7 +77,7 @@ partial def replaceKont (kOld kNew : CName) : CExpr -> CExpr
       | .switchCtor s cs d?  => .switchCtor s
                                   (cs.map (fun (c, ar, b) => (c, ar, replaceKont kOld kNew b)))
                                   (d?.map (replaceKont kOld kNew))
-      | .halt v              => .halt v
+      | tl                   => tl -- halt, matchFail
     .tail t'
 
 partial def inlineTrivialKont : CExpr -> CExpr
@@ -158,6 +159,7 @@ partial def substVarCPS (x y : CName) : CExpr -> CExpr
                     (cs.map (fun (c, ar, b) => (c, ar, substVarCPS x y b)))
                     (d?.map (substVarCPS x y))
       | .halt v => .halt (if v == x then y else v)
+      | mf => mf -- matchFail
     .tail t'
 
 partial def dceCExpr : CExpr -> CExpr

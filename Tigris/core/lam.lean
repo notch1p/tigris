@@ -67,6 +67,7 @@ inductive Tail where
   | switchCtor (scrut : Name)        -- case
       (cases : Array (Name × Nat × LExpr))
       (default? : Option LExpr)
+  | matchFail (pats : Array Name)
 deriving Repr, Inhabited
 
 inductive LExpr where
@@ -146,6 +147,7 @@ partial def fmtStmt : Stmt -> Format
     group $ fmtName x <> ":=" <+> fmtRhs rhs
 
 partial def fmtTail : Tail -> Format
+  | .matchFail .. => "MATCHFAILURE"
   | .ret x => "RET" <> (fmtName x)
   | .app f a =>
     fmtName f ++ paren (fmtName a) ++ "ᵀ"

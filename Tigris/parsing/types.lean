@@ -3,6 +3,10 @@ import PP.dependentPP
 
 @[simp, grind]
 axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
+axiom prod_sizeOf_lt_fst [SizeOf α] [SizeOf β]
+  (a : α) (b : β) : sizeOf a < sizeOf (a, b)
+axiom prod_sizeOf_lt_snd [SizeOf α] [SizeOf β]
+  (a : α) (b : β) : sizeOf b < sizeOf (a, b)
 
 abbrev Symbol := String
 

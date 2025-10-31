@@ -78,7 +78,7 @@ def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> �
   List.foldl2 (· && pred · ·) true
 
 def List.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ)
-  : List α -> List β -> m γ
+  : (xs : List α) -> (ys : List β) -> m γ
   | x :: xs, y :: ys => (f init x y) >>= (foldlM2 f · xs ys)
   | _, _ => return init
 def List.foldr2 (f : α -> β -> γ -> γ) (init : γ) : List α -> List β -> γ

@@ -40,6 +40,7 @@ partial def cpsBinds (ρ : Ren) (binds : Array Stmt) (tail : Tail) (kret : CName
     else cpsTail ρ tail kret
 
 partial def cpsTail (ρ : Ren) : Tail -> CName -> M σ CExpr
+  | .matchFail pat, _ => return .tail $ .matchFail pat
   | .ret x, kret => return .tail $ .appKont kret $ rn ρ x
   | .app f a, kret => return .tail $ .appFun (rn ρ f) (rn ρ a) kret
   | .cond c t e, kret => do

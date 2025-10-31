@@ -299,7 +299,7 @@ partial def lowerF
         match ctors[x]? with
         | some 0 => let r <- fresh "con"; let cont <- k r; return (.letRhs r (.mkConstr x #[]) cont)
         | _ => k (ρ.getD x x)
-      
+
       | .CI i _ => let v <- fresh "c" let body <- k v return .letVal v (.cst (.int i)) body
       | .CB i _ => let v <- fresh "c" let body <- k v return .letVal v (.cst (.bool i)) body
       | .CS i _ => let v <- fresh "c" let body <- k v return .letVal v (.cst (.str i)) body
@@ -311,13 +311,13 @@ partial def lowerF
             let p <- fresh "p"
             let body <- k p
             return .letRhs p (.mkPair lv rv) body
-      
+
       | .Proj src _ idx _ =>
         lowerF src ρ ctors fun sv => do
           let p <- fresh "p"
           let body <- k p
           return .letRhs p (.proj sv idx) body
-      
+
       | .Fun .. =>
         let (p0, rest, core) := decomposeLamChain e h
         let tupleParam <- fresh "args"
@@ -368,7 +368,7 @@ partial def lowerF
 partial def lowerCtorApp
   (cname : String) (args : Array FExpr) (arity : Nat)
   (ρ : Env) (ctors : Std.HashMap String Nat)
-  (k : Name -> M σ LExpr) : M σ LExpr := 
+  (k : Name -> M σ LExpr) : M σ LExpr :=
   if args.size = arity then
     lowerMany args ρ ctors fun names => do
       let r <- fresh "con"
@@ -485,13 +485,13 @@ partial def lowerMatchDT
   (ρ : Env)
   (ctors : Std.HashMap String Nat)
   (k : Name -> M σ LExpr) : M σ LExpr := do
-  let u <- fresh "u"
-  let kont <- k u
-  let fallback : LExpr := .letVal u (.cst .unit) kont
   let cols := Array.ofFn $ Sel.base ∘ @Fin.toNat scrs.size
   let rstates := rows.map fun (pats, rhs) => {pats, rhs}
   let dt := buildTree cols rstates
-  lowerDT cols scrs dt ρ ctors exhaustive (pure ∘ .seq #[] ∘ .ret) fallback
+  lowerDT cols scrs dt ρ ctors exhaustive k
+  $ .seq #[]
+  $ .matchFail
+  $ scrs
 end
 
 mutual
@@ -514,9 +514,7 @@ partial def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat
       | .patBind (pat, e) =>
         lowerF e ρ ctors fun scr => do
           let onOk ρ := build (i + 1) ρ last? ctors
-          let onFail := do
-            let u <- fresh "u"
-            return .letVal u (.cst .unit) $ .seq #[] $ .ret u
+          let onFail := pure $ .seq #[] $ .matchFail #["Toplevel"]
           lowerTopPatBind scr pat ρ onOk onFail
     else
       match ρ["main"]? <|> last? with
@@ -539,7 +537,7 @@ partial def lowerTopPatBind
   (ρ   : Env)
   (onOk : Env -> M σ LExpr)
   (onFail : M σ LExpr)
-  : M σ LExpr := 
+  : M σ LExpr :=
   let roots := #[scr]
   let binds := collectTopPatBinds pat (.base 0)
 

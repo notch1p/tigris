@@ -101,7 +101,6 @@ partial def rewriteTailInCodeM
   (selfVar? : Option Name) (selfCode : Name)
   (cc : LExpr -> M σ (LExpr × Array LFun))
   : Tail -> M σ (Array Stmt × Tail × Array LFun)
-  | .ret x => pure (#[], .ret x, #[])
   | .app f a => do
     if selfVar?.isEqSome f then
       let (bs, t) <- tailAppDirectM payload envVar? selfCode a
@@ -145,6 +144,7 @@ partial def rewriteTailInCodeM
           pure (some b', f)
       | none => pure (none, #[])
     return (#[], .switchCtor s cases' d'?, fs ++ fs2)
+  | tl => pure (#[], tl, #[]) -- ret, matchFail
 
 /-- Emit a non-tail `x := f a` inside a code body, handling:
     - self redirection (calls to wrapper variable → current code pointer),
@@ -234,6 +234,7 @@ partial def tail (m : NMap) : Tail -> Tail
     .switchConst (rw m s) (cases.map (fun (k,b) => (k, expr m b))) (d? |>.map (expr m))
   | .switchCtor s cases d? =>
     .switchCtor (rw m s) (cases.map (fun (c,ar,b) => (c, ar, expr m b))) (d? |>.map (expr m))
+  | mf => mf -- matchFail
 
 partial def expr (m : NMap) : LExpr -> LExpr
   | .letVal x v b => .letVal x (value m v) (expr (m.erase x) b)
@@ -355,7 +356,6 @@ partial def rewriteTailOutsideM
   (gCodes : CodeSet)
   (cc : LExpr -> M σ (LExpr × Array LFun))
   : Tail -> M σ (Array Stmt × Tail × Array LFun)
-  | .ret x => pure (#[], .ret x, #[])
   | .app f a => do
 --    let (bs, t) <- tailAppViaClosureM f a
 --    return (bs, t, #[])
@@ -389,6 +389,7 @@ partial def rewriteTailOutsideM
                       | some b => do let (b', f) <- cc b; pure (some b', f)
                       | none   => pure (none, #[])
     return (#[], .switchCtor s cases' d'?, fs ++ fs2)
+  | tl => pure (#[], tl, #[]) -- ret, matchFail
 
 /--
 Closure-convert an expression (non-code context):

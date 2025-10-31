@@ -3,6 +3,8 @@ import Tigris.codegen.sbcl
 import Tigris.table
 import Tigris.core.ftransform
 
+open IO
+
 structure ArgParserFlag where
   lam?    : Bool := false
   lamcc?  : Bool := false
@@ -13,10 +15,23 @@ structure ArgParserFlag where
   cl?     : Bool := true
   ffi?    : Option String := "ffi.lisp"
 
+def mkSBCL (ifile ofile sbcl : String) : Process.SpawnArgs where
+  cmd := sbcl
+  args := #[ "--noinform"
+           , "--non-interactive"
+           , "--eval"
+           , s!"(compile-file \"{ifile}\" \
+                  :block-compile t \
+                  :output-file \"{ofile}\" \
+                  :verbose t)"]
+
+def spawnSBCL (ifile ofile : String) : IO Process.Output :=
+  Option.getD (dflt := "sbcl") <$> getEnv "SBCL"
+  >>= Process.output ∘ mkSBCL ifile ofile
 def validate args := do
   if let some (spec, is, os) <- argParser {} [] [] args then
     if is.size = 0 then return none
-    else if is.size < os.size then IO.throwServerError s!"received {is.size} file(s) but need {os.size}"
+    else if is.size < os.size then throwServerError s!"received {is.size} file(s) but need {os.size}"
     else
       let left := is.foldl (Array.push · $ String.append · ".lisp") #[] os.size
       return some (spec, is, os ++ left)
@@ -31,16 +46,21 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
   | "--cc" :: xs => argParser {spec with lamcc? := true} is os xs
   | "--cps" :: xs => argParser {spec with cps? := true} is os xs
   | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
-  | "-lf" :: x :: xs | "--link-ffi" :: x :: xs =>
-    argParser {spec with ffi? := x} is os xs
+  | "-lf" :: x :: xs | "--link-ffi" :: x :: xs => argParser {spec with ffi? := x} is os xs
   | "-nlf" :: xs | "--no-link-ffi" :: xs => argParser {spec with ffi? := none} is os xs
   | "-nel" :: xs | "--no-emit-lisp" :: xs => argParser {spec with ffi? := none} is os xs
   | "-o" :: xs =>
-    (spec, is.foldr (flip Array.push) #[], ·) <$> xs.foldrM (init := #[]) fun s a =>
+    (spec, is.foldr (flip Array.push) #[], ·) <$> xs.foldlM (init := #[]) fun a s =>
       if s.startsWith "-"
-      then IO.throwServerError s!"flag {s} must come before positional vararg '-o'"
+      then throwServerError s!"flag {s} must come before positional vararg '-o'"
       else return a.push s
   | x :: xs => argParser spec (x :: is) os xs
+
+def withTempFile' [Monad m] [MonadLiftT IO m] (f : FS.Handle -> System.FilePath -> m α)
+  : m α := do
+  let (handle, path) <- FS.createTempFile
+  f handle path
+
 def main (fp : List String) : IO Unit := do
   let PE := initState
   if let some ( { lam?
@@ -53,59 +73,91 @@ def main (fp : List String) : IO Unit := do
                 , legacy?}
               , is
               , os) <- validate fp then
-    for i in is, o in os do
-      try
-        let s <- IO.FS.readFile i
-        let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
-        IO.FS.withFile o .write fun h => do
-          let (ir, cc) <- do
-            if legacy? then
-              let (decls, _, l) <- IO.ofExcept $ MLType.inferToplevelT decls MLType.defaultE
-              IO.print l
-              pure $ IR.toLamModuleT decls
-            else
-              let res <- inferToplevelC decls MLType.defaultE' |> IO.ofExcept
-              let (decls, logger, ctors) <- inferToplevelF res |> IO.ofExcept
-              IO.print logger
-              if sysf? then
-                h.putStrLn ";; == System F IR ==\n"
-                h.putStrLn $ Std.Format.pretty (width := 80) $ unexpandDeclsF decls
-              pure $ IR.toLamModuleF decls ctors
+    let workseq : Array $ Task $ Except Error Unit <- Array.foldlM2 (init := #[]) (xs := is) (ys := os) fun a i o =>
+      a.push <$> asTask do
+        try
+          let s <- FS.readFile ⟨i⟩
+          let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
+          if o.endsWith ".fasl" then 
+            let temp <- withTempFile' fun h temp => do
+              let (_, cc) <- do
+                let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
+                let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+                print logger
+                pure $ IR.toLamModuleF decls ctors
+              let mod := CPS.toCPS cc
 
-          let mod := CPS.toCPS cc
+              if let some ffip := ffi? then
+                h.write =<< FS.readBinFile ffip
 
-          if lam? then
-            h.putStrLn ";; == Optimized IR ==\n"
-            h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule ir
-          if lamcc? then
-            h.putStrLn ";; == Optimized IR CC'd ==\n"
-            h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule cc
-          if cps? then
-            h.putStrLn ";; == CPS IR ==\n"
-            h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
+              h.putStrLn ";; == Common Lisp ==\n"
+              let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
+              h.putStrLn "; hoisted functions"
+              h.putStrLn funs
+              h.putStrLn "; entrypoint"
+              h.putStrLn main
+              h.putStrLn "; driver"
+              h.putStrLn drv
+              pure temp
 
-          if let some ffip := ffi? then
-            h.putStrLn ";; == external FFI ==\n"
-            h.putStrLn s!"(load \"{ffip}\")\n"
+            FS.writeBinFile ⟨o⟩ ∅
 
-          if cl? then
-            h.putStrLn ";; == Common Lisp ==\n"
-            let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
---            h.putStrLn "; package-defs"
---            h.putStrLn hd
-            h.putStrLn "; hoisted functions"
-            h.putStrLn funs
-            h.putStrLn "; entrypoint"
-            h.putStrLn main
-            h.putStrLn "; driver"
-            h.putStrLn drv
+            let os <- toString <$> FS.realPath (System.FilePath.mk o)
+            let {exitCode, stdout, stderr} <- spawnSBCL temp.toString os
+            print stderr
+            print stdout
+            unless exitCode == 0 do throwServerError s!"Process exited with {exitCode}"
+            FS.removeFile temp
 
-      catch e => println! Logging.error (toString e)
+          else FS.withFile ⟨o⟩ .write fun h => do
+            let (ir, cc) <- do
+              if legacy? then
+                let (decls, _, l) <- ofExcept $ MLType.inferToplevelT decls MLType.defaultE
+                print l
+                pure $ IR.toLamModuleT decls
+              else
+                let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
+                let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+                print logger
+                if sysf? then
+                  h.putStrLn ";; == System F IR ==\n"
+                  h.putStrLn $ Std.Format.pretty (width := 80) $ unexpandDeclsF decls
+                pure $ IR.toLamModuleF decls ctors
+
+            let mod := CPS.toCPS cc
+
+            if lam? then
+              h.putStrLn ";; == Optimized IR ==\n"
+              h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule ir
+            if lamcc? then
+              h.putStrLn ";; == Optimized IR CC'd ==\n"
+              h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule cc
+            if cps? then
+              h.putStrLn ";; == CPS IR ==\n"
+              h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
+
+            if let some ffip := ffi? then
+              h.putStrLn ";; == external FFI ==\n"
+              h.putStrLn s!"(load \"{ffip}\")\n"
+
+            if cl? then
+              h.putStrLn ";; == Common Lisp ==\n"
+              let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
+--              h.putStrLn "; package-defs"
+--              h.putStrLn hd
+              h.putStrLn "; hoisted functions"
+              h.putStrLn funs
+              h.putStrLn "; entrypoint"
+              h.putStrLn main
+              h.putStrLn "; driver"
+              h.putStrLn drv
+        catch e => println! Logging.error (toString e)
+    workseq.forM fun task => do if let .error e <- wait task then println! e
   else
     println! "Tigris IR₀/IR₁/CL compiler"
     println! "USAGE:\n  tigrisl [FLAGS] <ifiles> [-o <ofiles>]"
     println! "FLAGS & ARGS:"
-    println! PrettyPrint.tabulate
+    IO.print $ PrettyPrint.tabulate
       "tigrisl"
       {align := (.left, .left), header? := false}
       tiglHelpMsg

@@ -115,6 +115,7 @@ partial def evalStmt (ft : FunTab) (gρ : GlobalEnv) (ρ : Env)
 partial def evalTail (ft : FunTab) (ρ : Env) (gρ : GlobalEnv)
   : Tail -> EIO TypingError Val := fun t => checkInterrupt *>
   match t with
+  | .matchFail pat => throw $ .NoMatchL "" pat
   | .ret x => getVar ρ ft gρ x
   | .app f a =>
     getVar ρ ft gρ f >>= fun

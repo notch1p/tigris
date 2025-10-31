@@ -1,106 +1,175 @@
-;; == external FFI ==
+;;;; * Gadgets for defining FFI functions
+;;;; Also served as a prelude.
+;;;; - Entry: ~(defun fname (payload k))~
+;;;; - payload = ~(cons α Γ)~
+;;;;    - α: user args where
+;;;;      - args = ~(args, ())~, if ~|args| = 1~
+;;;;      - args = ~(args[0], args[1])~, if ~|args| = 2~
+;;;;      - args = ~(cons ...nested pairs...)~, if ~|args| > 2~
+;;;;    - Γ: captured env = ~(cons '𝐄 (simple-vector ...captured...))~
+;;;; - return via ~(funcall k value)~
+;;;;
+;;;; * WARN: Compiler assumes pure environment, statements may get reordered.
+;;;;         FFI with actual side effects shouldn't be relied on
 
-(load "ffi.lisp")
+(defpackage :Tigris-FFI
+  (:use #:cl)
+  (:export 
+   #:%println
+   #:%print
+   #:%to-string
+   #:%string-append
+   #:%read
+   #:%read-line
+   #:%int-mod
+   #:make-closure
+   #:with-arg2
+   #:with-args
+   #:%string=
+   #:%int+
+   #:%int-
+   #:%int*
+   #:%int/
+   #:%int=
+   #:match-failure))
 
-;; == Common Lisp ==
+(in-package :tigris-ffi)
 
-; hoisted functions
+(defun with-arg2 (payload kont)
+  "α is ⟨a0, a1⟩; call (kont a0 a1 Γ)"
+  (let* ((alpha (car payload))
+         (a0    (car alpha))
+         (a1    (cdr alpha))
+         (gamma (cdr payload)))
+    (funcall kont a0 a1 gamma)))
 
-(defun |go| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
-  (let ((|α| (car |payload|)))
-    (let ((|Γ| (cdr |payload|)))
-      (let ((|_pL#n| (svref (cdr |Γ|) 3)))
-        (let ((|%to-string| (svref (cdr |Γ|) 2)))
-          (let ((|%string-append| (svref (cdr |Γ|) 1)))
-            (let ((|%println| (svref (cdr |Γ|) 0)))
-              (let ((|_pL#acc| (car |α|)))
-                (let ((|_pR#acc| (cdr |α|)))
-                  (cond
-                    ((equal |_pR#acc| 0)
-                      (funcall |k| |_pL#acc|))
-                    (t
-                      (let ((|p3| (sb-kernel:two-arg-* |_pL#acc| |_pR#acc|)))
-                        (let ((|c4| "fact "))
-                          (let ((|p5| (sb-kernel:two-arg-- |_pL#n| |_pR#acc|)))
-                            (let ((|u6| nil))
-                              (let ((|pair7| (cons |p5| |u6|)))
-                                (let ((|_code1017| (svref (cdr |%to-string|) 0)))
-                                  (let ((|Γc1018| (svref (cdr |%to-string|) 1)))
-                                    (let ((|ρc1019| (cons |pair7| |Γc1018|)))
-                                      (labels ((|k1| (|v0|)
-                                        (let ((|pair9| (cons |c4| |v0|)))
-                                          (let ((|_code1014| (svref (cdr |%string-append|) 0)))
-                                            (let ((|Γc1015| (svref (cdr |%string-append|) 1)))
-                                              (let ((|ρc1016| (cons |pair9| |Γc1015|)))
-                                                (labels ((|k3| (|v2|)
-                                                  (let ((|c11| " = "))
-                                                    (let ((|pair12| (cons |v2| |c11|)))
-                                                      (let ((|_code1011| (svref (cdr |%string-append|) 0)))
-                                                        (let ((|Γc1012| (svref (cdr |%string-append|) 1)))
-                                                          (let ((|ρc1013| (cons |pair12| |Γc1012|)))
-                                                            (labels ((|k5| (|v4|)
-                                                              (let ((|u14| nil))
-                                                                (let ((|pair15| (cons |p3| |u14|)))
-                                                                  (let ((|_code1008| (svref (cdr |%to-string|) 0)))
-                                                                    (let ((|Γc1009| (svref (cdr |%to-string|) 1)))
-                                                                      (let ((|ρc1010| (cons |pair15| |Γc1009|)))
-                                                                        (labels ((|k7| (|v6|)
-                                                                          (let ((|pair17| (cons |v4| |v6|)))
-                                                                            (let ((|_code1005| (svref (cdr |%string-append|) 0)))
-                                                                              (let ((|Γc1006| (svref (cdr |%string-append|) 1)))
-                                                                                (let ((|ρc1007| (cons |pair17| |Γc1006|)))
-                                                                                  (labels ((|k9| (|v8|)
-                                                                                    (let ((|u19| nil))
-                                                                                      (let ((|pair20| (cons |v8| |u19|)))
-                                                                                        (let ((|_code1002| (svref (cdr |%println|) 0)))
-                                                                                          (let ((|Γc1003| (svref (cdr |%println|) 1)))
-                                                                                            (let ((|ρc1004| (cons |pair20| |Γc1003|)))
-                                                                                              (labels ((|k11| (|v10|)
-                                                                                                (let ((|c22| 1))
-                                                                                                  (let ((|p23| (sb-kernel:two-arg-- |_pR#acc| |c22|)))
-                                                                                                    (let ((|pair24| (cons |p3| |p23|)))
-                                                                                                      (let ((|ρ1001| (cons |pair24| |Γ|)))
-                                                                                                        (funcall #'|go| |ρ1001| |k|)))))))
-                                                                                                (funcall |_code1002| |ρc1004| #'|k11|)))))))))
-                                                                                    (funcall |_code1005| |ρc1007| #'|k9|))))))))
-                                                                          (funcall |_code1008| |ρc1010| #'|k7|)))))))))
-                                                              (funcall |_code1011| |ρc1013| #'|k5|)))))))))
-                                                  (funcall |_code1014| |ρc1016| #'|k3|))))))))
-                                        (funcall |_code1017| |ρc1019| #'|k1|)))))))))))))))))))))
+(defmacro with-args (payload arg-list &body body)
+  "The macro WITH-ARGS destructures (payload = (cons α Γ)) and binds:
+    - each user argument to the symbols provided,
+    - a special variable GAMMA to the captured environment."
+  (let* ((alpha (gensym "ALPHA"))
+         (tmp   (gensym "TMP")))
+    (labels ((build-binds (args)
+               (cond
+                 ((null args) '())
+                 ((null (cdr args)) `((,(car args) (car ,tmp))))
+                 (t
+                  (let ((head (car args))
+                        (rest (cdr args)))
+                    (append `((,head (car ,tmp))
+                              (,tmp (cdr ,tmp)))
+                            (if (null (cdr rest))
+                                `((,(car rest) ,tmp))
+                                (build-binds rest))))))))
+      `(let* ((,alpha (car ,payload))
+              (gamma  (cdr ,payload))
+              (,tmp   ,alpha)
+              ,@(build-binds arg-list))
+         (declare (ignorable gamma))
+         ,@body))))
 
-(defun |fn1000| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
-  (let ((|α| (car |payload|)))
-    (let ((|Γ| (cdr |payload|)))
-      (let ((|%to-string| (svref (cdr |Γ|) 2)))
-        (let ((|%string-append| (svref (cdr |Γ|) 1)))
-          (let ((|%println| (svref (cdr |Γ|) 0)))
-            (let ((|_pL#n| (car |α|)))
-              (let ((|Γ| (cons '|𝐄| (vector |%println| |%string-append| |%to-string| |_pL#n|))))
-                (let ((|go#clo1023| (cons '|𝐂| (vector #'|go| |Γ|))))
-                  (let ((|c26| 1))
-                    (let ((|pair27| (cons |c26| |_pL#n|)))
-                      (let ((|_code1020| (svref (cdr |go#clo1023|) 0)))
-                        (let ((|Γc1021| (svref (cdr |go#clo1023|) 1)))
-                          (let ((|ρc1022| (cons |pair27| |Γc1021|)))
-                            (funcall |_code1020| |ρc1022| |k|)))))))))))))))
+(defparameter empty-gamma (cons '|𝐄| (vector)))
+(defparameter empty-𝐄 empty-gamma)
 
-; entrypoint
-(defun |main| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)))
-  (let ((|Γ| (cons '|𝐄| (vector |%println| |%string-append| |%to-string|))))
-    (let ((|lam29| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
-      (let ((|c30| 5))
-        (let ((|u31| nil))
-          (let ((|pair32| (cons |c30| |u31|)))
-            (let ((|_code1024| (svref (cdr |lam29|) 0)))
-              (let ((|Γc1025| (svref (cdr |lam29|) 1)))
-                (let ((|ρc1026| (cons |pair32| |Γc1025|)))
-                  (funcall |_code1024| |ρc1026| |k|))))))))))
+(defun make-closure (f &optional (gamma empty-gamma))
+  (cons '|𝐂| (vector f gamma)))
 
-; driver
-(defun |__start| ()
-  (format t "~A"
-    (funcall #'|main| nil #'identity)))
+;; e.g. println, print : ∀a, a -> Unit
+(defun %println (payload k)
+  (with-arg2 payload
+             (lambda (x _ gamma)
+               (declare (ignore gamma) (ignore _))
+               (princ x)
+               (terpri)
+               (funcall k nil))))
+(defun %print (payload k)
+  (with-arg2 payload
+             (lambda (x _ gamma)
+               (declare (ignore gamma) (ignore _))
+               (princ x)
+               (funcall k nil))))
+;; e.g. toString : ∀a, a -> String
+(defun %to-string (payload k)
+  (with-arg2 payload
+             (lambda (x _ gamma)
+               (declare (ignore gamma) (ignore _))
+               (funcall k (princ-to-string x)))))
+;; e.g. string-append : String -> String -> String
+(defun %string-append (payload k)
+  (with-arg2 payload
+             (lambda (x y gamma)
+               (declare (ignore gamma) (type string x) (type string y))
+               (funcall k (concatenate 'string x y)))))
 
+;; e.g. read (unsafe) : ∀a, Unit -> a
+(defun %read (payload k)
+  (with-arg2 payload
+             (lambda (_ __ gamma)
+               (declare (ignore gamma) (ignore _) (ignore __))
+               (funcall k (read)))))
+
+;; e.g. read-line : Unit -> String
+(defun %read-line (payload k)
+  (with-arg2 payload
+             (lambda (_ __ gamma)
+               (declare (ignore gamma) (ignore _) (ignore __))
+               (funcall k (read-line)))))
+
+;; e.g. modulus: Int -> Int -> Int
+(defun %int-mod (payload k)
+  (with-args payload (x y)
+    (declare (type integer x) (type integer y))
+    (funcall k (mod x y))))
+
+(defun %string= (s1 s2)
+  (declare (type simple-string s1) (type simple-string s2))
+  (the boolean (sb-kernel:%sp-string= s1 s2 0 nil 0 nil)))
+
+(declaim (ftype (function (integer integer) integer) %int+))
+(defun %int+ (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-+ a b))
+
+(declaim (ftype (function (integer integer) integer) %int-))
+(defun %int- (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-- a b))
+
+(declaim (ftype (function (integer integer) integer) %int*))
+(defun %int* (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-* a b))
+
+(declaim (ftype (function (integer integer) integer) %int/))
+(defun %int/ (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (if (zerop b) 0 (truncate a b)))
+
+(declaim (ftype (function (integer integer) boolean) %int=))
+(defun %int= (a b)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (sb-kernel:two-arg-= a b))
+
+(define-condition match-failure (error)
+  ((discrminant 
+      :initarg :discr
+      :reader discrminant
+      :type string))
+  (:report 
+   (lambda (condition stream) 
+     (format stream "No branch can be matched against ~A" (discrminant condition)))))
+
+(in-package :cl-user)
+(add-package-local-nickname :ffi :tigris-ffi)
+
+(import 'ffi:make-closure)
+
+;; the closure object of println, print ...
+(defconstant +NOMATCH+ 'ffi:match-failure)
+(defparameter |%println| (make-closure #'ffi:%println))
+(defparameter |%print| (make-closure #'ffi:%print))
+(defparameter |%to-string| (make-closure #'ffi:%to-string))
+(defparameter |%string-append| (make-closure #'ffi:%string-append))
+(defparameter |%read| (make-closure #'ffi:%read))
+(defparameter |%read-line| (make-closure #'ffi:%read-line))
+(defparameter |%int-mod| (make-closure #'ffi:%int-mod))
