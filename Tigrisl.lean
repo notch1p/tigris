@@ -21,9 +21,9 @@ def mkSBCL (ifile ofile sbcl : String) : Process.SpawnArgs where
   args := #[ "--noinform"
            , "--non-interactive"
            , "--eval"
-           , s!"(compile-file \"{ifile}\" \
+           , s!"(compile-file {repr ifile} \
                   :block-compile t \
-                  :output-file \"{ofile}\" \
+                  :output-file {repr ofile} \
                   :verbose t)"]
 
 def spawnSBCL (ifile ofile : String) : IO Process.Output :=
