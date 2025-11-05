@@ -6,7 +6,7 @@ import Tigris.typing.ttypes
 import Tigris.parsing.types
 import Tigris.interpreter.types
 namespace Parsing open Lexing Parser PType TopDecl
--- abbrev TopDecl := Binding ⊕ TyDecl
+
 def declaration : TParser σ TopDecl := first'
   #[ instanceDecl
    , externDecl
@@ -14,6 +14,8 @@ def declaration : TParser σ TopDecl := first'
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
    , (idBind ∘ Array.singleton) <$> infixrDecl
+   , (idBind ∘ Array.singleton) <$> prefixDecl
+   , (idBind ∘ Array.singleton) <$> postfixDecl
    , (idBind ∘ Array.singleton) <$> value parseExpr
    ]
   simpErrorCombine
@@ -30,6 +32,8 @@ def declarationFile : TParser σ TopDecl := first'
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
    , (idBind ∘ Array.singleton) <$> infixrDecl
+   , (idBind ∘ Array.singleton) <$> prefixDecl
+   , (idBind ∘ Array.singleton) <$> postfixDecl
    ]
   simpErrorCombine
 

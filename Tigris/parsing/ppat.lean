@@ -76,31 +76,50 @@ partial def patRecordTyped : TParser σ Pattern := do
   | .TCon s | .TApp s _ => reorderRecordPat s ps
   | _ => resolveBareRecordPat ps
 partial def patApp : TParser σ Pattern := do
+  let hd <- patPrimary
+  match hd with
+  | PCtor n #[] =>
+    PCtor n <$> takeMany patPrimary
+  | _ => return hd
+
+partial def patAppBare : TParser σ Pattern := do
   let hd <- patAtom
   match hd with
   | PCtor n #[] =>
     PCtor n <$> takeMany patAtom
   | _ => return hd
 
-partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := do
-  let lhs <- patApp
-  let rec loop (lhs : Pattern) : TParser σ Pattern := do
-    match <- takeBindingOp? minPrec with
-    | none => pure lhs
-    | some (_sym, entry) =>
-      let nextMin :=
-        match entry.assoc with
-        | .leftAssoc  => entry.prec + 1
-        | .rightAssoc => entry.prec
-      let rhs <- parsePattern nextMin
-      let expr' := η₂' $ entry.impl (Var "_") (Var "_")
-      match expr', lhs with
-      | Var "_", PCtor ctor args =>
-        loop (PCtor ctor $ args.push rhs)
-      | Var ctor, lhs => loop (PCtor ctor #[lhs, rhs])
-      | _, _ =>
-        error s!"{repr expr'} or {lhs} does not reduce to a (applicable) pattern\n"
-        throwUnexpected
-  loop lhs
+partial def patPrefix (minPrec := 0) : TParser σ Pattern := do
+  let some {impl, prec, ..} <- takePrefixOp? minPrec | patAppBare
+  let expr :=  η₂' $ impl $ Var "·"
+  match expr with
+  | Var ctor => (PCtor ctor ∘ Array.singleton) <$> parsePattern prec
+  | _ =>
+    error s!"{repr expr} does not reduce to a (applicable) pattern\n"
+    throwUnexpected
+
+partial def patPrimary (minPrec := 0) : TParser σ Pattern := loop =<< patPrefix where
+  loop lhs := do
+    let some {impl, ..} <- takePostfixOp? minPrec | return lhs
+    let expr := η₂' $ impl $ Var "·"
+    match expr with
+    | Var ctor => loop (PCtor ctor #[lhs])
+    | _ =>
+      error s!"{repr expr} does not reduce to a (applicable) pattern\n"
+      throwUnexpected
+
+partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := loop =<< patApp where
+  loop lhs := do
+    let some {assoc, prec, impl, ..} <- takeInfixOp? minPrec
+      | return lhs
+    let nextMin := if assoc matches .leftAssoc then prec + 1 else prec
+    let rhs <- parsePattern nextMin
+    let expr := η₂' $ impl (Var "·") (Var "·")
+    match expr, lhs with
+    | Var "·", PCtor ctor args => loop (PCtor ctor $ args.push rhs)
+    | Var ctor, lhs => loop (PCtor ctor #[lhs, rhs])
+    | _, _ =>
+      error s!"{repr expr} or {lhs} does not reduce to a (applicable) pattern\n"
+      throwUnexpected
 end
 end Parsing

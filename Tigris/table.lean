@@ -21,7 +21,7 @@ def genTable (E : Env) (widTy : Nat) (widVal : Nat) : VEnv -> TableOf EnvHeader
     , .str $ truncate widVal $ toString $ VE.getD  k (.VEvalError "⋯ "))
 
 def PEnvHeader : List Text.SString := ["op", "prec", "assoc"].map fun s => ⟨s, {style := [.bold]}⟩
-def genTableOp (PE : OpTable) : TableOf PEnvHeader :=
+def genTableOp (PE : BinaryTable) : TableOf PEnvHeader :=
   PE.values.foldl (init := #[]) fun a {sym, prec, assoc,..} =>
     a.push
       ( .str sym

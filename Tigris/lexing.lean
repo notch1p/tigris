@@ -9,6 +9,8 @@ def String.isUpperInit (s : String) : Bool :=
 def String.isLowerInit (s : String) : Bool :=
   if h : s.atEnd 0 = true then false
   else (s.get' 0 h) >= 'a' && (s.get' 0 h) <= 'z'
+@[inline] def Function.on (g : β -> β -> γ) (f : α -> β)
+  : α -> α -> γ := fun x y => g (f x) (f y)
 
 namespace Lexing open Parser Parser.Char
 
@@ -21,7 +23,7 @@ def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   withErrorMessage "alphabetic character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
 def oneOf [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m] (l : List Char)
-  : ParserT ε σ Char m Char := withErrorMessage "expected one of {l}" $ tokenFilter (· ∈ l)
+  : ParserT ε σ Char m Char := withBacktracking $ withErrorMessage "expected one of {l}" $ tokenFilter (· ∈ l)
 
 section
 variable {σ}
@@ -138,7 +140,7 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
 def reserved :=
   #[ "mutual"  ,"infixl" , "infixr", "match", "extern"
    , "class"   , "forall", "data"  , "type"  , "with"
-   , "instance", "else"  , "then"  , "let"
+   , "instance", "else"  , "then"  , "let", "prefix", "postfix"
    , "and"     , "rec"   , "fun"
    , "fn"      , "in"    , "if"]
 
@@ -181,19 +183,21 @@ def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := spac
   ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ string s *> notFollowedBy (tokenFilter badNext))
-abbrev LET    : TParser σ Unit := kw "let"
-abbrev IN     : TParser σ Unit := kw "in"
-abbrev FUN    : TParser σ Unit := kw "fun"
-abbrev IF     : TParser σ Unit := kw "if"
-abbrev ELSE   : TParser σ Unit := kw "else"
-abbrev THEN   : TParser σ Unit := kw "then"
-abbrev REC    : TParser σ Unit := kw "rec"
-abbrev MATCH  : TParser σ Unit := kw "match"
-abbrev WITH   : TParser σ Unit := kw "with"
-abbrev TYPE   : TParser σ Unit := kw "type" <|> kw "data"
-abbrev MUTUAL : TParser σ Unit := kw "mutual"
-abbrev AND    : TParser σ Unit := kw "and"
-abbrev FORALL : TParser σ Unit := kw "forall"
+abbrev LET     : TParser σ Unit := kw "let"
+abbrev IN      : TParser σ Unit := kw "in"
+abbrev FUN     : TParser σ Unit := kw "fun"
+abbrev IF      : TParser σ Unit := kw "if"
+abbrev ELSE    : TParser σ Unit := kw "else"
+abbrev THEN    : TParser σ Unit := kw "then"
+abbrev REC     : TParser σ Unit := kw "rec"
+abbrev MATCH   : TParser σ Unit := kw "match"
+abbrev WITH    : TParser σ Unit := kw "with"
+abbrev TYPE    : TParser σ Unit := kw "type" <|> kw "data"
+abbrev MUTUAL  : TParser σ Unit := kw "mutual"
+abbrev AND     : TParser σ Unit := kw "and"
+abbrev POSTFIX : TParser σ Unit := kw "postfix"
+abbrev PREFIX  : TParser σ Unit := kw "prefix"
+abbrev FORALL  : TParser σ Unit := kw "forall"
 abbrev FORALL' : TParser σ Unit := spaces *>
                                     ( withBacktracking
                                     $ withErrorMessage s!"kw '∀'"

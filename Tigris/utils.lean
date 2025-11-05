@@ -113,8 +113,9 @@ def test' (p : ParserT ε σ τ m α) : ParserT ε σ τ m Bool :=
   try lookAhead p $> true
   catch _ => return false
 
-@[inline] def η₂ s :=
-  fun e₁ e₂ => App (App s e₁) e₂
+@[inline] def η₂ s := fun e₁ e₂ => App (App s e₁) e₂
+
+@[inline] def η₁ s := fun e => App s e
 
 @[inline] def η₂'
   | App s _ => η₂' s
@@ -126,7 +127,7 @@ def test' (p : ParserT ε σ τ m α) : ParserT ε σ τ m Bool :=
 
 @[inline] def link s := η₂ $ Var s
 
-open Associativity in def opTablePrim : List (Symbol × OpEntry) :=
+open Associativity in def opTablePrim : List (Symbol × BinaryEntry) :=
   [ (DOL , ⟨DOL, 1  , rightAssoc , App⟩)
   , (ATT , ⟨ATT, 1  , rightAssoc , App⟩)
   , ("=" , ⟨"=", 50 , leftAssoc  , link "eq"⟩)
@@ -135,7 +136,7 @@ open Associativity in def opTablePrim : List (Symbol × OpEntry) :=
   , (MUL , ⟨MUL, 70 , leftAssoc  , link "mul"⟩)
   , (DIV , ⟨DIV, 70 , leftAssoc  , link "div"⟩)]
 
-def opTable : OpTable := .ofList opTablePrim
+def opTable : BinaryTable := .ofList opTablePrim
 def tyTable : TyArity :=
   .ofList [ ("Int"   , 0, true)
           , ("String", 0, true)
@@ -271,23 +272,46 @@ def potentialOp : TParser σ String := do
   return tl.foldl String.push hd.toString
 local infixl:40 " <? " => flip (· <|> ·)
 
-def takeBindingOp? (minPrec : Nat) : TParser σ (Option (String × OpEntry)) :=
-  pure none <? do
+def takeInfixOp? (minPrec : Nat) : TParser σ $ Option BinaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({ops,..}, _) <- get
   match ops.matchPrefix tokSpan 0 with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
-    if prec < minPrec then
-      throwUnexpectedWithMessage none "prec too low"
+    if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
+    if let some revop := reservedOp.matchPrefix tokSpan 0
+    then
+      if sym.length > revop.length then string sym $> some entry
+      else throwUnexpectedWithMessage none "reserved"
+    else string sym $> some entry
+
+def takePrefixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none <? do
+  let tokSpan <- spaces *> lookAhead potentialOp
+  let ({pre,..}, _) <- get
+  match pre.matchPrefix tokSpan 0 with
+  | none => throwUnexpected
+  | some entry@{sym,prec,..} =>
+    if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
     if let some revop := reservedOp.matchPrefix tokSpan 0
     then
       if sym.length > revop.length then
-        string sym *> return some (sym, entry)
-      else
-        throwUnexpectedWithMessage none "reserved"
-    else
-      string sym *> return some (sym, entry)
+        string sym $> some entry
+      else throwUnexpectedWithMessage none "reserved"
+    else string sym $> some entry
+
+def takePostfixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none <? do
+  let tokSpan <- spaces *> lookAhead potentialOp
+  let ({post,..}, _) <- get
+  match post.matchPrefix tokSpan 0 with
+  | none => throwUnexpected
+  | some entry@{sym,prec,..} =>
+    if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
+    if let some revop := reservedOp.matchPrefix tokSpan 0
+    then
+      if sym.length > revop.length then
+        string sym $> some entry
+      else throwUnexpectedWithMessage none "reserved"
+    else string sym $> some entry
 
 def hole i := s!"?x{Nat.toSubscriptString i}"
 
@@ -340,5 +364,3 @@ infixl : 60 " <> " => spaceBeside
 end
 
 @[inline] def liftEIO (act : IO α) : EIO String α := IO.toEIO IO.Error.toString act
-@[inline] def Function.on (g : β -> β -> γ) (f : α -> β)
-  : α -> α -> γ := fun x y => g (f x) (f y)

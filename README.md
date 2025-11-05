@@ -13,6 +13,9 @@ it looks like a hybrid of OCaml & Haskell & Lean,
 > [!WARNING]
 > But runs like shit.
 
+> [!WARNING]
+> This readme hasn't been updated for a while. Contains obsolete information
+
 thanks to
 
 - actual currying,

@@ -14,5 +14,7 @@ let fact n =
       go an @@ m - 1
   in go 1 n
 
-let main = fact 5
+postfix 50 "!" => fact
+
+let main = 10!
 

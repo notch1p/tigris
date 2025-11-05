@@ -47,6 +47,7 @@ inductive Pattern where
   | PCtor (name : String) (args : Array Pattern)
 deriving Inhabited, Repr
 
+
 def Pattern.beq : Pattern -> Pattern -> Bool
   | PCtor c₁ _, PCtor c₂ _ => c₁ == c₂
   | PConst p₁, PConst p₂ => p₁ == p₂
@@ -173,16 +174,20 @@ abbrev Binding := Symbol × Expr
 abbrev BindingT := Symbol × Scheme × TExpr
 abbrev PBinding := Pattern × Expr
 
-structure OpEntry where
+structure BinaryEntry where
+  sym   : Symbol
+  prec  : Nat
+  assoc : Associativity
+  impl  : Expr -> Expr -> Expr
+
+structure UnaryEntry where
   sym : Symbol
   prec : Nat
-  assoc : Associativity
-  impl : Expr -> Expr -> Expr
+  impl : Expr -> Expr
 
-instance : ToString OpEntry := ⟨fun {prec, assoc,..} => toString (prec, assoc)⟩
-instance : Repr OpEntry := ⟨fun {prec, assoc,..} _ => toString (prec, assoc)⟩
-
-abbrev OpTable := Lean.Data.Trie OpEntry
+abbrev BinaryTable := Lean.Data.Trie BinaryEntry
+abbrev PrefixTable := Lean.Data.Trie UnaryEntry
+abbrev PostfixTable := Lean.Data.Trie UnaryEntry
 abbrev TyArity := Lean.Data.Trie (Nat × Bool)
 
 open Lean.Data.Trie in
@@ -195,11 +200,13 @@ attribute [inline] ofList findD
 
 abbrev tabWidth : Nat := 2
 structure PEnv where
-  ops : OpTable
-  tys : TyArity
-  undTy : List Symbol
+  ops   : BinaryTable
+  pre   : PrefixTable := ∅
+  post  : PostfixTable := ∅
+  tys   : TyArity
+  undTy : List Symbol -- undefined types (used in mutual rectypes definition)
   recordFields : Std.HashMap Symbol (Array Symbol) := {}
-  indentStack : List Nat := [0]
+  indentStack  : List Nat := [0]
 
 --abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT Substring Char

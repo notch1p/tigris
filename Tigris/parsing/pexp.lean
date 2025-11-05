@@ -18,7 +18,7 @@ def infixlDecl : TParser σ Binding := do
       let ops := ops.insert op ⟨op, i.toNat, .leftAssoc, η₂ e⟩
       ({s with ops}, l)
     return (s!"({op})", e)
-  | _, _ => pure ("_", CUnit)
+  | _, _ => return ("_", CUnit)
 
 def infixrDecl : TParser σ Binding := do
   INFIXR; let i <- intExp let s <- strExp
@@ -32,7 +32,35 @@ def infixrDecl : TParser σ Binding := do
       let ops := ops.insert op ⟨op, i.toNat, .rightAssoc, η₂ e⟩
       ({s with ops}, l)
     return (s!"({op})", e)
-  | _, _ => pure ("_", CUnit)
+  | _, _ => return ("_", CUnit)
+
+def prefixDecl : TParser σ Binding := do
+  PREFIX; let i <- intExp let s <- strExp
+  match s, i with
+  | CS op , CI i =>
+    let op := op.trim
+    if reservedOp.find? op |>.isSome
+    then error s!"this operator {op} may not be redefined\n"; throwUnexpected
+    ARROW let e <- parseExpr
+    modify fun (s@{pre,..}, l) =>
+      let pre := pre.insert op ⟨op, i.toNat, η₁ e⟩
+      ({s with pre}, l)
+    return (s!"(ₚ{op})", e)
+  | _, _ => return ("_", CUnit)
+
+def postfixDecl : TParser σ Binding := do
+  POSTFIX; let i <- intExp let s <- strExp
+  match s, i with
+  | CS op , CI i =>
+    let op := op.trim
+    if reservedOp.find? op |>.isSome
+    then error s!"this operator {op} may not be redefined\n"; throwUnexpected
+    ARROW let e <- parseExpr
+    modify fun (s@{post,..}, l) =>
+      let post := post.insert op ⟨op, i.toNat, η₁ e⟩
+      ({s with post}, l)
+    return (s!"({op})ₚ", e)
+  | _, _ => return ("_", CUnit)
 
 def let1Decl : TParser σ $ Binding := do
   let id <- ID; let pre <- takeMany funBinderID

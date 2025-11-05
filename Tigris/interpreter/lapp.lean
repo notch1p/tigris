@@ -68,6 +68,7 @@ def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.
             cc := cc'
             for lf in lifted do funs := funs.insert lf.fid lf
             let m := asModule {st with funs} le'
+            println! IR.fmtModule m
             let v <- LInterpreter.evalModule m gvals |>.toIO (.userError ∘ toString)
             gvals := gvals.insert name v
             mainBody? := some le'
@@ -87,7 +88,6 @@ def interpretI (st : REPLState) (code : String) : IO (REPLState × LInterpreter.
       -- default to () when nothing to run
       let u := "u"; .letVal u (.cst .unit) (.seq #[] (.ret u))
   let m := asModule {st with funs} mainBody
-  println! IR.fmtModule m
   let v <- LInterpreter.evalModule m gvals |>.toIO (.userError ∘ toString)
   return ({st with PE := PE', E := E', lower, cc, funs, gvals}, v, sch)
 

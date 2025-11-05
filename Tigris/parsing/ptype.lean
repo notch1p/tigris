@@ -144,21 +144,23 @@ def tyEmpty : TParser σ TyDecl := do
 @[inline, always_inline]
 def tyExp (paramInfo : ParamInfo := ∅) : TParser σ MLType := tyArrow false paramInfo
 
-def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyForall" $
-  optionD ((FORALL <|> FORALL') *> parseParams) ∅ >>= fun param'@{ordered,..} =>
-    -- we do not parse preds yet. not supported currently anyway.
-    if ordered.isEmpty then tyArrow mt param
-    else COMMA *>
-      .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) [] <$> tyArrow mt (param ∪ param')
-
-def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
-  let id <- ID; COLON; let ty <- tyForall mt param
-  return (id, ty)
-
 def tyPred (param : ParamInfo) : TParser σ Pred := do
   let (TApp s l) <- tyArrow false param | error s!"not a valid predicate" *> throwUnexpected
   return ⟨s, l⟩
 @[inline] def tyPreds (param : ParamInfo) : TParser σ (Array Pred) := sbrack $ sepBy1 COMMA $ tyPred param
+
+
+def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyForall" $
+  optionD ((FORALL <|> FORALL') *> parseParams) ∅ >>= fun param'@{ordered,..} =>
+    if ordered.isEmpty then tyArrow mt param
+    else do
+      let param := param ∪ param'
+      let pred <- optionD (tyPreds param) #[] <&> Array.toList
+      .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyArrow mt param
+
+def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
+  let id <- ID; COLON; let ty <- tyForall mt param
+  return (id, ty)
 
 def tyScheme : TParser σ Scheme := do
   let param@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅

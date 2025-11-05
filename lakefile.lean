@@ -4,8 +4,8 @@ open Lake DSL System
 package "tigris" where
   version := v!"0.6.5"
 
-@[default_target]
-lean_exe "tigris" where
+/- @[default_target] -/
+lean_exe "tigris" where  -- Deprecated
   root := `Main
 lean_exe "tigrisc" where
   root := `Tigrisc

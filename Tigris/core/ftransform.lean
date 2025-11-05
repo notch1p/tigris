@@ -601,7 +601,7 @@ structure LoweringState where
 deriving Inhabited
 
 @[inline] def withTyDecl (st : LoweringState) (ctors : Std.HashMap String Nat) : LoweringState :=
-  {st with ctors}
+  {st with ctors := st.ctors ∪ ctors}
 
 def lowerIdBind (st : LoweringState) (binds : Array BindingF) : LoweringState × Array LFun :=
   let binds := binds.map fun (id, sch, fe) => (id, sch, HelperF.stripTy fe)

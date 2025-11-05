@@ -1,5 +1,7 @@
 import Tigris
 
+/-! Deprecated -/
+
 open PrettyPrint (tabulate)
 open PrettyPrint.Text (mkBoldBlackWhite mkBold)
 open MLType (defaultE)

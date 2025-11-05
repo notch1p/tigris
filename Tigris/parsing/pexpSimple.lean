@@ -90,9 +90,6 @@ def resolveBareRecord (fs : Array $ String × Expr) : TParser σ Expr := do
 mutual
 partial def parseExpr : TParser σ Expr := withErrorMessage "Term" parsePratt
 
-partial def funapp : TParser σ Expr :=
-  chainl1 atom (pure App)
-
 partial def atom : TParser σ Expr := spaces *>
   first' #[ recordExpTyped
           , ascription
@@ -126,18 +123,26 @@ partial def varExp      : TParser σ Expr :=
          | v                     => Var v
 
 partial def appAtom     : TParser σ Expr :=
+  chainl1 primaryAtom (pure App)
+
+partial def bareAtom     : TParser σ Expr :=
   chainl1 atom (pure App)
 
-partial def parsePratt (minPrec := 0) : TParser σ Expr := do
-  let lhs <- appAtom
-  let rec loop (lhs : Expr) : TParser σ Expr := do
-    match <- takeBindingOp? minPrec with
-    | none => pure lhs
-    | some (_sym, {prec, assoc, impl,..}) =>
-      let nextMin := if assoc matches .leftAssoc then prec + 1 else prec
-      let rhs <- parsePratt nextMin
-      loop $ impl lhs rhs
-  loop lhs
+partial def parsePratt (minPrec := 0) : TParser σ Expr := loop =<< appAtom where
+  loop lhs := do
+    let some {prec, assoc, impl, ..} <- takeInfixOp? minPrec
+      | return lhs
+    let nextMin := if assoc matches .leftAssoc then prec + 1 else prec
+    loop =<< impl lhs <$> parsePratt nextMin
+
+partial def atomPrefix (minPrec := 0) : TParser σ Expr := do
+  let some {impl, prec,..} <- takePrefixOp? minPrec | bareAtom
+  impl <$> parsePratt prec
+
+partial def primaryAtom (minPrec := 0) : TParser σ Expr := loop =<< atomPrefix where
+  loop lhs := do
+    let some {impl,..} <- takePostfixOp? minPrec | return lhs
+    loop $ impl lhs
 
 partial def matchDiscr  : TParser σ $ Array Pattern × Expr := do
   let p <- sepBy1 COMMA parsePattern
