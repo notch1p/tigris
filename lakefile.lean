@@ -4,17 +4,6 @@ open Lake DSL System
 package "tigris" where
   version := v!"0.6.5"
 
-/- @[default_target] -/
-lean_exe "tigris" where  -- Deprecated
-  root := `Main
-lean_exe "tigrisc" where
-  root := `Tigrisc
-lean_exe "tigrisi" where
-  root := `Tigrisi
-@[default_target]
-lean_exe "tigrisl" where
-  root := `Tigrisl
-
 input_file ffi.c where
   path := "c" / "ffi.c"
   text := true
@@ -31,7 +20,20 @@ lean_lib «Tigris»
 lean_lib «PP»
 --  moreLinkObjs := #[ffi.o]
 --  precompileModules := true
+lean_lib «runtime» where precompileModules := true
 
+input_file runtime.lisp where
+  path := __dir__ / "runtime.lisp"
+  text := true
+
+target runtime.lean : Unit := do
+  let runtimep <- runtime.lisp.fetch
+  runtimep.mapM fun path =>
+    String.quote <$> IO.FS.readFile path >>= fun runtime =>
+      IO.FS.withFile (__dir__ / "runtime.lean") .write fun h => do
+        h.putStrLn s!"/-! generated from {path} -/"
+        h.putStrLn "def runtime :="
+        h.putStrLn runtime
 
 open IO.FS String in
 target gen_compdb pkg : Unit := do
@@ -61,7 +63,6 @@ concatJsonWriteFile (p : FilePath) pkg : LogIO Unit := do
 
   logInfo $ reprStr jsons
   liftM <| pure s!"[{dropFirstRight cat_json (· == ',')}]" >>= writeFile p
-
 dropFirstRight (s : String) (p : Char -> Bool) : (r : _ := endPos s) -> String
   | ⟨0⟩ => s
   | pos@⟨next + 1⟩ =>
@@ -69,9 +70,31 @@ dropFirstRight (s : String) (p : Char -> Bool) : (r : _ := endPos s) -> String
     else dropFirstRight s p ⟨next⟩
   termination_by r => r.1
 
+meta if System.Platform.isWindows then
+  post_update do
+    let some p <- findPackage? "UnicodeBasic".toName | return ()
+    let path := p.dir / "lakefile.lean"
+    let lakefile <- IO.FS.readFile path
+    let externDef := "extern_lib libuc := UnicodeCLib.fetch"
+    IO.FS.withFile path .append fun h =>
+      unless lakefile.endsWith externDef do
+        h.putStr externDef
+
 extern_lib libleanffi pkg := do
   let ffiO <- ffi.o.fetch
   let name := nameToStaticLib "leanffi"
   buildStaticLib (pkg.staticLibDir / name) #[ffiO]
+
+/- @[default_target] -/
+lean_exe "tigris" where  -- Deprecated
+  root := `Main
+lean_exe "tigrisc" where
+  root := `Tigrisc
+lean_exe "tigrisi" where
+  root := `Tigrisi
+@[default_target]
+lean_exe "tigrisl" where
+  root := `Tigrisl
+  needs := #[runtime.lean]
 
 require Parser from git "https://github.com/fgdorais/lean4-parser"@"1df69ca8eb5a66ab0c97dc54bf281194dd714a40"

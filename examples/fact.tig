@@ -1,6 +1,7 @@
 extern println "%println" : forall a, a -> Unit
 extern append "%string-append" : String -> String -> String
 extern toString "%to-string" : forall a, a -> String
+extern read "%read" : forall a, Unit -> a
 
 infixl 65 "++" => append
 
@@ -16,5 +17,8 @@ let fact n =
 
 postfix 50 "!" => fact
 
-let main = 10!
+let main =
+  let _ = println "Enter a number:" in
+  let x = read () in
+  x ! -- x! is also a valid identifier. So we parenthesize it/use juxtaposition.
 

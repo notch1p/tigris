@@ -317,8 +317,10 @@ main (payload, k) {
     if cmp65 then APPLY k(con60) else MATCHFAILURE
   eval(ρc1010, k17)
 }
-;; == external FFI ==
+;; == Runtime ==
+(load "runtime.lisp")
 
+;; == Linked Lisp Source ==
 (load "ffi.lisp")
 
 ;; == Common Lisp ==

@@ -228,10 +228,12 @@ partial def lowerFunApp
     else
       let now  := ns[:total]
       let rest := ns[total:]
-      buildPairs (name := now.toList) fun tuple => do
-        let r0 <- fresh "r"
-        let after <- applyRest r0 rest
-        pure (.letRhs r0 (.call vf tuple) after)
+      if h : now.size = 1 then applyUnary vf now[0] (applyRest · rest)
+      else
+        buildPairs (name := now.toList) fun tuple => do
+          let r0 <- fresh "r"
+          let after <- applyRest r0 rest
+          pure (.letRhs r0 (.call vf tuple) after)
 
   let applyByType (vf : Name) (ns : Array Name) : M σ LExpr := do
     if n = 0 then callWithMany vf ns
@@ -240,10 +242,12 @@ partial def lowerFunApp
     else
       let now := ns[:n]
       let rest := ns[n:]
-      buildPairs (name := now.toList) fun tuple => do
-        let r0 <- fresh "r"
-        let after <- applyRest r0 rest
-        pure (.letRhs r0 (.call vf tuple) after)
+      if h : now.size = 1 then applyUnary vf now[0] (applyRest · rest)
+      else
+        buildPairs (name := now.toList) fun tuple => do
+          let r0 <- fresh "r"
+          let after <- applyRest r0 rest
+          pure (.letRhs r0 (.call vf tuple) after)
 
   let applyBroken (total : Nat) (vf0 : Name) : M σ LExpr := do
     let dp := Nat.min total args.size
@@ -256,8 +260,10 @@ partial def lowerFunApp
         let rest := args[dp:]
         if rest.isEmpty then k vf
         else
-          lowerMany rest ρ ctors fun ns =>
-            applyByType vf ns
+          lowerMany rest ρ ctors fun ns => do
+            buildPairs (name := ns.toList) fun tuple => do
+              let r1 <- fresh "r"
+              .letRhs r1 (.call vf tuple) <$> k r1
     applyD 0 vf0
 
   lowerF head ρ ctors fun vf0 => do

@@ -1,5 +1,7 @@
-;; == external FFI ==
+;; == Runtime ==
+(load "runtime.lisp")
 
+;; == Linked Lisp Source ==
 (load "ffi.lisp")
 
 ;; == Common Lisp ==
@@ -91,13 +93,28 @@
   (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|Γ| (cons '|𝐄| (vector |%println| |%string-append| |%to-string|))))
     (let ((|lam28| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
-      (let ((|c29| 10))
+      (let ((|c29| "Enter a number:"))
         (let ((|u30| nil))
           (let ((|pair31| (cons |c29| |u30|)))
-            (let ((|_code1024| (svref (cdr |lam28|) 0)))
-              (let ((|Γc1025| (svref (cdr |lam28|) 1)))
-                (let ((|ρc1026| (cons |pair31| |Γc1025|)))
-                  (funcall (the function |_code1024|) |ρc1026| |k|))))))))))
+            (let ((|_code1030| (svref (cdr |%println|) 0)))
+              (let ((|Γc1031| (svref (cdr |%println|) 1)))
+                (let ((|ρc1032| (cons |pair31| |Γc1031|)))
+                  (labels ((|k13| (|v12|)
+                    (let ((|c33| nil))
+                      (let ((|u34| nil))
+                        (let ((|pair35| (cons |c33| |u34|)))
+                          (let ((|_code1027| (svref (cdr |%read|) 0)))
+                            (let ((|Γc1028| (svref (cdr |%read|) 1)))
+                              (let ((|ρc1029| (cons |pair35| |Γc1028|)))
+                                (labels ((|k15| (|v14|)
+                                  (let ((|u37| nil))
+                                    (let ((|pair38| (cons |v14| |u37|)))
+                                      (let ((|_code1024| (svref (cdr |lam28|) 0)))
+                                        (let ((|Γc1025| (svref (cdr |lam28|) 1)))
+                                          (let ((|ρc1026| (cons |pair38| |Γc1025|)))
+                                            (funcall (the function |_code1024|) |ρc1026| |k|))))))))
+                                  (funcall (the function |_code1027|) |ρc1029| #'|k15|))))))))))
+                    (funcall (the function |_code1030|) |ρc1032| #'|k13|)))))))))))
 
 ; driver
 (defun |__start| ()

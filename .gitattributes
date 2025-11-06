@@ -1,3 +1,4 @@
 *.tig linguist-language=ocaml
 examples/typeclass*.tig linguist-language=haskell
 examples/* -linguist-vendored
+runtime.lean -linguist-vendored

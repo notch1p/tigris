@@ -50,6 +50,7 @@ def blu str := SString.mk str {fg := .blue}
 def length : SString -> Nat := fun {s,..} => s.length
 def render : SString -> String
   | ⟨s, style⟩ => style.buildPrefix ++ s ++ RESET
+def strid : String -> String := render ∘ str
 end SString
 
 @[inline] def mkBold s := SString.mk s {style := [.bold]} |>.render
@@ -120,11 +121,18 @@ instance : Max      $ OverrideWidth header := ⟨maxN⟩
 instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 
 structure PPSpec (header : List Text.SString) where
-  align   : Align header
-  width   : OverrideWidth header := 0
-  header? : Bool := true
-  margin  : Nat := 3
-  padsBy  : PadsBy := .perCol
+  align    : Align header
+  width    : OverrideWidth header := 0
+  header?  : Bool := true
+  margin   : Nat := 3
+  padsBy   : PadsBy := .perCol
+
+  /--
+  **Horizontal** truncate: If a cell is empty (`= stdid ""`), skip it.
+  i.e. gets replaced by the cell to its **right**.
+  - respects `margin`.
+  -/
+  truncate : Bool := false
 
 def calcMaxWidthPerCol (t : TableOf header) : OverrideWidth header :=
   match h : header with
@@ -142,50 +150,61 @@ def calcMaxWidthRow (t : Row header) : Nat :=
 def pad n (c := ' ') := c.repeat n
 
 open Alignment Text in
-def withAlign (acc term : String) padding margin
-  | left   => s!"{acc}{pad margin}{term}{pad padding}"
-  | right  => s!"{acc}{pad margin}{pad padding}{term}"
-  | center => let hp := if 1 &&& padding == 0
-                        then padding >>> 1 else (padding + 1) >>> 1
-              let mg := if 1 &&& margin == 0
-                        then margin >>> 1 else (margin + 1) >>> 1
-              s!"{acc}{pad hp}{pad mg}{term}{pad mg}{pad hp}"
+def withAlign (acc term : String) (padding margin : Nat) (truncate : Bool) : Alignment -> String
+  | left =>
+    if truncate && term == SString.strid "" then s!"{acc}{pad margin}"
+    else s!"{acc}{pad margin}{term}{pad padding}"
+  | right =>
+    if truncate && term == SString.strid "" then s!"{acc}{pad margin}"
+    else s!"{acc}{pad margin}{pad padding}{term}"
+  | center =>
+    let hp := if 1 &&& padding == 0
+              then padding >>> 1 else (padding + 1) >>> 1
+    let mg := if 1 &&& margin == 0
+              then margin >>> 1 else (margin + 1) >>> 1
+    s!"{acc}{pad hp}{pad mg}{term}{pad mg}{pad hp}"
 
 def padRow (mw : Nat) (spec : PPSpec header) (t : Row header) (acc := "")
   : String :=
-  let {align := as, width := ov,margin := mg,..} := spec
+  let { align    := as
+      , width    := ov
+      , margin   := mg
+      , truncate := tr..} := spec
   match header with
   | [] => ""
-  | [_] => if let some w := ov then withAlign acc t.render (w - t.length) mg as
-           else withAlign acc t.render (mw - t.length) mg as
+  | [_] => if let some w := ov then withAlign acc t.render (w - t.length) mg tr as
+           else withAlign acc t.render (mw - t.length) mg tr as
   | _ :: _ :: _ =>
     match ov with
     | (some w, ovs) =>
         padRow mw {spec with align := as.2, width := ovs} t.2
-      $ withAlign acc t.1.render (w - t.1.length) mg as.1
+      $ withAlign acc t.1.render (w - t.1.length) mg tr as.1
     | (_, ovs) =>
         padRow mw {spec with align := as.2, width := ovs} t.2
-      $ withAlign acc t.1.render (mw - t.1.length) mg as.1
+      $ withAlign acc t.1.render (mw - t.1.length) mg tr as.1
 
 def padHeader (mw : Nat) (spec : PPSpec header) (accl := 0) (acc := "")
   : String × Nat :=
-  let {align := as, width := ov,margin := mg,..} := spec
+  let 
+    { align    := as
+    , width    := ov
+    , margin   := mg
+    , truncate := tr..} := spec
   match header with
   | [] => ("", 0)
   | [x] => if let some w := ov
-           then (withAlign acc x.render (w - x.length) mg as, mg + w + accl)
-           else (withAlign acc x.render (mw - x.length) mg as, mg + accl)
+           then (withAlign acc x.render (w - x.length) mg tr as, mg + w + accl)
+           else (withAlign acc x.render (mw - x.length) mg tr as, mg + accl)
   | x :: _ :: _ =>
     match ov with
     | (some w, ovs) =>
         padHeader mw {spec with align := as.2, width := ovs} (accl + w + mg)
-      $ withAlign acc x.render (w - x.length) mg as.1
+      $ withAlign acc x.render (w - x.length) mg tr as.1
     | (_, ovs) =>
         padHeader mw {spec with align := as.2, width := ovs} (accl + mw + mg)
-      $ withAlign acc x.render (mw - x.length) mg as.1
+      $ withAlign acc x.render (mw - x.length) mg tr as.1
 
-def calcMaxWidthTbl (t : TableOf header) : Nat :=
-  t.foldl (init := 0) fun a s => max a $ calcMaxWidthRow s
+@[inline] def calcMaxWidthTbl (t : TableOf header) : Nat := t.foldl (max · $ calcMaxWidthRow ·) 0
 
 def tabulate (name : String) (spec : PPSpec header) (t : TableOf header) : String :=
   let mw := calcMaxWidthTbl t

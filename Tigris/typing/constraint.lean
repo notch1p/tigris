@@ -541,9 +541,11 @@ def inferToplevelC
       let l :=
         if !ps.isEmpty then
           Logging.warn
-            s!"pattern binding does not support addition of constraints\n"
+            s!"pattern binding does not support addition of constraints (it is dropped.)\n"
         else ""
-      let ((E, _), {log := l₂,..}) <- runEST fun _ => inferPattern E te pat |>.run {}
+      let ((E, b), {log := l₂, cst,..}) <- runEST fun _ => inferPattern E te pat |>.run {}
+      let (subst, _) <- solveAll cst
+      let E := apply subst E
       let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
       let l₃ :=
         if let some ex := ex then

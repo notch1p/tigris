@@ -1,0 +1,18 @@
+-- struct def is syntactic sugar for single-ctor inductive type def
+type Point = {x : Int, y : Int}
+
+extern println "%println" : forall a, a -> Unit
+
+let distancePow {x, y} = x * x + y * y
+
+-- class def is syntactic sugar for struct def
+class Eq a = {eq : a -> a -> Bool}
+
+instance Eq Int = {eq x y = __eqInt x y}
+
+    -- or {eq}
+let getEq (Eq f) = f
+
+let main =
+  ( println $ getEq i_Eq_0 10 10  -- an instance decl is bound to i_CLS_N
+  , println $ distancePow {x = 6, y = 8})

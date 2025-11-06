@@ -2,6 +2,7 @@ import Tigris.cps.ctransform
 import Tigris.codegen.sbcl
 import Tigris.table
 import Tigris.core.ftransform
+import runtime
 
 open IO
 
@@ -14,7 +15,7 @@ structure ArgParserFlag where
   sysf?   : Bool := false
   cl?     : Bool := true
   fasl?   : Bool := false
-  ffi?    : Option String := "ffi.lisp"
+  objs    : Array String := #["ffi.lisp"]
 
 def mkSBCL (ifile ofile sbcl : String) : Process.SpawnArgs where
   cmd := sbcl
@@ -50,9 +51,8 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
   | "--cps" :: xs => argParser {spec with cps? := true} is os xs
   | "--fasl" :: xs => argParser {spec with fasl? := true} is os xs
   | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
-  | "-lf" :: x :: xs | "--link-ffi" :: x :: xs => argParser {spec with ffi? := x} is os xs
-  | "-nlf" :: xs | "--no-link-ffi" :: xs => argParser {spec with ffi? := none} is os xs
-  | "-nel" :: xs | "--no-emit-lisp" :: xs => argParser {spec with ffi? := none} is os xs
+  | "-lf" :: x :: xs | "--link-ffi" :: x :: xs => argParser {spec with objs := spec.objs.push x} is os xs
+  | "-nl" :: xs | "--no-lisp" :: xs => argParser {spec with cl? := false} is os xs
   | "-o" :: xs =>
     (spec, is.foldr (flip Array.push) #[], ·) <$> xs.foldlM (init := #[]) fun a s =>
       if s.startsWith "-"
@@ -71,7 +71,7 @@ def main (fp : List String) : IO Unit := do
                 , lamcc?
                 , entry?
                 , cps?
-                , ffi?
+                , objs
                 , cl?
                 , sysf?
                 , fasl?
@@ -83,7 +83,7 @@ def main (fp : List String) : IO Unit := do
         try
           let s <- FS.readFile ⟨i⟩
           let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
-          if o.endsWith ".fasl" || fasl? then 
+          if o.endsWith ".fasl" || fasl? then
             let temp <- withTempFile' fun h temp => do
               let (_, cc) <- do
                 let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
@@ -92,10 +92,11 @@ def main (fp : List String) : IO Unit := do
                 pure $ IR.toLamModuleF decls ctors
               let mod := CPS.toCPS cc
 
-              if let some ffip := ffi? then
-                h.write =<< FS.readBinFile ffip
+              h.putStrLn runtime
 
-              h.putStrLn ";; == Common Lisp ==\n"
+              objs.forM fun obj =>
+                h.write =<< FS.readBinFile ⟨obj⟩
+
               let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
               h.putStrLn "; hoisted functions"
               h.putStrLn funs
@@ -103,6 +104,8 @@ def main (fp : List String) : IO Unit := do
               h.putStrLn main
               h.putStrLn "; driver"
               h.putStrLn drv
+              h.putStrLn "; script-entrypoint"
+              h.putStrLn "(|__start|)"
               pure temp
 
             FS.writeBinFile ⟨o⟩ ∅
@@ -140,9 +143,12 @@ def main (fp : List String) : IO Unit := do
               h.putStrLn ";; == CPS IR ==\n"
               h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
 
-            if let some ffip := ffi? then
-              h.putStrLn ";; == external FFI ==\n"
-              h.putStrLn s!"(load \"{ffip}\")\n"
+            h.putStrLn ";; == Runtime =="
+            h.putStrLn "(load \"runtime.lisp\")\n"
+
+            objs.forM fun obj =>
+              h.putStrLn ";; == Linked Lisp Source ==" *>
+              h.putStrLn s!"(load \"{obj}\")\n"
 
             if cl? then
               h.putStrLn ";; == Common Lisp ==\n"
@@ -163,6 +169,13 @@ def main (fp : List String) : IO Unit := do
     println! "FLAGS & ARGS:"
     IO.print $ PrettyPrint.tabulate
       "tigrisl"
-      {align := (.left, .left), header? := false}
+      { align := (.left, .left)
+      , header? := false
+      , truncate := true
+      , margin := 2}
       tiglHelpMsg
+    println! "NOTES:"
+    println! "- FASL target outputs standalone binary"
+    println! "  by concatenating linked sources in specific order."
+    println! "- LISP target load linked sources/runtime dynamically"
 

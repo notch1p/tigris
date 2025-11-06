@@ -149,11 +149,10 @@ def tyPred (param : ParamInfo) : TParser σ Pred := do
   return ⟨s, l⟩
 @[inline] def tyPreds (param : ParamInfo) : TParser σ (Array Pred) := sbrack $ sepBy1 COMMA $ tyPred param
 
-
 def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyForall" $
   optionD ((FORALL <|> FORALL') *> parseParams) ∅ >>= fun param'@{ordered,..} =>
     if ordered.isEmpty then tyArrow mt param
-    else do
+    else COMMA *> do
       let param := param ∪ param'
       let pred <- optionD (tyPreds param) #[] <&> Array.toList
       .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyArrow mt param
