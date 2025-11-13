@@ -189,13 +189,13 @@ def first'
     | 0 => return .error s e
     | m + 1 =>
       let pss := ps.size
-      have : m < pss := Nat.le_trans (Nat.lt.base _) h
+      have : m <= pss := Nat.le_trans (Nat.le_succ _) h
       let savePos := Stream.getPosition s
       ps[pss - m.succ] s >>= fun
       | .ok s v => return .ok s v
       | .error s f =>
-        go m (Nat.le_of_lt this) (combine e f) (Stream.setPosition s savePos)
-  go ps.size (Nat.le.refl) (Error.unexpected (<- getPosition) none)
+        go m this (combine e f) (Stream.setPosition s savePos)
+  go ps.size Nat.le.refl (Error.unexpected (<- getPosition) none)
 
 def treeParse
   (p : α -> ParserT ε σ τ m α)
@@ -230,16 +230,7 @@ def Array.foldl1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.get!
 
-def Array.map2 (f : α -> β -> γ) (xs : Array α) (ys : Array β) : Array γ :=
-  let xss := xs.size
-  let yss := ys.size
-  let min := Nat.min xs.size ys.size
-  have h₁ : min <= xss := Nat.min_le_left xss yss
-  have h₂ : min <= yss := Nat.min_le_right xss yss
-  min.fold (init := #[]) fun i h a =>
-    have := Nat.lt_of_lt_of_le h h₁
-    have := Nat.lt_of_lt_of_le h h₂
-    a.push $ f xs[i] ys[i]
+def Array.map2 := @Array.zipWith
 
 def Array.foldl1D (f : α -> α -> α) (arr : Array α) (dflt : α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y

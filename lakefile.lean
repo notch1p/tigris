@@ -20,20 +20,32 @@ lean_lib «Tigris»
 lean_lib «PP»
 --  moreLinkObjs := #[ffi.o]
 --  precompileModules := true
+
 lean_lib «runtime» where precompileModules := true
 
 input_file runtime.lisp where
   path := __dir__ / "runtime.lisp"
   text := true
 
+def ByteArray.pushMany (dst src : ByteArray) : ByteArray := go dst src.size Nat.le.refl where
+  go dst i (h : i <= src.size) :=
+    match _ : i with
+    | 0 => dst
+    | n + 1 =>
+      go (dst.push src[src.size - i]) n
+      $ Nat.le_trans (Nat.le_succ _) h
+
 target runtime.lean : Unit := do
   let runtimep <- runtime.lisp.fetch
+  let rstrBegin := "r###\"\n".toUTF8
+  let rstrEnd   := "\"###".toUTF8
   runtimep.mapM fun path =>
-    String.quote <$> IO.FS.readFile path >>= fun runtime =>
+    IO.FS.withFile path .read fun rt =>
       IO.FS.withFile (__dir__ / "runtime.lean") .write fun h => do
-        h.putStrLn s!"/-! generated from {path} -/"
-        h.putStrLn "def runtime :="
-        h.putStrLn runtime
+        let runtime <- rt.readBinToEndInto rstrBegin
+        h.putStrLn s!"/-- generated from {path} -/"
+        h.putStrLn "def runtime : String :="
+        h.write $ runtime.pushMany rstrEnd
 
 open IO.FS String in
 target gen_compdb pkg : Unit := do
