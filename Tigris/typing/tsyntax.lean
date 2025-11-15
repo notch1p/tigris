@@ -88,7 +88,7 @@ partial def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : TExpr
   | .Ascribe e ty         => .Ascribe (mapTypes f g e) (f ty)
 
 def tv? : TV -> Bool
-  | .mkTV s => s.startsWith "?m"
+  | .mkTV s => s.startsWith "?m."
 
 partial def alignAscribes : TExpr -> TExpr
   | .Ascribe e sch@(.TSch (.Forall vs _ _)) =>

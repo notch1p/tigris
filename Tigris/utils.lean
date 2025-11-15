@@ -215,7 +215,6 @@ def treeParse
         | .error s f' =>
           go r (combine f f') (Stream.setPosition s savePos)
 
-
 end
 
 def Array.mapReduce! [Inhabited β] (mapf : α -> β) (f : β -> β -> β) (xs : Array α) : β :=

@@ -90,8 +90,8 @@ namespace Helper
 
 def αRename (qs : List TV) : Subst × List TV :=
   let mkFresh : TV -> Nat -> TV
-    | _, i => .mkTV s!"?inst{i}"
-  qs.foldrIdx (init := (∅, [])) fun i q (sub, acc) => 
+    | _, i => .mkTV s!"?inst.{i}"
+  qs.foldrIdx (init := (∅, [])) fun i q (sub, acc) =>
     let q' := mkFresh q i
     (sub.insert q (.TVar q'), q' :: acc)
 

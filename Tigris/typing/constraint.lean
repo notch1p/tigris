@@ -29,7 +29,7 @@ variable {σ}
 
 @[inline] def fresh : InferC σ MLType := do
   let n <- modifyGet fun ctx@{next,..} => (next, {ctx with next := next + 1})
-  s!"?m{n}" |> pure ∘ TVar ∘ .mkTV
+  s!"?m.{n}" |> pure ∘ TVar ∘ .mkTV
 
 @[inline] def freshEvidence (p : Pred) : InferC σ Nat := do
   let n <- modifyGet fun st =>
@@ -106,7 +106,7 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
     if ps₁.length != ps₂.length || tvs₁.length != tvs₂.length then
       throw (.NoUnify ts₁ ts₂)
     let renameSub : Subst := List.foldl2 (·.insert · $ .TVar ·) ∅ tvs₂ tvs₁
-    let ps₂ := ps₂.map $ apply renameSub
+    let ps₂ := apply renameSub ps₂
     if ps₁ != ps₂ then throw $ .NoUnify ts₁ ts₂
     unify t₁ (apply renameSub t₂)
   | t, u => 

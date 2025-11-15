@@ -47,7 +47,6 @@ inductive Pattern where
   | PCtor (name : String) (args : Array Pattern)
 deriving Inhabited, Repr
 
-
 def Pattern.beq : Pattern -> Pattern -> Bool
   | PCtor c₁ _, PCtor c₂ _ => c₁ == c₂
   | PConst p₁, PConst p₂ => p₁ == p₂

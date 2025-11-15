@@ -27,15 +27,10 @@ input_file runtime.lisp where
   path := __dir__ / "runtime.lisp"
   text := true
 
-def ByteArray.pushMany (dst src : ByteArray) : ByteArray := go dst src.size Nat.le.refl where
-  go dst i (h : i <= src.size) :=
-    match _ : i with
-    | 0 => dst
-    | n + 1 =>
-      go (dst.push src[src.size - i]) n
-      $ Nat.le_trans (Nat.le_succ _) h
+@[inline] def ByteArray.pushMany (ba₁ ba₂ : ByteArray) : ByteArray :=
+  if ba₁.isEmpty then ba₂ else ba₂.foldl .push ba₁
 
-target runtime.lean : Unit := do
+target runtime.lean : Unit := do -- NOTE: see also `meta` (modifier)
   let runtimep <- runtime.lisp.fetch
   let rstrBegin := "r###\"\n".toUTF8
   let rstrEnd   := "\"###".toUTF8

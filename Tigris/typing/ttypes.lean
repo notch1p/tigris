@@ -82,7 +82,6 @@ def ctorScheme (tycon : String) (tparams : List TV) (fields : List (String × ML
   $ TApp tycon
   $ tparams.map TVar
 
-
 inductive TypingError
   | NoUnify (t₁ t₂ : MLType)
   | Undefined (s : String)
@@ -204,11 +203,11 @@ instance : Rewritable Env where
   apply s e := {e with E := e.E.map fun _ v => apply s v}
   fv      e := fv e.E.values
 end Rewritable
-
 namespace MLType open Rewritable
 @[inline] def merge (s₁ s₂ : Subst) :=
-  s₂.foldl (init := s₁) fun acc k v =>
-    acc.insert k (apply s₁ v)
+  if s₁.isEmpty then s₂ else
+    s₂.foldl (init := s₁) fun acc k v =>
+      acc.insert k (apply s₁ v)
 infixl : 65 " ∪' " => merge
 def gensym (n : Nat) : String :=
   let (q, r) := (n / 25, n % 25)

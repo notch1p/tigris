@@ -119,8 +119,8 @@ partial def findReturnedVar : FExpr -> Option (String × MLType × (FExpr -> FEx
       let (pats, rhs) := branches[0]
       match findReturnedVar rhs with
       | some (v, vty, reb) =>
-          some (v, vty, fun new =>
-            .Match scrs #[(pats, reb new)] resTy ex red)
+        some (v, vty, fun new =>
+          .Match scrs #[(pats, reb new)] resTy ex red)
       | none => none
     else
       none
@@ -232,8 +232,7 @@ partial def lowerFunApp
       else
         buildPairs (name := now.toList) fun tuple => do
           let r0 <- fresh "r"
-          let after <- applyRest r0 rest
-          pure (.letRhs r0 (.call vf tuple) after)
+          .letRhs r0 (.call vf tuple) <$> applyRest r0 rest
 
   let applyByType (vf : Name) (ns : Array Name) : M σ LExpr := do
     if n = 0 then callWithMany vf ns
@@ -260,10 +259,12 @@ partial def lowerFunApp
         let rest := args[dp:]
         if rest.isEmpty then k vf
         else
-          lowerMany rest ρ ctors fun ns => do
-            buildPairs (name := ns.toList) fun tuple => do
-              let r1 <- fresh "r"
-              .letRhs r1 (.call vf tuple) <$> k r1
+          lowerMany rest ρ ctors fun ns =>
+            if h : ns.size = 1 then applyUnary vf ns[0] k
+            else
+              buildPairs (name := ns.toList) fun tuple => do
+                let r1 <- fresh "r"
+                .letRhs r1 (.call vf tuple) <$> k r1
     applyD 0 vf0
 
   lowerF head ρ ctors fun vf0 => do
@@ -342,7 +343,7 @@ partial def lowerF
         lowerFunApp h args ρ ctors k
       | .Cond c t e _ =>
         lowerF c ρ ctors fun cv =>
-          .seq #[] <$> ((.cond cv · ·) <$> lowerFCore t ρ ctors <*> lowerFCore e ρ ctors)
+          .seq #[] <$> ((.cond cv · ·) <$> lowerF t ρ ctors k <*> lowerF e ρ ctors k)
       | .Let bs body _ =>
         let (recs, nonrecs) := splitLetGroup bs
         lowerNonRecBinds nonrecs.toSubarray ρ ctors fun ρ => do

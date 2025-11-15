@@ -52,7 +52,7 @@ partial def unify : MLType -> MLType -> Infer σ Subst
   | t₁, t₂                  => throw $ NoUnify t₁ t₂
 
 @[inline] def fresh : Infer σ MLType :=
-  modifyGet fun (s, l) => (TVar $ mkTV s!"?m{s}", s + 1, l)
+  modifyGet fun (s, l) => (TVar $ mkTV s!"?m.{s}", s + 1, l)
 
 def instantiate : Scheme -> Infer σ MLType
   | .Forall as _ t => do
