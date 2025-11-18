@@ -77,7 +77,8 @@ dropFirstRight (s : String) (p : Char -> Bool) : (r : _ := endPos s) -> String
     else dropFirstRight s p ⟨next⟩
   termination_by r => r.1
 
-meta if System.Platform.isWindows then
+        -- temporarily fixed via fgdorais/lean4-unicode-basic#82
+meta if /- System.Platform.isWindows -/ false then
   post_update do
     let some p <- findPackage? "UnicodeBasic".toName | return ()
     let path := p.dir / "lakefile.lean"
@@ -102,6 +103,6 @@ lean_exe "tigrisi" where
 @[default_target]
 lean_exe "tigrisl" where
   root := `Tigrisl
-  needs := #[runtime.lean]
+  --needs := #[runtime.lean]
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"1df69ca8eb5a66ab0c97dc54bf281194dd714a40"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"c721f95697678dc252c90d16c48056d4fee38e7a"
