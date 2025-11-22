@@ -153,8 +153,10 @@ def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMes
   let param'@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
   let param := param ∪ param'
   let pred <- optionD (tyPreds param) #[] <&> Array.toList
-  if !ordered.isEmpty || !pred.isEmpty then COMMA
-  .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyArrow mt param
+  if ordered.isEmpty && pred.isEmpty then tyArrow mt param
+  else
+    COMMA
+    .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyArrow mt param
 
 def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
   let id <- ID; COLON; let ty <- tyForall mt param
