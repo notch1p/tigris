@@ -1,0 +1,55 @@
+cabal-version: 3.0
+name: DTigris
+version: 0.1.0.0
+-- synopsis:
+-- description:
+homepage: https://github.com/notch1p/tigris
+license: NONE
+author: Evan Gao
+maintainer: notch1p2004@outlook.com
+-- copyright:
+category: Language
+build-type: Simple
+extra-doc-files: CHANGELOG.md
+
+-- extra-source-files:
+common warnings
+  ghc-options: -Wall
+
+common common-deps-args
+  default-extensions:
+    DefaultSignatures
+    DeriveAnyClass
+    DerivingStrategies
+
+  build-depends:
+    array,
+    base >=4 && <5,
+    containers,
+    directory,
+    filepath,
+    mtl,
+    parsec,
+    pretty,
+    unbound-generics,
+
+library
+  import: warnings, common-deps-args
+  exposed-modules:
+    Abstract,
+    Lexing,
+    Parsing,
+
+  -- other-modules:
+  -- other-extensions:
+  hs-source-dirs: src
+  default-language: GHC2024
+
+executable DTigris
+  import: warnings, common-deps-args
+  main-is: Main.hs
+  -- other-modules:
+  -- other-extensions:
+  build-depends: DTigris
+  hs-source-dirs: app
+  default-language: GHC2024
