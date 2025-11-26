@@ -125,8 +125,11 @@ partial def eqSkolem : MLType -> MLType -> Bool
   | .TCon a, .TCon b => a == b
   | _, _ => false
 
-def mv? : TV -> Bool
-  | .mkTV s => s.startsWith "?"
+def mv? : TV -> Lean.Name
+  | .mkTV s =>
+    if s.startsWith "?m" then `Amb
+    else if s.startsWith "?i" then `CAmb
+    else `d
 
 @[inline] def isHKVarTV : TV -> Bool
   | .mkTV s => s.isLowerInit
@@ -151,20 +154,30 @@ def lookupDictVar (scope : DictScope) (goal : Pred) : Option (String × MLType) 
 @[inline] def patOfIdx (ctor : Symbol) (idx : Nat) (sz : Nat) : Pattern :=
   .PCtor ctor $ Array.replicate sz .PWild |>.set! idx (.PVar s!"m_{ctor}_{idx}")
 
-def mvs (p : Pred) : List TV :=
+def mvs (p : Pred) : (List TV × List TV) :=
   let vs := fv p.args
-  vs.foldl (fun a tv => if mv? tv then tv :: a else a) []
+  vs.foldl
+    (fun (mv, iv) tv =>
+      match mv? tv with
+      | `Amb => (tv :: mv, iv)
+      | `CAmb => (mv, tv :: iv)
+      | _ => (mv, iv))
+    ([], [])
 
 def stuckMessage (p : Pred) (method : String) : TypingError :=
-  let metas := mvs p
-  let metaS := if metas.isEmpty then ""
-  else
-    s!"{p}: typeclass elaboration is stuck because of metavariable(s)\n  \
-       {toString metas}\n\
-       induced by a call to {method}. Consider adding type ascriptions.\n"
-  let base := s!"{p}: missing in-scope instance for method {method}\n"
-  if metas.isEmpty then .NoSynthesize base
-  else .Ambiguous metaS
+  match mvs p with
+  | ([], []) => .NoSynthesize s!"{p}: missing in-scope instance for method {method}\n"
+  | (mvs, []) =>
+    .Ambiguous
+      s!"{p}: typeclass elaboration is stuck because of metavariable(s)\n  \
+         {toString mvs}\n\
+         induced by a call to {method}. Consider adding type ascriptions.\n"
+  | (mvs, ivs) =>
+    .Ambiguous
+      s!"{p}: cannot deduce because of metavariable(s)\n  \
+         {toString ivs} {if mvs.isEmpty then "" else toString mvs}\n\
+         induced by a call to {method} though this ambiguity\n\
+         may be introduced at the definition of class {p.cls}"
 
 def peelFun (acc : List (String × MLType)) : FExpr -> List (String × MLType) × FExpr
   | .Fun p pty b _ => peelFun ((p, pty) :: acc) b

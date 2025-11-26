@@ -17,6 +17,25 @@ let f' = heq (hadd 2 3) 5 -- Ambiguous: HEq ?m6 Int: typeclass elaboration is st
                           --   [?m6]
                           -- induced by a call to heq. To resolve this, consider adding type ascriptions.
 
+class Functor (m : 1) =
+  { map : forall a b, (a -> b) -> m a -> m b
+  , x : m Int
+  , i : Bool}
+
+type Option a = None | Some a
+
+instance Functor Option =
+  { map f
+    | None => None
+    | Some a => Some $ f a
+  , x = Some 1
+  , i = false}
+
+let i' = (i : [Functor Option], Bool) -- [ERROR] Ambiguous: Functor ?inst.0: cannot deduce because of metavariable(s)
+                                      --   [?inst.0]
+                                      -- induced by a call to i though this ambiguity
+                                      -- may be introduced at the definition of Functor
+
 ------------------------ SysF IR -------------------
 
 let boolAnd : Bool → Bool → Bool =
