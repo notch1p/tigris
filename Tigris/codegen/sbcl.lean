@@ -184,8 +184,17 @@ def emitCRhs : CRhs -> S String
   | .const k => return emitConst k
   | .alias y => return (sym y)
 
+def isProdRight : CRhs -> Bool × String
+  | .proj pr _ => (pr.startsWith "_pR", pr)
+  | _ => (false, "")
+
 mutual
 partial def emitLet1 (x : Name) (rhs : CRhs) (body : CExpr) : S String := do
+  if x.startsWith "_code" then /- very rough pattern matching temporary solution -/
+    if let (true, pr) := isProdRight rhs then
+      setShape x .fn
+      setShape pr $ .ctor "𝐂" 2
+
   let rhsS <- emitCRhs rhs
   recordShape x rhs -- emit first then update, important for recursive functions
   return s!"(let (({sym x} {rhsS}))\n\
