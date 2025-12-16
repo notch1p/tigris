@@ -51,7 +51,7 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
   | "--cps" :: xs => argParser {spec with cps? := true} is os xs
   | "--fasl" :: xs => argParser {spec with fasl? := true} is os xs
   | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
-  | "-lf" :: x :: xs | "--link-ffi" :: x :: xs => argParser {spec with objs := spec.objs.push x} is os xs
+  | "-l" :: x :: xs | "--link" :: x :: xs => argParser {spec with objs := spec.objs.push x} is os xs
   | "-nl" :: xs | "--no-lisp" :: xs => argParser {spec with cl? := false} is os xs
   | "-o" :: xs =>
     (spec, is.foldr (flip Array.push) #[], ·) <$> xs.foldlM (init := #[]) fun a s =>

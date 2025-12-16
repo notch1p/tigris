@@ -1,0 +1,24 @@
+type Option a = None | Some a
+
+class Monad (m : 1) =
+  { pure : forall a, a -> m a
+  , bind : forall a b, m a -> (a -> m b) -> m b
+  }
+
+let optPure x = Some x
+let optBind x f =
+  match x with
+  | None => None
+  | Some x => f x
+
+instance Monad Option =
+  {pure = optPure, bind = optBind}
+
+infixr 90 ">>=" => bind
+infixr 90 ">>='" => optBind
+
+let main : Option Int =
+  pure 20 >>= fun x =>
+    None >>= fun y =>
+      pure 30 >>= fun z =>
+        pure $ x + y + z
