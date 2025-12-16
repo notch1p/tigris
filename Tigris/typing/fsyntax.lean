@@ -4,7 +4,7 @@ import Tigris.typing.constraint
 import Tigris.typing.resolve
 
 def String.isSkolemOf (h : String) (v : TV) : Bool :=
-  let h' := Substring.mk h ⟨4⟩ h.endPos
+  let h' := Substring.Raw.mk h ⟨4⟩ h.endPos
   let v := v.toStr.toSubstring
   h.startsWith "?sk." && h' == v
 
