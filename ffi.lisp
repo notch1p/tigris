@@ -12,8 +12,14 @@
 ;;;; * WARN: Compiler assumes pure environment, statements may get reordered.
 ;;;;         FFI with actual side effects shouldn't be relied on
 
+(defparameter empty-gamma (cons '|𝐄| (vector)))
+(defparameter empty-𝐄 empty-gamma)
+
+(defun make-closure (f &optional (gamma empty-gamma))
+  (cons '|𝐂| (vector (the function f) gamma)))
+
 (defun with-arg2 (payload kont)
-  "α is ⟨a0, a1⟩; call (kont a0 a1 Γ)"
+  "α is ⟨a0, a1⟩; call (kont a0 a1 Γ); deprecated, use with-args instead"
   (let* ((alpha (car payload))
          (a0    (car alpha))
          (a1    (cdr alpha))
@@ -27,17 +33,17 @@
   (let* ((alpha (gensym "ALPHA"))
          (tmp   (gensym "TMP")))
     (labels ((build-binds (args)
-               (cond
-                 ((null args) '())
-                 ((null (cdr args)) `((,(car args) (car ,tmp))))
-                 (t
-                  (let ((head (car args))
-                        (rest (cdr args)))
-                    (append `((,head (car ,tmp))
-                              (,tmp (cdr ,tmp)))
-                            (if (null (cdr rest))
-                                `((,(car rest) ,tmp))
-                                (build-binds rest))))))))
+                          (cond
+                           ((null args) '())
+                           ((null (cdr args)) `((,(car args) (car ,tmp))))
+                           (t
+                             (let ((head (car args))
+                                   (rest (cdr args)))
+                               (append `((,head (car ,tmp))
+                                         (,tmp  (cdr ,tmp)))
+                                 (if (null (cdr rest))
+                                     `((,(car rest) ,tmp))
+                                     (build-binds rest))))))))
       `(let* ((,alpha (car ,payload))
               (gamma  (cdr ,payload))
               (,tmp   ,alpha)
@@ -45,64 +51,74 @@
          (declare (ignorable gamma))
          ,@body))))
 
-(defparameter empty-gamma (cons '|𝐄| (vector)))
-(defparameter empty-𝐄 empty-gamma)
-
-(defun make-closure (f &optional (gamma empty-gamma))
-  (cons '|𝐂| (vector (the function f) gamma)))
+(defmacro defforeign (name arg-list &body body)
+  "Define a tigris-callable foreign function (combines `defun`/`defparameter`).
+NAME can be:
+  - a string: \"%println\" (preserves case)
+  - a symbol: |%println| 
+    - also preserves case if
+      1. escaped
+      2. readtable-case set to `:preserve`
+  "
+  (flet ((name-to-string (x)
+                           (etypecase x
+                             (string x)
+                             (symbol (symbol-name x))))
+         (escape-bar (s)
+                     (with-output-to-string (out)
+                       (loop for c across s do
+                               (case c
+                                 (#\| (write-string "\\|" out))
+                                 (#\\ (write-string "\\\\" out))
+                                 (t (write-char c out))))))
+         (make-closure (f)
+                       `(cons '|𝐂| (vector
+                                     (function ,f)
+                                     (cons '|𝐄| (vector))))))
+    (let* ((ns     (name-to-string name))
+           (fn-sym (intern (escape-bar ns)))
+           (cell   (intern ns))
+           (clos   (make-closure fn-sym)))
+      `(eval-when (:compile-toplevel :load-toplevel :execute)
+         (defun ,fn-sym (payload k)
+           (with-args payload ,arg-list ,@body))
+         (defparameter ,cell ,clos)))))
 
 ;; e.g. println, print : ∀a, a -> Unit
-(defun %println (payload k)
-  (with-arg2 payload
-             (lambda (x _ gamma)
-               (declare (ignore gamma _))
-               (princ x)
-               (terpri)
-               (funcall k nil))))
+(defforeign |%println| (x _)
+  (declare (ignore gamma _))
+  (princ x)
+  (terpri)
+  (funcall k nil))
+;; e.g. print, print : ∀a, a -> Unit, using old `with-arg2`
 (defun %print (payload k)
   (with-arg2 payload
              (lambda (x _ gamma)
                (declare (ignore gamma _))
                (princ x)
                (funcall k nil))))
+;; the closure object of print
+(defparameter |%print| (make-closure #'%print))
+
 ;; e.g. toString : ∀a, a -> String
-(defun %to-string (payload k)
-  (with-arg2 payload
-             (lambda (x _ gamma)
-               (declare (ignore gamma _))
-               (funcall k (princ-to-string x)))))
+(defforeign |%to-string| (x _)
+  (declare (ignore gamma _))
+  (funcall k (princ-to-string x)))
 ;; e.g. string-append : String -> String -> String
-(defun %string-append (payload k)
-  (with-arg2 payload
-             (lambda (x y gamma)
-               (declare (ignore gamma) (type string x y))
-               (funcall k (concatenate 'string x y)))))
+(defforeign "%string-append" (x y)
+  (declare (ignore gamma) (type string x y))
+  (funcall k (concatenate 'string x y)))
 
 ;; e.g. read (unsafe) : ∀a, Unit -> a
-(defun %read (payload k)
-  (with-arg2 payload
-             (lambda (_ __ gamma)
-               (declare (ignore gamma _ __))
-               (funcall k (read)))))
-
+(defforeign |%read| (_ __)
+  (declare (ignore gamma _ __))
+  (funcall k (read)))
 ;; e.g. read-line : Unit -> String
-(defun %read-line (payload k)
-  (with-arg2 payload
-             (lambda (_ __ gamma)
-               (declare (ignore gamma _ __))
-               (funcall k (read-line)))))
+(defforeign %read-line (_ __)
+  (declare (ignore gamma _ __))
+  (funcall k (read-line)))
 
 ;; e.g. modulus: Int -> Int -> Int
-(defun %int-mod (payload k)
-  (with-args payload (x y)
-    (declare (type integer x y))
-    (funcall k (mod x y))))
-
-;; the closure object of println, print ...
-(defparameter |%println| (make-closure #'%println))
-(defparameter |%print| (make-closure #'%print))
-(defparameter |%to-string| (make-closure #'%to-string))
-(defparameter |%string-append| (make-closure #'%string-append))
-(defparameter |%read| (make-closure #'%read))
-(defparameter |%read-line| (make-closure #'%read-line))
-(defparameter |%int-mod| (make-closure #'%int-mod))
+(defforeign %int-mod (x y)
+  (declare (type integer x y))
+  (funcall k (mod x y)))
