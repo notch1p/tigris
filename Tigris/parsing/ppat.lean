@@ -7,7 +7,7 @@ namespace Parsing
 
 def reorderRecordPat (ctor : Symbol) (fs : Array $ String × Pattern) : TParser σ Pattern := do
   let ({recordFields,..}, _) <- get
-  let some order := recordFields.get? ctor | error "unknown record {ty}\n"; throwUnexpected
+  let some order := recordFields.get? ctor | error s!"unknown record {ctor}\n"; throwUnexpected
   let mut mp : Std.HashMap String Pattern := ∅
   for (f, e) in fs do
     if f ∈ mp then
@@ -60,20 +60,21 @@ partial def patProd : TParser σ Pattern := do
 
 partial def patRecord : TParser σ Pattern := do
   resolveBareRecordPat =<< braced do sepBy COMMA do
-    let f <- ID; 
+    let f <- ID;
     match <- option? $ EQ *> parsePattern with
     | none => return (f, PVar f)
     | some e => return (f, e)
 
 partial def patRecordTyped : TParser σ Pattern := do
   let ps <- braced do sepBy COMMA do
-    let f <- ID; EQ;
+    let f <- ID;
     match <- option? $ EQ *> parsePattern with
     | none => return (f, PVar f)
     | some e => return (f, e)
   COLON
-  match <- PType.tyExp ∅ with
-  | .TCon s | .TApp s _ => reorderRecordPat s ps
+  match <- PType.tyCtor ∅ with
+  | .TCon s | .TApp s _ =>
+    reorderRecordPat s ps
   | _ => resolveBareRecordPat ps
 partial def patApp : TParser σ Pattern := do
   let hd <- patPrimary

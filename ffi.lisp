@@ -55,7 +55,7 @@
   "Define a tigris-callable foreign function (combines `defun`/`defparameter`).
 NAME can be:
   - a string: \"%println\" (preserves case)
-  - a symbol: |%println| 
+  - a symbol: |%println|
     - also preserves case if
       1. escaped
       2. readtable-case set to `:preserve`
@@ -84,13 +84,13 @@ NAME can be:
            (with-args payload ,arg-list ,@body))
          (defparameter ,cell ,clos)))))
 
-;; e.g. println, print : ∀a, a -> Unit
+;; e.g. println : ∀a, a -> Unit
 (defforeign |%println| (x _)
   (declare (ignore gamma _))
   (princ x)
   (terpri)
   (funcall k nil))
-;; e.g. print, print : ∀a, a -> Unit, using old `with-arg2`
+;; e.g. print : ∀a, a -> Unit, using old `with-arg2`
 (defun %print (payload k)
   (with-arg2 payload
              (lambda (x _ gamma)
@@ -114,11 +114,11 @@ NAME can be:
   (declare (ignore gamma _ __))
   (funcall k (read)))
 ;; e.g. read-line : Unit -> String
-(defforeign %read-line (_ __)
+(defforeign |%read-line| (_ __)
   (declare (ignore gamma _ __))
   (funcall k (read-line)))
 
 ;; e.g. modulus: Int -> Int -> Int
-(defforeign %int-mod (x y)
+(defforeign |%int-mod| (x y)
   (declare (type integer x y))
   (funcall k (mod x y)))
