@@ -185,7 +185,7 @@ partial def letrec1 : TParser σ (Symbol × Expr) := do
       let core := transMatch pre e₁
       let rhs := match ann? with | some ty => .Ascribe core ty | none => core
       return Prod.mk id rhs
-    else 
+    else
       let core := Fix $ Fun id $ transMatch pre e₁
       let rhs := match ann? with | some ty => .Ascribe core ty | none => core
       return Prod.mk id rhs

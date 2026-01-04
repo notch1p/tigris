@@ -1,0 +1,1974 @@
+% LaTeX Template for short student reports.
+% Citations should be in bibtex format and go in references.bib
+\documentclass[a4paper, 11pt]{article}
+\usepackage[top=3cm, bottom=3cm, left = 2cm, right = 2cm]{geometry}
+\geometry{a4paper}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setmonofont{Victor Mono}[Scale=0.9]
+\makeatletter
+\renewcommand*\verbatim@nolig@list{}
+\makeatother
+\usepackage[utf8]{inputenc}
+\usepackage{textcomp}
+\usepackage{graphicx}
+\usepackage{ottalt}
+\usepackage{amsmath,amssymb,bbm,amsthm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{bm}
+\usepackage{subcaption,float}
+\usepackage{mathpartir}
+\usepackage{stmaryrd}
+\usepackage{xspace}
+\usepackage{minted}
+\usepackage[bookmarks,colorlinks,breaklinks]{hyperref}
+%\hypersetup{linkcolor=black,citecolor=black,filecolor=black,urlcolor=black} % black links, for printed output
+\usepackage{memhfixc}
+\usepackage{fancyhdr,fancyvrb}
+\usepackage{booktabs}
+\pagestyle{fancy}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\theoremstyle{definition}
+\newtheorem*{definition}{Definition}
+\title{Mid-Term Report}
+\author{高振明/Zhenming Gao}
+%\date{}
+
+\input{doublebrackets.tex}
+
+\newcommand{\Tigris}{\emph{Tigris}\xspace}
+\newcommand{\tigris}{\emph{tigris}\xspace}
+\newcommand{\Tigrisd}{\emph{Tigrisd}\xspace}
+\newcommand{\tigrisd}{\emph{tigrisd}\xspace}
+\newcommand{\numberthis}{\addtocounter{equation}{1}\tag{\theequation}}
+\newcommand{\ftv}{\mathsf{ftv}}
+\newcommand{\inst}{\mathsf{inst}}
+\newcommand{\fresh}{\mathsf{fresh}}
+\newcommand{\solve}{\mathsf{solve}}
+\newcommand{\gen}{\mathsf{gen}}
+\newcommand{\peel}{\mathsf{peel}}
+\newcommand{\skolem}{\mathsf{skolem}}
+\newcommand{\pushRigid}{\mathsf{pushRigid}}
+\newcommand{\popRigid}{\mathsf{popRigid}}
+\newcommand{\rigid}{\mathcal{R}}
+\newcommand{\Pred}{\pi}
+\newcommand{\cls}{\mathsf{cls}}
+\newcommand{\args}{\mathsf{args}}
+\newcommand{\ctx}{\mathsf{ctx}}
+\newcommand{\iname}{\mathsf{iname}}
+\newcommand{\unify}{\mathsf{unify}}
+\newcommand{\apply}{\mathsf{apply}}
+\newcommand{\resolve}{\mathsf{resolve}}
+\newcommand{\instInfo}{\mathsf{instInfo}}
+\newcommand{\Visited}{\mathcal{V}}
+\newcommand{\Tyapp}{\mathsf{TyApp}}
+\newcommand{\Tylam}{\mathsf{TyLam}}
+\newcommand{\FVar}{\mathsf{Var}}
+\newcommand{\Lambdair}{\emph{Lambda}\ IR\xspace}
+\inputott{report.ott}
+
+\begin{document}
+\maketitle
+\section{Current Status}
+
+As previously mentioned (2025/10/15) in my opening report, project-related coding is almost completed though
+there are certain aspects of \Tigris\footnote{Repository at \url{https://github.com/notch1p/tigris}} that could use a little bit more optional polishing.
+Specifically, we have completed
+\begin{itemize}
+  \item the coding of \emph{Tigris'} both as a language and a prover.
+  \item passed the major modular feature test at \texttt{examples/}.
+\end{itemize}
+What's only left is
+\begin{itemize}
+  \item the thesis.
+\end{itemize}
+
+Below, we present (non-definitive) \textbf{language specifications} and brief \textbf{internal design notes}
+of the language as \textbf{proof-of-progress}, which, shall include the following
+(based on that of OCaml):
+\begin{itemize}
+  \item PL side (emphasized, in Lean):
+    \begin{enumerate}
+      \item \Tigris: The Programming language
+        \begin{enumerate}
+          \item Lexical conventions,
+          \item Values,
+          \item Names,
+          \item Type expressions,
+          \item Patterns,
+          \item Expressions, Declarations and Bindings
+          \item Type(class) definitions,
+          \item Implementation details i.e. Lexing, Parsing.
+        \end{enumerate}
+      \item Type System
+        \begin{enumerate}
+          \item Core calculus
+          \item Typing discipline
+          \item Exhaustiveness checking
+          \item Typeclass instance resolution
+          \item System F IR \& elaboration
+        \end{enumerate}
+      \item The \emph{Lambda} IR
+        \begin{enumerate}
+          \item Lowering
+          \item Optimizations
+          \item Incremental APIs
+        \end{enumerate}
+      \item Codegen
+        \begin{enumerate}
+          \item Backend: Common Lisp (SBCL)
+            \begin{enumerate}
+              \item Memory Representation
+              \item Runtime
+            \end{enumerate}
+        \end{enumerate}
+      \item FFI Utilities (SBCL)
+      \item CLI Interfaces (Interpreter, Compilers)
+        \begin{enumerate}
+          \item \texttt{Tigrisi}: IR-based REPL
+          \item \texttt{Tigrisl}: Compiler
+          \item \texttt{Tigris}: (Legacy, deprecated) Source-based REPL
+        \end{enumerate}
+      \item Misc: Dependently-typed table printer
+    \end{enumerate}
+  \item Prover side (in Haskell):
+    \begin{enumerate}
+      \item \Tigrisd: The language itself
+        \begin{enumerate}
+          \item Lexical conventions,
+          \item Values,
+          \item Names,
+          \item Type expressions,
+          \item Constants,
+          \item Patterns,
+          \item Expressions,
+          \item \ldots
+        \end{enumerate}
+      \item Type System
+        \begin{enumerate}
+          \item \ldots
+        \end{enumerate}
+    \end{enumerate}
+\end{itemize}
+
+\paragraph*{Nomenclature} In short: \emph{TinyTheorem} = \Tigris + \Tigrisd\vspace{1cm}
+
+\noindent\underline{This document, while being a progress report only, is also an incomplete draft of the thesis' core.}
+\pagebreak
+
+\section{The \Tigris language}
+\Tigris is a purely functional, flexible, static typed language with a focus
+on readability and syntactic uniformity that
+takes inspiration from Lean, OCaml and Haskell.
+
+\subsection{Lexical conventions}
+Below we use a augmented form of BNF (not to confused with ABNF) that
+accepts additional POSIX regex (specifically, \texttt{+*[\,\^\;]}) on the RHS.
+\paragraph{Encoding} Tigris sources are expected to be UTF-8 encoded text.
+\paragraph{Blanks} Tabs, spaces, CR/LFs are considered blanks. Blanks are ignored
+and thus do not affect the semantic of the program.\footnote{This is not the case on the prover side.}
+Blanks separate adjacent identifiers, literals and keywords in order to prevent being parsed
+as one single identifier.
+\paragraph{Comments} One of \texttt{--} (Lean/Haskell/Lua style), \texttt{NB.} (J style) starts a
+\emph{single-line} comment. Comments are treated as if they are blanks. Note that currently
+multiline comments are not supported.
+
+%\nonterms{t}
+\paragraph{Identifier} Almost the same as OCaml/Haskell/Lean.
+  \begin{minted}{bnf}
+    <ident>        ::= (<letter> | _) <rest>*
+    <upper-ident>  ::= <uppercase> <rest>*
+    <lower-ident>  ::= <lowercase> <rest>*
+    <letter>       ::= <upper-letter> | <lower-letter>
+    <rest>         ::= <letter> | 0..9 | _ | ' | ! | ?
+    <lower-letter> ::= a..z
+    <upper-letter> ::= A..Z
+  \end{minted}
+To simplify parsing, whether an identifier is capitalized or not carries additional
+information. In contrast, no distinction is made between \texttt{'!?}. This is permitted
+to facilitate the writing of idiomatic codes such as ending a nullable
+(\mintinline{Haskell}|Option a|) or a non-local exiting function identifier
+in \texttt{?} or \texttt{!},
+respectively.
+\paragraph{Integer literals} \mintinline{bnf}{<intlit> ::= ("-" | "+")? 0..9+}, in decimal.
+\paragraph{String literals} \mintinline{bnf}{<strlit> ::= "[^"]+"}
+\paragraph{Reserved symbols and keywords} See \autoref{tab:reserved-symbols}.
+Lexical ambiguities are resolved according to the \emph{longest-match} rule.
+\begin{table}[]
+  \centering
+  {\tt
+    \begin{tabular}{@{}lllllllllll@{}}
+      \toprule
+      \multicolumn{4}{c}{\textrm{Symbols}}                & \multicolumn{7}{c}{\textrm{Keywords}}                                \\ \midrule
+      | & -\textgreater{} & ;; & =\textgreater{} & mutual & infixl & infixr   & match & then   & let     & fun \\
+      , & \_              & :  & ∀          & extern & class  & forall   & data  & prefix & postfix & in  \\
+      &                 &    &                 & type   & with   & instance & else  & and    & rec     & if \\ \bottomrule
+  \end{tabular}}
+  \caption{Reserved symbols and keywords}\label{tab:reserved-symbols}
+\end{table}
+
+\subsection{Value}
+\emph{Value} refers to an expression that cannot be further reduced, a \emph{normal form}
+so to speak. I.e. \(\langle v, \sigma\rangle \Downarrow \langle v\rangle\) where \(v\) is one of
+\paragraph*{Integer numbers} The range of an integer is implementation-dependent, that is,
+as of now, both SBCL backend and the interpreter (in Lean) support arbitrary-precision arithmetic.
+\paragraph*{Strings} String values are finite sequences of characters, the size of which is
+implementation-dependent, that is, as of now,
+SBCL backend supports strings containing up to \(2^{45}\) chars.
+\paragraph*{Tuples} \(n\)-tuple is written \((v_1,\dots,v_n)\).\footnote{Tuples are specially treated instead of the usual \textsf{Prod} encoding.}
+\paragraph*{Records} Records are syntactic sugars of inductive types, written
+\(\{field_1 = v_1,\dots,field_n=v_n\}\).\footnote{Typeclass instances are syntactic sugars of records.}
+Currently, no type-directed parsing is implemented because of potential major refactors. Thus for
+records with same field labels, regardless of types, an ambiguous parsing warning is thrown but
+can be avoided with type
+ascription (same with patterns):\footnote{This annotation must be ``next to'' the record literal
+as it is processed by the parser rather than the typechecker.}
+\begin{minted}{Haskell}
+  type Point  = {x : Int, y : Int}
+  type Point' = {x : Int, y : Int}
+
+  -- [WARN] ambiguous record literal (using default 'Point'), consider adding type ascription;
+  -- as we currently do not have type-directed parsing.
+  -- candidates are [(Point, #[x, y]), (Point', #[x, y])]
+  let _ = {x = 1, y = 2}
+
+  let _ = ({x = 1, y = 2} : Point') -- success
+\end{minted}
+For overlapping labels, a \emph{longest-match} rule is used:
+\begin{minted}{Haskell}
+  type Point   = {x : Int, y : Int}
+  type Point3D = {x : Int, y : Int, z : Int}
+  let (x, y) = ( {x = 1, y = 2}          -- x : Point
+               , {x = 1, y = 2, z = 3})  -- y : Point3D
+\end{minted}
+\paragraph*{Constructed values} refer to values that are constructed by a
+\emph{value constructor} (or simply unqualified, \emph{constructor}) of some inductive type.
+It is also called a \emph{variant}. Constructors are like functions except they may
+not have parameters: for some constructor \(C_i\), a variant is either \(C_i\) or \(C_i\ fid_1\ \cdots\ fid_n\). The following
+variants are built-in:
+\[
+  \begin{matrix}
+    \mathbf{Constructors} & \mathbf{Types} \\
+    \mathtt{true}         & \mathsf{Bool}  \\
+    \mathtt{false}        & \mathsf{Bool}  \\
+    \mathtt{()}           & \mathsf{Unit}
+  \end{matrix}
+\]
+\paragraph*{Functions} refers to the mappings from values to values. Details explained later.
+
+\subsection{Names}
+Identifiers are used to reference \emph{language objects} by name: \autoref{tab:ident-case}
+\begin{table}[]
+  \centering
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Category             & First letter \\ \midrule
+    Values               & any          \\
+    Constructors         & uppercase    \\
+    Type constructors    & uppercase    \\
+    Record fields        & any          \\
+    Bound type variables & lowercase    \\ \bottomrule
+  \end{tabular}
+  \caption{Case difference of identifier categories}\label{tab:ident-case}
+\end{table}
+
+\subsection{Type expressions}
+\begin{minted}{bnf}
+  <type-expr>   ::= <type-app> (-> <type-expr>)?                                 (arrow type)
+  <type-atom>   ::= <ident>
+                  | "(" <type-expr> ")"                                          (parenthesized)
+                  | <type-ctor>
+                  | sepBy(* | ×, <type-expr>)                                    (product type)
+                  | <type-args>
+  <type-app>    ::= <type-app>? <type-atom>                                      (type application)
+  <type-ctor>   ::= <upper-ident>
+  <bound-ty>    ::= <lower-ident>
+  <type-binder> ::= <bound-ty>                                                   (type binder)
+                  | "(" <bound-ty> : <intlit> ")"
+  <type-args>   ::= <bound-ty> | <type-expr>                                     (type argument)
+  <qualified>   ::= "[" sepBy1(",", (<bound-ty> | <type-ctor>) <type-expr>+) "]"
+  <scheme>      ::= { FORALL <type-binder>+}? <qualified>? "," <type-expr>
+  FORALL        ::= forall | ∀
+\end{minted}
+Note that, for juxtapositional type application\footnote{similar to the a/b-type implementation in Haskell 2010 report.},
+product type and arrow type, we have the
+following precedence \& associativity table (higher comes first): \autoref{tab:tyoperator-prec}
+\begin{table}[]
+  \centering
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Operator                     & Associativity \\ \midrule
+    Type application             & left         \\
+    Product type (\(\ast\))             & right         \\
+    Arrow type (\(\to\)) & right \\ \bottomrule
+  \end{tabular}
+  \caption{type operator associativity}\label{tab:tyoperator-prec}
+\end{table}
+\paragraph{Type variables} type variables (TVs) are identifiers with a lowercase beginning.
+The type (kind) of a TV is determined explicitly to aide the absent of kind inference. A TV denoted
+\((\alpha : n)\) is \(\mathsf{Type}\to \mathsf{Type}\) which otherwise is \(\mathsf{Type}\).%
+\footnote{Note that however we do not allow curried HKT i.e. \((\alpha : 2)\) is instead, \(\mathsf{Type}\times\mathsf{Type}\to\mathsf{Type}\).
+Because of this, we shall refer to it as \emph{arity} rather than \emph{kind} from now on \label{fn:HKT}}
+In datatype definitions, type variables are always bounded, appearing at parameter position as well a
+subsequent type expression on the RHS.
+Note that validity checking of type expressions are mostly done at parsing time i.e. If some TV is unbound, a parsing error is immediately thrown.
+In type constraints a TV may be one of:
+\subparagraph{metavariables} Also called \emph{MVs}, denoted \texttt{?m.N} where \texttt{N} is a counter. Refers to a unspecified type that
+\emph{must} be either instantiated\footnote{
+  The word \emph{instantiate} is used throughout this text while its usage is not all well-defined:
+  Sometimes, instantiate means \emph{specialize}, where TVs are instantiate to concrete types;
+  sometimes, it only indicates the substitution of a TV.
+}
+by a type or generalized when leaving
+the scope\footnote{that is, the whole toplevel phrase.} MVs must not appear in the final scheme.
+\subparagraph{skolem-TVs} Also called \emph{skolems}, denoted \texttt{?sk.A} where \texttt{A} is the original TV. Skolem variables are TVs produced by the process of skolemization. These TVs are essentially
+type constructors\footnote{that is, encoded as \texttt{TCon}s to prevent illicit unification}
+that may \emph{not} be instantiated.
+
+Note that, there is currently no implicit inference of type variables. They can only be introduced at a \(\forall\) binder
+or datatype declarations.
+\paragraph{Function types}
+The type expression \(ty_1\to\cdots\to ty_n\) denotes the type of functions mapping of \(ty_1,\dots,ty_{n-1}\) to results of type \(ty_n\).
+\paragraph{Product types}
+The type expression \(ty_1\times\cdots\times ty_n\) denotes the type
+of tuples whose elements are of \(ty_1\times\cdots\times ty_n\) respectively.
+\paragraph{Constructed types} Similar to TVs, type constructor has arity as well. \emph{<type-ctor} is a type constructor with no parameter and a type expression. Otherwise, a type constructor must be fully applied.
+\paragraph{arbitrary recursive types}\label{para:equirecursive}
+is rejected thus it is not possible to type \mintinline{ocaml}|fun x -> x x|.
+
+\subsection{Patterns}
+Patterns, as in pattern matching, are templates of instructions used to
+\emph{destructure} data structures of some shape. Patterns can be enriched by
+custom operators (described later) if they are associated with constructors however they are
+reduced to one of, or the composition of the primitive patterns below at parsing-time:
+\begin{minted}{bnf}
+  <pat>       ::= <pat-left> <infix-op> <pat>         infix operator enriched
+                | <pat-left>
+                | <prefix-op> <pat>                   prefix operator enriched
+                | <pat> <postfix-op>                  postfix operator enriched
+  <pat-left>  ::= <pat-atom>
+                | <ctor> many1(<pat-atom>)            variant
+  <pat-atom>  ::= <lower-ident>                       variable
+                | <ctor>                              constructor
+                | "_"                                 wildcard
+                | "{" sepBy1(",", <pat-field>) "}"    record pattern
+                | "(" sepBy1(",", <pat>) ")"          product pattern
+                | "(" <pat> : <type-expr> ")"         ascribed pattern
+                | <literal>
+  <pat-field> ::= <field> = <pat>
+\end{minted}
+Note that the arity of a constructor must match the number of sub-patterns associated with it i.e.
+constructor in this context must not be partially applied. Mixfix (i.e. \{pre,in,post\}-fix) operators have the following precedence in patterns (higher comes first): \autoref{tab:patoperator-prec}
+\begin{table}[]
+  \centering
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Operator                & Associativity \\ \midrule
+    Constructor application & left          \\
+    Prefix operator         &               \\
+    Postfix operator        &               \\
+    Infix operator          & left          \\
+    Infix operator          & right         \\ \bottomrule
+  \end{tabular}
+  \caption{Precedence of operators in patterns}\label{tab:patoperator-prec}
+\end{table}
+
+\paragraph{variable \& wildcard patterns} binds the name to the value, e.g.:
+\begin{minted}{ocaml}
+  let fst (x, _) = x
+\end{minted}
+Unlike other languages, pattern are not linear. A variable can be bound several times
+by a given pattern and overwrites previous bindings. Beware of the semantic confusion:
+\begin{minted}{lean4}
+  let prodEq : ∀a b, a × b → Bool
+    | (x, x) => true
+    | (x, _) => false
+  -- [WARN] Found redundant alternatives at
+  -- 2)  #[(x, _)]
+\end{minted}
+It is not possible to decide the equality relation between two parts of a data structure through
+arbitrary patterns. Use the method \texttt{(=)} of typeclass \texttt{Eq} for that matter.
+\paragraph{literal patterns} test the equality of the constants.
+\begin{minted}{lean4}
+  let strToBool : String → Bool = fun
+    | "true"  => true
+    | "false" => false
+  -- [WARN] Partial pattern matching, an unmatched candidate is
+  -- [_]
+\end{minted}
+\paragraph{parenthesized patterns} come into effect when mixing with operator-enriched patterns:
+\begin{minted}{haskell}
+  type List a = Nil | Cons a (List a)
+  infixr 90 "::" => Cons
+
+  let f1 (x :: y :: _) = (x, y)
+  let f2 ((x :: y) :: _) = (x, y)
+\end{minted}
+\texttt{f1} and \texttt{f2} are vastly different, according to \Tigris' System F IR:
+\begin{minted}[ignorelexererrors=true]{ocaml}
+  let (::) : ∀ α, α → List α → List α = (Λ α. Cons@α)
+
+  let f1 : ∀ α, List α → α × α =
+    (Λ α. fun ?x₀ : List α => match ?x₀ with | Cons x (Cons y _) => (x , y))
+
+  let f2 : ∀ α, List (List α) → α × List α =
+    (Λ α. fun ?x₀ : List (List α) => match ?x₀ with | Cons (Cons x y) _ => (x , y))
+\end{minted}
+\paragraph{variant patterns} are of the form \(C_i\ p_1,\dots,p_n\). It
+matches all variants whose constructor equals to \(C_i\) and whose subpatterns matches \(p_1,\dots,p_n\).
+An arity mismatch error is signaled if the number of subpatterns is unexpected by the constructor.
+\paragraph{Record patterns} are similar to record literals that will encounter
+ambiguous parsing if there exists records with same field labels.
+\begin{minted}{haskell}
+  type Point  = {x : Int, y : Int}
+  type Point' = {x : Int, y : Int}
+
+  let sum {x, y} = x + y
+  -- [WARN] ambiguous record pattern (using default 'Point'), consider adding type ascription;
+  -- as we currently do not have type-directed parsing.
+  -- candidates are [(Point, #[x, y]), (Point', #[x, y])]
+  let sum' ({x, y} : Point') = x + y
+\end{minted}
+Since records are syntactic sugar of inductive types, same applies to record patterns. The denotational semantic is
+\[
+  \llbracket\textbf{type}\ T\ args* = \{(fid : \sigma)*\} \rrbracket :=
+  \textbf{type}\ T\ args* = T\ \sigma*
+\]
+where \(tm*\) denotes the \emph{splice} of \(tm\), a sequential structure. Thus, a field can be
+extracted using the ordinary constructor application pattern:
+\begin{minted}[ignorelexererrors=true]{lean4}
+class Functor (m : 1) =
+  {map : forall a b, (a → b) → m a → m b}
+let getMap (Functor f) = f
+\end{minted}
+yields IR
+\begin{minted}[ignorelexererrors=true]{ocaml}
+let getMap : ∀ α, Functor α → ∀ a b, (a → b) → α a → α b =
+  (Λ α. fun ?x₀ : Functor α => match ?x₀ with | Functor f => f)
+\end{minted}
+\subsection{Expressions}
+Expressions are the core of \Tigris. Colloquially, we define the following metavariables:
+\begin{itemize}
+  \item \(p_i\)\quad denotes the \(i\)-th pattern in a pattern matching branch.
+  \item \(C_i\)\quad denotes the \(i\)-th constructor in a inductive type definition
+  \item \(e, e', e_i\)\quad denotes an arbitrary expression whose evaluation value depends on the context.
+  \item \(v, v', v_i\)\quad denotes a irreducible value.
+  \item \(a, b, c, d, e, x, y, z, w\)\quad denotes a binder, or an identifier.
+  \item \(f, g, h\)\quad denotes an identifier and semantic-wise, a function.
+  \item \(\llbracket\rrbracket\)\quad denotes blackboard style brackets, sometimes used
+    as delimiters (if usable ordinary delimiters have run out) in metalanguage.
+  \item greek letters\quad mostly denotes types. Greek letters with a bar on them \(\bar{\alpha}\) denotes
+    a list of those letters, with implicit numbering \(1,\dots,i\).
+\end{itemize}
+A \Tigris expression will, eventually, after exhaustive application of transformations,
+be translated into the core calculus \mintinline{haskell}|Expr| defined in \texttt{types.lean}.
+\begin{minted}{bnf}
+  <expr>        ::= <expr-infix>
+                  | (<expr-infix> : <type-expr>)                        ascription
+  <expr-infix>  ::= <expr-left> <infix-op> <expr-infix>                 infix operator
+                  | <prefix-op> <expr-left>                             prefix operator
+                  | <postfix-op> <expr-left>                            postfix operator
+                  | <expr-left>
+  <expr-left>   ::= fun (<expr-binder>+ ARROW <expr> | <expr-match>)    lambda abstraction
+                  | let "rec"? <pat'> = expr in <expr>                  pattern matching let
+                  | let "rec"? <let-binder> sepBy("and", <let-binder>)  let(rec) expression
+                    in <expr>
+                  | if <expr> then <expr> else <expr>                   conditional
+                  | rec <expr>                                          fixpoint; deprecated
+                  | match sepBy1(",", <expr>) with <expr-match>         pattern matching
+                  | <expr-funapp>
+  <expr-funapp> ::= <expr-funapp>? <expr-atom>                          function application
+  <expr-atom>   ::= <literal>
+                  | <expr-ctor>
+                  | <lower-ident>                                       variables
+                  | "(" sepByN(",", <expr>) ")"            N = 0        unit
+                                                           N = 1        parenthesized <expr>
+                                                           N ≥ 2        product
+                  | "{" sepBy1(",", <expr-field>) "}"                   record literal
+  <expr-ctor>   ::= <upper-ident>                                       constant constructors
+  <expr-match>  ::= ("|" sepBy1(",", <pat>) ARROW <expr>)+              pattern match body
+  <expr-field>  ::= <field> = <expr>
+  <expr-binder> ::= <id> | <pat'>                                       binders
+  <pat'>        ::= "(" <pat> ")"                                       parenthesized <pat>
+                  | <literal>                                           except literal patterns
+  <let-binder>  ::= <pat'> = <expr>                                     single-pattern binding
+                  | <ident> <expr-binder>* <type-expr>? <let-rhs>       value/function binding
+  <let-rhs>     ::= "=" <expr> | <expr-match>                           let binding RHS
+  <literal>     ::= <intlit> | <strlit> | "true" | "false"
+  ARROW         ::= "=>" | "->"
+\end{minted}
+Note that, the \texttt{ARROW} lexer parses both lexeme \texttt{=>} and \texttt{->}, only the first
+should be used, the alternative is to add some form of ML compatibility.
+\paragraph{Basic expressions} are all expressions list in \texttt{<expr-atom>} with the addition of
+function shorthand syntax.
+\subparagraph{Shorthand syntax} is a Lean-like syntactic sugar for parenthesized expressions, within which,
+an underscore (\texttt{\_}) or cdot (\(\cdot\)) is transformed in preorder\footnote{i.e. DFS.}
+against the expression to a function binder. This is similar to Haskell's operator sectioning.
+\underline{Respects precedence}, e.g.
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}{0.5\textwidth}\centering
+\begin{minted}{ocaml}
+  (_ + 1)
+
+  (_ + 1 * 2 / _)
+
+  (id _)
+\end{minted}
+    \caption{shorthand syntax}
+  \end{subfigure}%
+  \begin{subfigure}{0.5\textwidth}\centering
+\begin{minted}{ocaml}
+  fun x => x + 1
+
+  fun x y =>
+    let tmp = 2 / y in
+    let tmp = 1 * tmp in
+    x * tmp
+
+  fun x => (id : forall a, a -> a) x
+\end{minted}
+    \caption{desugared results}
+  \end{subfigure}
+\end{figure}
+Parenthesized expressions can also contain type constraint, as in the example above.
+\paragraph{Curried applications \& definition}
+Functional values are curried.\footnote{Constructors and functions form an \emph{exhaustive partition} of functional value.}
+i.e. partial application is allowed and is in practice frequently used in idiomatic functional programming.
+\subparagraph{Function application} associates to the left. It is denoted by juxtaposition of expressions. \Tigris is call-by-value
+(CBV), thus the expression \(e\ e'\) evaluates \(e\) to a functional value first, then \(e'\).
+\subparagraph{Lambda abstraction} takes the form of \(\mathbf{fun}\ p_1\cdots p_n\Rightarrow e\)
+\subparagraph{Function definition} has two syntactic forms:
+\begin{align*}
+  &\mathbf{fun}\\
+  &\vert\ p_{1,1},\dots,p_{1,m}\Rightarrow e_1 \\
+  &\vdots \numberthis \label{eqn:fun-1} \\
+  &\vert\ p_{n,1},\dots,p_{n,m}\Rightarrow e_{n}\\
+  \\ &\mathbf{fun}\ p_1\cdots p_m\Rightarrow e \numberthis
+\end{align*}
+Both forms are syntactic sugar that are translated and, equivalent to
+\begin{align*}
+  \mathbf{fun}&\ x_1\Rightarrow\cdots\mathbf{fun}\ x_n\Rightarrow\\
+  &\mathbf{match}\ x_1,\dots,x_n\ \mathbf{with}\\
+  &\vert\ p_{1,1},\dots,p_{1,m}\Rightarrow e_1 \\
+  &\vert\ \overbrace{p_{2,1},\dots,p_{2,m}\Rightarrow e_{2}}^\textrm{applies to form (\ref{eqn:fun-1})}\\
+  &\vdots\\
+  &\vert\ p_{n,1},\dots,p_{n,m}\Rightarrow e_{n}
+\end{align*}
+Syntactic intuition shows that canonically, a lambda abstraction only takes one (1) parameter.
+\paragraph{Let-bindings \& expressions}
+The \texttt{let} and \texttt{let rec} language constructs bind value names either locally or globally,
+together with \texttt{in <expr-body>}, they form expressions.
+\subparagraph{Nomenclature} Here, a \emph{let-binding} describes the \(p_n = e_n\) portion, \texttt{and}-branches
+are implicitly assumed until mentioned otherwise; A \emph{let-expression} includes the \emph{body} portion as well.
+\subparagraph{Local non-recursive definitions} the construct
+\(\mathbf{let}\ p_1 = e_1\ \mathbf{and}\cdots\mathbf{and}\ p_n = e_n\ \mathbf{in}\ e\)
+evaluates\footnote{virtually (in the context of a typechecker), in parallel; In practice, this is implementation-dependent. Cf. nested \texttt{let}.}
+\(e_1\cdots e_n\) and matches the results against pattern \(p_1\cdots p_n\). If matching succeeds,
+\(e\) is evaluated in the lexical scope enriched by the bindings produced during matching, whose value is
+returned as the value of the whole let
+expression.\footnote{
+  no sequential binding is performed. A name bounded to \(e_{i}\) is unbounded in
+  \(e_{i+1}\).
+}
+Pattern matching let-expression is translated to a \mintinline{ocaml}|match .. with| construct.
+
+The canonical let-binding described above can used to bind functional values though syntactic sugar exists:
+In a let expression, function may be defined as \(\mathbf{let}\ f\ p_1\cdots p_n = e\), e.g.
+\begin{minted}{ocaml}
+  let prodSum (x, y) z w = x + y + z + w
+  and x = 1
+  and y = 2
+  in prodSum (x, y) 3 4
+
+  let (x, y) = (1, 2) in x + y
+
+  let 0 = 1
+
+  let compose f g x = f (g x) in
+  let add20 = (_ + 20) in
+  let minus30 = fun x => x - 30 in
+  compose add20 minus30 50
+\end{minted}
+In the third example, a warning is thrown;
+\begin{Verbatim}
+  [WARN] Partial pattern matching, possible cases such as [true] are ignored
+\end{Verbatim}
+At runtime, the nonrecoverable exception \texttt{MATCH-FAILURE} is thrown:
+\begin{Verbatim}
+debugger invoked on a MATCH-FAILURE in thread
+#<THREAD tid=145807 "main thread" RUNNING {1200030003}>:
+  No branch can be matched against #[Toplevel]
+
+Type HELP for debugger help, or (SB-EXT:EXIT) to exit from SBCL.
+
+restarts (invokable by number or by possibly-abbreviated name):
+  0: [ABORT] Exit debugger, returning to top level.
+
+(|__start|)
+   source: (FUNCALL #'|main| NIL #'IDENTITY)
+0]
+\end{Verbatim}
+\subparagraph{Local recursive definitions} are introduced by the \texttt{let rec} construct:
+\[
+  \mathbf{let\ rec}\ f_1\ p_1\cdots p_n = e_1\
+  \mathbf{and}\cdots \mathbf{and}\ g\cdots = e_n\
+  \mathbf{in}\ e
+\]
+To grossly simplify the feature of \texttt{let rec}:
+the names are considered already bound when the expressions \(e_1\) to \(e_n\) are evaluated.
+In practice, the importance of this construct is obvious as this is
+the only way to facilitate (mutual) recursion in \Tigris.
+\begin{minted}{ocaml}
+  mutual
+  type Tree a = Empty | Node a (Forest a)
+  type Forest a = Nil | Cons (Tree a) (Forest a)
+  ;;
+
+  let rec countTree
+    | Empty => 0
+    | Node _ f => 1 + countForest f
+  and countForest
+    | Nil => 0
+    | Cons t f => countTree t + countForest f
+\end{minted}
+
+New users may be tempting to define recursive functions in a more ``functional'' way, but hesitate as
+they do not know whether it will work:
+\(\mathbf{let\ rec}\ f = \mathbf{fun}\cdots\mathbf{and}\cdots \mathbf{and}\ g = \mathbf{fun}\cdots
+  \mathbf{in}\ e
+\).
+The answer is yes: Just the same as \texttt{let} binding, the canonical form of a letrec expression is
+precisely the above, what we introduced earlier is simply a syntactic sugar. It defines \texttt{f, g} as
+mutually recursive functions local to \texttt{e} This nature is reflected
+in the core calculus as whether recursive or not a let rec binding is, it is always transformed
+into a \texttt{Let} node, with the only difference being the RHS of a let rec binding is wrapped in \texttt{Fix}.
+
+The semantic difference between \texttt{let rec} and \texttt{let} is minute, yet complicated. We largely follow OCaml's
+implementation but is even simpler and more strict.
+\begin{remark}[Partition heuristic]
+  the RHS of a letrec binding must have the form of \texttt{fun ..}; Otherwise, it is ruled as a let binding.
+\end{remark}
+Using a simple\footnote{
+  no additional free occurrence checking, or much of the condition checking
+  in the OCaml manual ch. 12.1.
+}
+heuristic,\footnote{one of the condition to be \emph{statically constructive}.}
+we partition a letrec group into one that is strictly
+\emph{recursive}\footnote{
+  in the sense there is no recursive definition of non-functional values.
+}
+and another one that becomes regular \emph{let-binding}.
+Additionally, we require the LHS of a \texttt{letrec} binding to always be
+variables.\footnote{
+  Unlike Haskell, which translate it into a fixpoint application with pattern matching.
+}
+These assumptions are strict enough to rule out some valid programs.
+\begin{minted}{ocaml}
+  let rec x = (1, x) and y = (2, x)
+
+  let rec x = (1, y) and y = 1
+\end{minted}
+The first example is invalid in CBV semantics as it creates cyclic products whereas
+the second one is ruled out though valid. We find it appropriate as
+though example 2 is invented, it's coding style is inherently bad; Besides, the author also struggles
+to find a convincing example that justifies the preservation of the expressiveness lost here.
+\subparagraph{Global defintions} are just like local ones, but is limited to the toplevel, where
+a let(rec) expression can be free of its body i.e. becomes a standalone let binding. Multiple
+toplevel let bindings can optionally be separated with \texttt{;;} for clarity.
+
+\paragraph{Control structures}
+\subparagraph{Sequential operations} are not builtin, one may substitute it with nested let expressions.
+\subparagraph{Conditional expressions} are of the form
+\(\mathbf{if}\ e\ \mathbf{then}\ e_1\ \mathbf{else}\ e_2\); which evaluates to \(e_1\) if \(e\) yields the bool
+constructor \texttt{true} otherwise \(e_2\).
+\subparagraph{Case analysis} Also called pattern matching. The expression
+\begin{align*}
+  &\mathbf{match}\ e_1,\dots, e_m\ \mathbf{with}\\
+  &\vert\ p_{1,1},\dots,p_{1,m}\Rightarrow e_1 \\
+  &\vert\ p_{2,1},\dots,p_{2,m}\Rightarrow e_{2}\\
+  &\vdots\\
+  &\vert\ p_{n,1},\dots,p_{n,m}\Rightarrow e_{n}
+\end{align*}
+matches the row expression vector against the pattern matrix
+\emph{in parallel},\footnote{Cf. product pattern, which is evaluated in preorder.}
+yielding the RHS of a row that first succeeds.
+At compile time, pattern matrices are checked of exhaustiveness and redundancy, using an
+efficient matric-modeled algorithm from Maranget:
+
+\begin{minted}{haskell}
+let (1, 2) = (1, 2) -- [WARN] Partial pattern matching, possible cases such as [(_, _)] are ignored
+
+let f
+  | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at
+                     --   3)  #[(_, y)]
+  | (x, _) => x
+  | (_, y) => y
+
+\end{minted}
+If none matches, the nonrecoverable runtime exception \texttt{MATCH-FAILURE} is thrown. Pattern
+matching can be seen as a superset of the \texttt{switch} construct found elsewhere. It enables
+a declarative paradigm to elegantly destructure data structures
+and is at the core of modern functional programming.
+\paragraph{Operators}
+Operators are special strings bound to expressions. They are recognized by the parser and can be chained
+in expressions.
+
+One feature that set \Tigris apart from other languages is its ability to define custom
+operators from a infinite set of strings with associativity and precedence adjustable.
+A custom operator definition is a either a 4-tuple \((op, prec, assoc, impl)\) or a 3-tuple \((op, prec, impl)\), collected
+from one of the three operator declaration forms below:
+\begin{minted}{bnf}
+  <infixl-decl>  ::= infixl ":"? <op> <prec> ARROW <expr>    ; => (<op>, <prec>, L, <expr>)
+  <infixr-decl>  ::= infixr ":"? <op> <prec> ARROW <expr>    ; => (<op>, <prec>, R, <expr>)
+  <prefix-decl>  ::= prefix ":"? <op> <prec> ARROW <expr>    ; => (<op>, <prec>, <expr>)
+  <postfix-decl> ::= postfix ":"? <op> <prec> ARROW <expr>   ; => (<op>, <prec>, <expr>)
+\end{minted}
+Where <op> denotes the operator string and <op> itself is a subset of <strlit>.
+\begin{definition}[Operator candidate strings]
+  Unlike Haskell or OCaml, whose <op> comes from combinations of a predefined set of operator characters,
+  \Tigris follows a Lean-like approach and defines \texttt{<op>} to be \emph{any string} \underline{except}:
+  \begin{itemize}
+    \item those that begin with numbers,
+    \item those that begin with or contain one of \(\llbracket \texttt{\_,()[]\{\}[]} \rrbracket\),
+    \item those that, except the beginning, contain \texttt{<blank>},
+    \item those that equal to a reserved operator shown here: \autoref{tab:reserved-symbols}.
+  \end{itemize}
+  Blank characters \emph{surrounding} \texttt{<op>} are automatically trimmed.
+\end{definition}
+Precedence of the four operator classes (infixl, infixr, prefix, postfix)  with respect to function application is the same as in patterns: \autoref{tab:patoperator-prec}.
+Although much\footnote{that is, an (almost) infinite amount of potential operators.} of the operators
+are left for users to define, some basic operators are defined (though they can be overridden)
+using the same mechanics.\footnote{Though in practice it is more common to bind operators with methods from typeclass,
+  we chose to keep it simple; Besides, It is also true that we currently do not have a \emph{prelude}.
+}\,\footnote{As described in the expression grammar, following the usual practice,
+  language constructs are hardcoded to have lower precedence than operators, thus
+  \mintinline{ocaml}{let n = 10 in n + x}
+  parses as \mintinline{ocaml}{let n = 10 in (n + x)}
+rather than \mintinline{ocaml}{(let n = 10 in n) + x}.}
+\begin{table}[]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Operator & Precedence & Class  & Implementation                   \\ \midrule
+    \texttt{*}        & 70         & infixl & Primitive integer multiplication \\
+    \texttt{/}        & 70         & infixl & Primitive integer division       \\
+    \texttt{+}        & 65         & infixl & Primitive integer addition       \\
+    \texttt{-}        & 65         & infixl & Primitive integer subtraction    \\
+    \texttt{=}        & 50         & infixl & Primitive integer equality       \\
+    \texttt{\$}       & 1          & infixr & Function application             \\
+    \texttt{@@}       & 1          & infixr & Function application             \\ \bottomrule
+  \end{tabular}
+  \caption{Predefined operators}\label{tab:exproperator-prec}
+\end{table}
+The addition of \texttt{\$} and \texttt{@@} is a clever abuse of precedence and
+is to facilitate idiomatic function programming techniques.
+With the lowest precedence, it is possible to avoid parenthesization nested to the right, as in:
+\begin{minted}{Haskell}
+  let _ = f (g (h (x + y)))
+  let _ = f $ g $ h $ x + y
+  let _ = f @@ g @@ h @@ x + y
+\end{minted}
+This becomes particularly handy if the argument of some function is a large expression and this technique
+is also widely used throughout the implementation of \Tigris and \Tigrisd themselves.
+It is also possible to bound a same operator to both prefix and postfix:
+\begin{minted}{ocaml}
+  let not
+    | true => false
+    | false => true
+  let rec fact
+    | 0 => 1
+    | n => n * fact (n - 1)
+
+  postfix 65 "!" => fact
+  prefix 65 "!" => not
+  let main = (50!, !(true))
+\end{minted}
+But currently it is not possible to do so between prefix and infix or postfix and infix.
+Common idiomatic use includes defining the \texttt{Cons} constructor of \texttt{List} as
+\texttt{(::)} and \texttt{append} as \texttt{(++)}:
+\begin{minted}{ocaml}
+  type List a = Nil | Cons a (List a)
+  infixr 67 " :: " => Cons
+  let car (x :: _) = x
+  let cdr (_ :: xs) = xs
+  let rec map f
+    | Nil => Nil
+    | x :: xs => f x :: map f xs
+  let foldl1 f xs =
+    let rec go xs =
+      match xs with
+      | x :: Nil => x
+      | x :: y :: xs =>
+        go (f x y :: xs)
+    in go xs
+
+  infixl 65 " ++ " => append
+  let rec append
+    | Nil, ys => ys
+    | x :: xs, ys => x :: append xs ys
+
+\end{minted}
+Multiple toplevel operator bindings can optionally be separated with \texttt{;;} for clarity.
+\subsection{Type, typeclass and instance definitions}
+\paragraph{datatype definition} is used to introduce new types to the environment. It binds type constructors
+to datatypes in either of the forms: inductive types or record types. Though for the latter it is merely a
+syntactic sugar of the former as mentioned before.
+\begin{minted}{bnf}
+  <type-decl>    ::= mutual <type-decl1>+ ";;"                     (mutual rectype definition)
+                   | <type-decl1>
+  <type-decl1>   ::= TYPE <type-ctor> <type-binder> = <type-constrs>
+  <type-field>   ::= <ident> : <type-expr>
+  <type-constrs> ::= <type-record>
+                   | ("|" <type-ind>)+
+  <type-record>  ::= "{" sepBy1(",", <ident> : <type-expr>) "}"
+  <type-ind>     ::= <expr-ctor> <type-atom>+                      (inductive type branch)
+  TYPE           ::= type | data
+\end{minted}
+Note that, the \texttt{TYPE} lexer parses both lexeme \texttt{type} and \texttt{data}, only the first
+should be used, the alternative is to add some form of Haskell compatibility.
+
+An inductive type has the form
+\[
+  \mathbf{type}\ T\ \bar{\alpha} =
+  C_1 \sigma_{1,1}\cdots\sigma_{1,c_1}
+  \mid\cdots
+  \mid C_n \sigma_{n,1}\cdots\sigma_{n,c_n}.
+\]
+This declaration introduces a new type constructor \(T\)
+that takes \(n\) parameter \emph{fully}, with one or more value constructors \(C_1,\dots,C_n\).
+The types of the constructors are given by
+\[
+  C_i : \sigma_{i,1}\to\cdots\to\sigma_{i,c_i}\to T\ \bar{\alpha}.
+\]
+where the lowercase \(c_i\) represents the arity of \(C_i\).\footnote{
+  The result type of a constructor must match the inductive type declaration as indexed families
+  are not currently supported.
+}
+\begin{minted}{Haskell}
+  type RGB = {r : Int, g : Int, b : Int}
+  type Color =
+  | Red | Green | Blue | Yellow | Black | White
+  | Custom RGB
+
+  type Tree a = Lf | Br a (Tree a) a
+
+  mutual
+  type Tree a = Empty | Node a (Forest a)
+  type Forest a = Nil | Cons (Tree a) (Forest a)
+  ;;
+\end{minted}
+\emph{Type synonyms} (equality constraints) and \emph{contexts} (predicates)
+are currently not supported for type declarations.
+Note that, \Tigris currently does enforce strict positiveness in inductive types.
+\begin{definition}[Strict Positiveness]
+  A position is said to be strictly positive if
+  \begin{enumerate}
+    \item it is not in a function's argument type, and,
+    \item it is not an argument of any expression other than type constructors of inductive types.
+  \end{enumerate}
+\end{definition}
+Since \Tigris is a programming language, we do not make this restriction as
+it may rule out some unproblematic type definition.
+\paragraph{Typeclass definition}
+Typeclass is the functional counterpart to what is called an \emph{interface} in Object-oriented
+programming, except, it is more efficient and well-defined, as in methods are dispatched statically,
+as in enabling ad-hoc/parametric polymorphism in a principled fashion.
+\begin{minted}{bnf}
+  <class-decl>  ::= class <class-ident> <type-binder> = <type-record>
+  <class-ident> ::= <type-ctor>
+\end{minted}
+A class declaration introduces new class methods, whom are globally scoped. Classes are very similar to
+records because of their implementation\footnote{dictionary passing.}, except it utilizes the typeclass
+facility. A class declaration takes the form of
+\[
+  \mathbf{class}\ C\ \bar{\alpha} = \texttt{<type-record>}
+\]
+and the type of the class method \(f_i\) is
+\[
+  f_i : \forall \bar{\alpha}, \bar{\beta}.\, \sigma_i
+\]
+where \(\bar{\beta}\) is the additional type variables bound at method level\footnote{supported by polymorphic fields.}, and \(\sigma_i\)
+is the type signature of \(f_i\) modulo binder.
+Consider
+\begin{minted}{lean4}
+  class Eq a =
+    {eq : a -> a -> Bool}
+  class Functor (f : 1) =
+    {map : forall a b, (a -> b) -> f a -> f b}
+  class HEq a b =
+    {heq : a -> b -> Bool}
+
+  let main = (map, eq, heq)
+
+\end{minted}
+
+\texttt{eq} has type \(\forall a\ [\mathsf{Eq}\ a].\, a\to a\to \mathsf{Bool}\), \texttt{map} has type
+\(\forall f\ [\mathsf{Functor}\ f].\, \forall a\ b.\, (a\to b)\to f a\to f b\), \texttt{heq} has type
+\(\forall a\ b\ [HEq a b].\, a\to b\to \mathsf{Bool}\); Whereas \texttt{main}, i.e. some program
+that uses all the methods above without providing additional type ascription to \emph{refine} the class, yields the verbose
+\[
+  \forall \alpha\ \beta\ \gamma\ \delta\
+  [\mathsf{Functor\ \alpha},\,\mathsf{Eq\ \beta},\,\mathsf{HEq}\ \gamma\ \delta]\
+  \forall a\ b.\, ((a\to b)\to \alpha\ a\to \alpha\ b)\times
+  (\beta\to\beta\to \mathsf{Bool}) \times
+  (\gamma\to\delta\to \mathsf{Bool}).
+\]
+Default methods and superclass are not supported at this moment.
+\paragraph{Instance definition}
+Just as in object-oriented programming which interfaces are always associated with their implementations,
+so is typeclass. \emph{Instances} are used to implement typeclasses.
+\begin{minted}{bnf}
+  <inst-decl> ::= instance ":"? <inst-scheme> = "{" <inst-method-decl> "}"
+  <inst-scheme> ::= {FORALL <type-binder>+}? <inst-context>? "," <class-ident> <type-expr>+
+  <inst-context> ::= "[" sepBy1(",", <qualified>) "]"
+  <inst-method-decl> ::= sepBy(",", <let-binder>)
+\end{minted}
+For the sake of syntactic uniformity,
+the RHS of a instance declaration is similar to a record literal, with its field
+assignments being similar to a let-binding.
+\begin{minted}{Haskell}
+  instance : Eq Int = {eq x y = __eqInt x y} -- __eqInt is primitive, requires α-conversion
+  instance : Functor Option =
+    { map f
+      | Some x => Some $ f x
+      | None   => None
+    }
+  instance HEq String Bool =
+    { heq = fun
+            | "true", true   => true
+            | "false", false => true
+            | _, _           => false
+    }
+  instance forall a b [HEq a b], HEq b a = {heq y x = heq x y}
+  instance forall a [Eq a], HEq a a = {heq = eq}
+\end{minted}
+Instance declarations may quantify type variables, Together with contexts,
+this can be used (as shown in example 4 below) to express the \emph{implication} relations.\footnote{
+  That is, the \(\to\) in first-order logic, or \(\vdash\) in metalanguage.
+} Here, we quantify \(a, b\) and an instance \(\mathsf{HEq}\ a\ b\) and use it as the implementation for
+\(HEq\ b\ a\) to express the assumed \emph{commutative} nature of a heterogenous equality and to express the fact that the homogenous equality relation subsumes the hetero one. Instance resolution
+is described later. For now, users only need to remember that
+\begin{enumerate}
+  \item a type may not be declared as an instance of some class more than once.
+  \item overlapping instance results in a compile-time ambiguous exception.
+  \item ambiguous type arising from the use of a method blocks typeclass elaboration and throws
+    a compile-time ambiguous exception.
+\end{enumerate}
+\begin{minted}{haskell}
+  class HAdd a b c = {hadd : a -> b -> c}
+  instance HAdd Int Int Int = {hadd = add}
+
+  -- Ambiguous: HEq ?m6 Int: typeclass elaboration is stuck because of
+  -- metavariable(s)
+  --   [?m6]
+  -- induced by a call to heq. To resolve this, consider adding type ascriptions.
+  let f' = heq (hadd 2 3) 5
+\end{minted}
+In this example, \texttt{hadd 2 3} is typed a metavariable, results in \texttt{HEq}'s instance
+lookup failure.
+
+Although it is entirely possible to infer the context in a instance declaration just the same as in
+\texttt{main} in the above example, we nevertheless require users to provide explicit instance context.
+
+Multiple toplevel type declarations can optionally be separated
+with \texttt{;;}\footnote{except \texttt{mutual} block where \texttt{;;} is required to close it.}
+for clarity.
+\subsection{Wrapping Up: Brief implementation notes}
+Below we briefly talk about some key points of \Tigris' implementation, though readers shall expect a more
+thorough discussion in the thesis.
+\paragraph{Lexing \& Parsing} Lexing stage and Parsing stage are fused.
+We employ the functional way of \emph{monadic parsing}, which typically uses \emph{parser combinators},
+together with the flexible custom operators, an implementation of a fusion of combinatory parsing and Pratt parsing
+is ultimately used.
+
+In practice, parser combinators are similar to a recursive descent parser or a hand-written one. The grammar
+is similar to a parsing expression grammar (PEG) which always selects the first production when encountering
+ambiguous rules. Though it is currently, \underline{not} a packrat parser which is guaranteed to run in linear time.
+Backtracking is still extensively used in our case as a result of the our monad class implementation. A parser monad
+in \Tigris is defined to be
+
+\begin{minted}{lean4}
+  abbrev TParser σ := SimpleParserT Substring Char
+                    $ StateRefT (PEnv × String) (ST σ)
+\end{minted}
+Where \(\sigma\) is a formal argument for the \texttt{ST}-backed parser monad, allowing efficient
+and proper mutable state to be stored in threadlocals rather than a simulated \texttt{StateT} that uses stack space.
+The monad transformer stack also has two transformers \texttt{SimpleParserT} and \texttt{StateRefT}
+to allow the fluent use of \texttt{State}-like
+methods in \texttt{ST} as well as the efficient use of \texttt{Substring} where we do not
+allocate new strings and instead uses a pair of start/end pointer as a \emph{view} during parsing.
+
+According to Wikipedia, the two major parser combinators are (given two parsers \(P\) and \(Q\))
+\begin{itemize}
+  \item the \emph{alternative} combinator \(p\oplus q\ (j)=\mathsf{P}\ j\cup \mathsf{Q}\ j\)
+  \item the \emph{sequence} combinator \((p\circledast q)\ (j)=\bigcup \{Q\ k|k\in P\ j\}\)
+\end{itemize}
+This is exactly, captured by the \texttt{MonadExcept}, \texttt{Alternative} class and the \texttt{Seq} class in monadic functional
+programming, and is implemented as
+\begin{Verbatim}[numbers=left]
+instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m]
+  : Monad (ParserT ε σ τ m) where
+  -- (...)
+  seq f x s := f s >>= fun
+    | .ok s f => x () s >>= fun
+      | .ok s x => return .ok s (f x)
+      | .error s e => return .error s e
+    | .error s e => return .error s e
+
+instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+  MonadExceptOf ε (ParserT ε σ τ m) where
+  throw e s := return .error s e
+  tryCatch p c s := p s >>= fun
+    | .ok s v => return .ok s v
+    | .error s e => (c e).run s
+
+instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+  OrElse (ParserT ε σ τ m α) where
+  orElse p q s :=
+    let savePos := Parser.Stream.getPosition s
+    p s >>= fun
+    | .ok s v => return .ok s v
+    | .error s _ => q () (Parser.Stream.setPosition s savePos)
+\end{Verbatim}
+Basic scaffolding and common combinators are already done by Dorais' \href{https://github.com/fgdorais/lean4-parser}{lean4-parser} and
+our implementation depends on this package.
+Additionally, we have defined several combinators are defined to aid the parsing of function application in \texttt{utils.lean}
+(especially, \texttt{chainl} and \texttt{chainr}):
+\begin{Verbatim}[numbers=left]
+  /--
+    `chainl1 p op` parses *one* or more occurrences of `p`, separated by `op`. Returns
+    a value obtained by a **left** associative application of all functions returned by `op` to the
+    values returned by `p`.
+    - if there is exactly one occurrence of `p`, `p` itself is returned touched.
+  -/
+  partial def chainl1
+    (p : ParserT ε σ τ m α)
+    (op : ParserT ε σ τ m (α -> α -> α)) : ParserT ε σ τ m α := do
+    let x <- p; rest x where
+    rest x :=
+      (do let f <- op; let y <- p; rest (f x y)) <|> pure x
+
+  partial def chainr1
+    (p : ParserT ε σ τ m α)
+    (op : ParserT ε σ τ m (α -> α -> α)) : ParserT ε σ τ m α := do
+    let x <- p; rest x where
+    rest x :=
+      (do let f <- op; chainr1 p op <&> f x) <|> pure x
+  /- like `test`, but non-consuming -/
+  def test' (p : ParserT ε σ τ m α) : ParserT ε σ τ m Bool :=
+    try lookAhead p $> true
+    catch _ => return false
+\end{Verbatim}
+\paragraph{Typechecker} There are two typecheckers available in the \Tigris repository,
+a legacy, straight implementation of Algorithm W, as well as a constraint solver version that
+performs better with qualified types and is actually used. We shall only discuss the latter. Typecheckers are run inside the \texttt{InferC} Monad:
+\begin{Verbatim}[numbers=left]
+  abbrev InferC σ := StateRefT CState (EST TypingError σ)
+
+  local instance : MonadLift (Except TypingError) (InferC σ) where
+    monadLift
+    | .error e => throw e
+    | .ok res => return res
+\end{Verbatim}
+A tone-downed version of GHC's type variable leveling is used to deal with erroneous
+unification.
+Pattern matrices are checked at this stage of exhaustiveness and redundancy, using an
+efficient matric-modeled algorithm from Maranget.
+
+The typechecker checks type,
+as well as producing a typed AST, which will then be \emph{elaborated} to a System F-ish IR,
+defined very similar to the core calculus of \Tigris, as:
+\begin{Verbatim}[numbers=left]
+  inductive FExpr where
+    | CI     (i : Int)    (ty : MLType)
+    | CS     (s : String) (ty : MLType)
+    | CB     (b : Bool)   (ty : MLType)
+    | CUnit               (ty : MLType)
+    | Var    (x : String) (ty : MLType)                 -- monomorphic view at site
+    | Fun    (param : String) (paramTy : MLType)
+             (body : FExpr) (ty : MLType)               -- paramTy -> body.ty = ty
+    | App    (f : FExpr) (a : FExpr) (ty : MLType)      -- result type after application
+    | TyLam  (a : TV) (body : FExpr)                    -- type abstraction
+    | TyApp  (f : FExpr) (arg : MLType)                 -- type application
+    | Let    (binds : Array (String × Scheme × FExpr))  -- each binding elaborated & wrapped
+             (body : FExpr) (ty : MLType)
+    | Prod'  (l r : FExpr) (ty : MLType)
+    | Cond   (c t e : FExpr) (ty : MLType)
+    | Match  (discr : Array FExpr)
+             (branches   : Array (Array Pattern × FExpr))
+             (resTy      : MLType)
+             (counterexample : Option (List Pattern))
+             (redundantRows  : Array Nat)
+    | Fix    (e : FExpr) (ty : MLType)                  -- rec tag
+    | Proj   (src : FExpr) (mname : String)
+             (idx : Nat) (ty : MLType)                  -- field projection
+  deriving Repr, Inhabited
+\end{Verbatim}
+Using a pretty-printing algorithm similar to Wadler's, \texttt{FExpr} is pretty printed to
+have a syntax that is very much similar (except it always denotes signatures and type application)
+to a subset of \Tigris. This algorithm is used
+for subsequent IRs.
+
+From there, we begin the lowering process by lowering it to \emph{Lambda} IR.
+
+Type system, together with typechecking, is a major part of \Tigris' implementation, we'll have a more thorough discussion below.
+\section{Type System of the \Tigris language}
+Tigris implements a constraint-based Hindley-Milner type system extended with
+\paragraph{Predicates} are of the form \(C \bar{\alpha}\) where \(C\) is a class head.
+These are collected during inference and resolved via dictionary passing after constraint solving.
+\paragraph{\emph{Strict} Higher-Kinded Types} refers to the fact that higher-kinded TVs
+must be fully applied. This is done through the use of \texttt{KApp} which is just enough
+for abstractions like \texttt{Functor} and \texttt{Monad}, see \autoref{fn:HKT}.
+\paragraph{Limited Rank-N polymorphism} refers to the fact that \emph{schemes} (\texttt{TSch}) can
+appear inside monotypes \texttt{MLType}, but the system remains in rank-1 polymorphism
+through the addition of skolemization during type ascription checking.\footnote{
+  as \(\mathsf{gen}\) or \texttt{generalize} does not generate higher-rank binders.
+}
+This means when checking \(e : \sigma\), we instantiate \(\sigma\)  with skolem constants\footnote{
+  encoded by \texttt{TCon} i.e. a nullary constructor
+}
+and verify the inferred type unifies. Intuitively and informally this should be sound as
+\begin{itemize}
+  \item skolem-TVs are rigid in the sense that they are unique and cannot be unified with other types.
+  \item skolem-TVs are tracked through a rigid set that is used to reject substitutions which would
+    otherwise escape scope.
+\end{itemize}
+\paragraph{Constraint generation \& Solving} Generation of constraints are handled by
+inference, which in turn, solves them in one pass. The solver returns a substitution (also called a \emph{solution}) and residual
+predicates that become part of the generalized scheme.
+\paragraph{Let-Polymorphism} refers to let-bound variables are generalized over TVs
+such that \(tv\notin\mathsf{ftv}\ \Gamma\), with predicate constraints
+becoming part of the scheme's context. Informally, it is correct to state that,
+\underline{program is still typeable even if users may not provide any signature} due to
+the principality of HM systems.
+
+\subsubsection{Formal Grammar}
+
+The type system is built on its core calculus, an augmented version of the lambda
+calculus. To describe its typing discipline, we first present the formal grammar of
+the core calculus as well as the type expression, among other things.
+\footnote{most grammar, rules, are generated from \texttt{report.ott} using Ott.}
+\nonterms{expr}
+\nonterms{pattern}
+\nonterms{patmatrix}
+\nonterms{patbranch}
+\nonterms{tyctor}
+\nonterms{tyvar}
+\nonterms{tvset}
+\nonterms{tyargs}
+\nonterms{typeexpr}
+\nonterms{predicate}
+\nonterms{predicates}
+\nonterms{scheme}
+\nonterms{context}
+\nonterms{constraint}
+\nonterms{constraints}
+\nonterms{subst}
+\nonterms{evidence}
+\nonterms{evctx}
+
+\subsubsection{Judgments \& Inference rules}
+
+We now, present the judgments as well as the inference rule. Each judgement comes with
+a remark that informally explains the implementation.
+
+\paragraph{Unification} computes a most general unifier (MGU) for equality constraints. The unification engine
+\begin{itemize}
+  \item checks occurrence to prevent infinite types as shown in \autoref{para:equirecursive}
+  \item requires constructors to match exactly
+  \item unifies \texttt{KApp} with concrete type applications \texttt{TApp}, provided arities match.
+  \item \(\alpha\)-renames schemes before unifying them structurally.
+\end{itemize}
+\drules[U]{\([[S = unify(ty1,ty2)]]\)}{Unification of types}{Refl, VarL, VarR, Arrow, Prod}
+\paragraph{Constraint Solving} are done left-to-right, threading the substitution through.
+Predicate constraints are collected and returned as residuals for instance resolution.
+\drules[Slv]{\([[( S , ps ) = solve ( C )]]\)}{Constraint solving}{Empty, Eq, Pred}
+\paragraph{Instantiation} replaces bound TVs with fresh TVs and returns the predicate constraints that
+must be satisfied.
+\drules[Inst]{\([[( ty , ps ) = inst ( sch )]]\)}{Scheme instantiation}{Forall}
+\paragraph{Generalization} abstract over TVs not free in the environment. Predicates mentioning
+such TVs become part of the context, that is,
+
+\underline{A predicate is kept if and only if it mentions
+one or more qTVs\footnote{quantified TVs} that also appears in the result type.}
+
+\drules[Gen]{\([[sch = gen ( G , ty , ps )]]\)}{Generalization}{Gen}
+\paragraph{Expression Typing} generates constraints that are used in constraint solving
+to determine\footnote{by applying all substitutions}
+the actual type. The judgment \([[G |- e => ty ; C]]\) reads:
+
+\underline{
+  Under environment \([[G]]\), expression \([[e]]\) has type \([[ty]]\) generating constraints \([[C]]\).
+}
+
+Based on the core calculus, inference applies to:
+\subparagraph*{Variables} by looking up in \([[G]]\) and instantiate the scheme,
+\subparagraph*{Constants} which already have concrete types,
+\subparagraph*{Lambda abstraction} of which parameter\footnote{a lambda abstraction only takes one (1) parameter, as mentioned before.}
+gets fresh TVs,
+\subparagraph*{Application} by generating constraints that make the function type match,
+\subparagraph*{Product} by generating constraints that make the product type match,
+\subparagraph*{Conditional} by requiring then/else-branch to agree, condition to be Bool.
+\subparagraph*{Let} by inferring body \emph{after} inferring/solving/generalizing RHS,
+\subparagraph*{Let rec} by extending \([[G]]\) with fresh TVs for all binders \emph{before} inferring
+each RHS, whose generated constraints equate these with inferred types,
+\subparagraph*{Fix} where \(\mathbf{fix}\ \lambda\ f.\ e\) has type of \([[e]]\),
+\subparagraph*{Ascription} by checking that inferred type is at least as general, which, takes different
+approach based on ranks where
+\begin{itemize}
+  \item for rank-1 ascriptions, we simply unify.
+  \item for rank-n (where \(n\ge 2\), that is, if \(TSch\) contains nested quantifiers), we have the
+    following steps:
+    \begin{enumerate}
+      \item \textbf{Instantiation}\quad instantiate the scheme \(\sigma = \forall \bar{\alpha}.\, \bar{\pi} \Rightarrow \tau\)
+        with fresh type variables \(\bar{\beta}\), yielding \(\tau_{\mathsf{inst}}\).
+      \item \textbf{Constraint solving}\quad solve the current constraints
+        augmented with \(\tau_e \sim \tau_{\mathsf{inst}}\) to obtain
+        a substitution \(\theta'\).\footnote{
+          This can be seen as a premature solving. We \emph{tentatively} solve them only to
+          use them in the next step that is rigidity check.
+        }
+      \item \textbf{Rigidity check}\quad For each binding \(\alpha \mapsto \tau'\) in the
+        substitutions \(\theta'\), if \(\alpha\) is in the current rigid set \(\rigid\), then \(\tau'\) must
+        equal \(\alpha\) (from the property of rigids. i.e. it must \emph{not} be specialized).
+        Failing this check results in the ascription being rejected with a unification error.
+      \item \textbf{Skolemization}\quad As stated above and below, ensures the generality does
+        match the declared (polymorphic) type.
+    \end{enumerate}
+\end{itemize}
+\subparagraph*{Pattern matching} where for
+\begin{itemize}
+  \item each branch \(i\): Patterns \(p_{i,1}, \ldots, p_{i,m}\)
+    are checked against the corresponding discriminant types.
+    \([[G]]\) is then enriched with pattern bindings. TVs arising from patterns are
+    marked as \emph{rigid} (within their branches)
+    which prevents leaking\footnote{
+      this is mostly a precaution. The ``leaking'' described here is only likely
+      to happen when pattern matching index families, which, is not supported, at all.
+    }
+    across branches.
+    RHS is inferred after, requiring
+    all branches to agree (through constraints).
+  \item discriminants: Each one \(e_j\) is inferred independently,
+    yielding types \(\tau_1, \ldots, \tau_m\). whose types must agree with pattern types.
+\end{itemize}
+Additionally, pattern exhaustiveness and redundancy are checked separately
+(via \texttt{Exhaustive.exhaustWitness})
+but not reflected in the typing judgment. Non-exhaustive matches or redundant branches generate
+warnings but are not type errors. Note that the latter is immediately removed from the matrix.
+\drules[I]{\([[G |- e => ty ; C]]\)}{Constraint-based inference}{Var, Int, String, True, False, Unit, Lam, App, Prod, Cond, Let, Fix, LetRec}
+Since \underline{match clause and type ascription} are not easy to correctly type in OTT and too convoluted in terms of readability, we manually type them as follows:\footnote{
+  Readers shall note that because these rules are hand-typed, some symbols are not defined
+  as a production rule above, or a formula in OTT, in this case, adequate natural language
+  is used to define/describe them inline.
+  The author has no one but himself to blame due to his unfamiliarity
+  with OTT.
+}
+\begin{mathpar}
+  \inferrule*[right=I-Match]
+  {\Gamma \vdash e_j \Rightarrow \tau_j\,;\, C_j \quad (\forall j \in 1..m) \\\\
+    \alpha = \fresh \\\\
+    \text{For each branch } i \in 1..k:  \\
+    |(\bar{p}_i)| = m \\
+    \Gamma \vdash p_{i,j} \Leftarrow \tau_j \Rightarrow \Gamma_{i,j}\,;\, C_{p_{i,j}}
+    \quad (\forall j \in 1..m) \\
+    \Gamma_i = \Gamma_{i,m} \quad \text{(final extended environment for branch } i \text{)} \\
+    \bar{\beta}_i = \ftv(\text{bound variables in } \bar{p}_i) \\
+    \mathsf{pushRigid}(\bar{\beta}_i) \\
+    \Gamma_i \vdash r_i \Rightarrow \tau_{r_i}\,;\, C_{r_i} \\
+    \mathsf{popRigid}() \\\\
+    C_{\mathsf{unify}} = \{ \tau_{r_i} \sim \alpha \mid i \in 1..k \} \\
+    C = \bigcup_{j=1}^{m} C_j \cup
+    \bigcup_{i=1}^{k} \left( \bigcup_{j=1}^{m} C_{p_{i,j}} \cup C_{r_i} \right) \cup
+    C_{\mathsf{unify}}
+  }
+  {\Gamma \vdash \mathbf{match}\; e_1, \ldots, e_m\; \mathbf{with}\;
+    \overline{\mid p_{1,1}, \ldots, p_{1,m} \to r_1}
+  \Rightarrow \alpha\,;\, C}
+
+  \inferrule*[right=I-Ascribe-Mono]
+  {\Gamma \vdash e \Rightarrow \tau_e\,;\, C_e}
+  {\Gamma \vdash (e : \tau) \Rightarrow \tau\,;\, C_e, \tau_e \sim \tau}
+
+  \inferrule*[right=I-Ascribe-Poly]
+  {\Gamma \vdash e \Rightarrow \tau_e\,;\, C_e \\\\
+    \sigma = \forall \bar{\alpha}.\, \bar{\pi} \Rightarrow \tau \\
+    \bar{\beta} = \fresh^{|\bar{\alpha}|} \\
+    \theta = [\bar{\alpha} \mapsto \bar{\beta}] \\
+    \tau_{\mathsf{inst}} = \theta(\tau) \\\\
+    %%
+    C_0 = \text{current constraints} \\
+    (\theta', \_) = \solve(C_0, \tau_e \sim \tau_{\mathsf{inst}}) \\\\
+    %%
+    \rigid = \text{current rigid set} \\
+    \forall (\alpha \mapsto \tau') \in \theta'.\;
+    \alpha \in \rigid \implies \tau' = \alpha \\\\
+    %%
+    \tau_{\mathsf{sk}} = \skolem(\sigma) \\
+    \text{add constraints for } \bar{\pi}
+  }
+  {\Gamma \vdash (e : \sigma) \Rightarrow \tau_{\mathsf{inst}}\,;\,
+  C_e, \tau_e \sim \tau_{\mathsf{inst}}}
+\end{mathpar}
+\paragraph{Patterns} bind variables and generate constraints from the discriminants. The judgment
+\([[G |- pat => G' ; C ; ty]]\) reads:
+
+\underline{
+  Pattern \([[pat]]\) against type \([[ty]]\) extends \([[G]]\) to \([[G']]\), generating constraints \([[C]]\).
+}
+
+\drules[P]{\([[G |- pat => G' ; C ; ty]]\)}{Pattern inference}{Wild, Var, ConstInt, ConstStr, ConstTrue, ConstFalse, ConstUnit, Prod}
+Since constructor applications are not easy to correctly type in OTT and too convoluted in terms of readability, we manually type them as follows:
+\begin{mathpar}
+  \inferrule*[right=P-Ctor]
+  {ctor :  \sigma \in \Gamma \\
+    (\tau_{ctor}, \bar{\pi}) = \inst(\sigma) \\
+    \peel(\tau_{ctor}) = (\tau_1, \ldots, \tau_n, \tau_{\mathsf{res}}) \\
+    n = |\bar{p}| \\\\
+    \Gamma_0 = \Gamma \\
+    \Gamma_{i-1} \vdash p_i \Leftarrow \tau_i \Rightarrow \Gamma_i\,;\, C_i
+    \quad (\forall i \in 1..n) \\
+    C_{\pi} = \bar{\pi}
+  }
+  {\Gamma \vdash ctor\; p_1 \cdots p_n \Leftarrow \tau \Rightarrow \Gamma_n\,;\,
+  C_1, \ldots, C_n, C_{\pi}, \tau \sim \tau_{\mathsf{res}}}
+\end{mathpar}
+Where \(\peel\) decomposes an arrow type into its argument types and result type:
+\[
+  \peel(\tau_1 \to \tau_2 \to \cdots \to \tau_n \to \tau_r) = (\tau_1, \tau_2, \ldots, \tau_n, \tau_r)
+\]
+The constructor scheme \(\sigma\) is looked up in \(\Gamma\) and instantiated with fresh
+type variables. Predicate constraints from instantiation are added to ensure typeclass
+requirements are propagated.
+
+Below, we list some remarks for concepts mentioned above that are not properly introduced.
+
+\begin{remark}[Skolemization]
+  replaces TVs with skolems that cannot unify with anything except themselves.
+  \[
+    \skolem(\forall \bar{\alpha}.\, \bar{\pi} \Rightarrow \tau) =
+    [\bar{\alpha} \mapsto \overline{\mathsf{sk}_\alpha}](\tau)
+  \]
+
+  where each \(\mathsf{sk}_\alpha\) is a fresh skolem constant (implemented as a special
+  type constructor, e.g., \texttt{?sk.\(\alpha\)} in the implementation).
+
+  The word \emph{rigid} is to capture the key nature of skolems:
+  \(\mathsf{sk}_\alpha \sim \tau\) succeeds iff \(\tau = \mathsf{sk}_\alpha\).
+\end{remark}
+
+\begin{remark}[Rigid Set/Stack]
+  The type system maintains a stack of rigid type variable sets to handle nested
+  scopes correctly.
+
+  \begin{align*}
+    \pushRigid(\bar{\alpha}) &: \quad \rigid := \rigid \cup \bar{\alpha};\quad
+    \mathit{stack} := \bar{\alpha} ::  \mathit{stack} \\
+    \popRigid() &: \quad \mathbf{let}\; (S ::  \mathit{rest}) = \mathit{stack}\; \mathbf{in}\;
+    \rigid := \rigid \setminus S;\quad
+    \mathit{stack} := \mathit{rest}
+  \end{align*}
+
+  \textbf{Invariant.}\quad At any point during inference, the rigid set maintains the fact that
+  \[
+    \rigid\equiv \bigcup stack
+  \]
+  (i.e. it is the union of all sets currently on the stack.)
+  When solving constraints, any substitution
+  \(\alpha \mapsto \tau\) where \(\alpha \in \rigid\) and \(\tau \neq \alpha\) is rejected.
+
+  Note that the \((:=)\) operation is implemented by the \texttt{ST} monad,
+  through the \texttt{MonadStateOf} interface.
+\end{remark}
+
+\begin{remark}[Solving Rigids]
+  Though not shown above in the inference rule,
+  the constraint solver respect rigid TVs:
+
+  \begin{mathpar}
+    \inferrule*[right=Solve-Rigid]
+    {\alpha \in \rigid \\
+    \tau \neq \alpha}
+    {\solve(\alpha \sim \tau) = \mathbf{error}}
+
+    \inferrule*[right=Solve-Rigid-Ok]
+    {\alpha \in \rigid}
+    {\solve(\alpha \sim \alpha) = \varnothing}
+  \end{mathpar}
+
+\end{remark}
+
+\begin{remark}[Soundness]
+  The type system should maintain soundness through several mechanisms:
+  \subparagraph*{Skolems} During pattern matching and typing ascription, some TVs
+  are marked as \emph{rigid} and tracked in \texttt{rTV}. Substitutions that would
+  specialize them to incompatible types are rejected by the solver. This is thought to
+  prevent unsound generalizations.
+  \subparagraph*{Rank-N skolemization} When checking \([[e : all tv. P => ty]]\), we replace
+  \([[tv]]\) with a fresh skolem constant (in order to make it truly general) to ensure
+  expressions do work for all instantiations.
+  \subparagraph*{Occurs check} is used to prevent users from constructing equirecursive types such as
+  \(\alpha \sim \alpha\to \beta\) or \(\alpha \sim \alpha\times\beta\) arising from codes such as \mintinline{lean4}|fun x => x x| or
+  \mintinline{lean4}{fun | (x, y) => x | z => z}, respectively.
+  \subparagraph*{Hygienic generalization} Only TVs not free in \([[G]]\) are generalized. Predicates
+  are kept based on the condition described above that shall avoid vacuous constraints.
+  \subparagraph*{Syntax restrictions} Lastly, if one looks closely at the BNF grammar of type expression or
+  the formal grammar presented above, they will find that, it is actually not possible to write
+  \((\forall a. a\to a) -> \mathsf{Int}\times \mathsf{Bool}\) as though \texttt{MLType} embeds scheme,
+  the \underline{parsing} facility does not admit schemes inside monotypes. Indeed, the only way
+  to introduce embedded scheme is through polymorphic fields in datatype declarations, which, is not
+  harmful. This is perhaps, the strongest restriction that is thought to guarantee the soundness of
+  the type system.
+\end{remark}
+
+\begin{remark}[Counterexamples: The need of rigids]
+  Below we provide some counterexamples that emphasize the need of rigids:
+  \begin{itemize}
+    \item (\textbf{Wrong Specialization}) Consider the following
+      \begin{minted}{lean4}
+        let id = (fun x => x : forall a, a -> a) 1
+
+        -- [ERROR] Can't unify type Int with ?sk.a.
+        let id'    : forall a, a -> a = fun x => (x : Int)
+        let id'' x : forall a, a -> a = x + 1
+      \end{minted}
+      The first example is acceptable: The ascription claims polymorphism, but the body is monomorphic,
+      which is fine since we are instantiating the polymorphic function.
+
+      In the second example however,
+      It would be unsound for \(a\), introduced as a rigid inside \mintinline{lean4}|fun x => ...|
+      to be specialized to Int. Same applies to the third.
+
+    \item (\textbf{Polymorphism recovery}) Typically, typeclass methods
+      (which is very likely to be polymorphic themselves) are used directly which allows
+      the special treatment of them like in Haskell '98.
+      However, one may wish to write:
+      \begin{minted}{ocaml}
+        type Functor (f : 1) = Functor (forall a b, (a -> b) -> f a -> f b)
+
+        let prog (Functor f) =
+          let l  = 1 :: 2 :: 3 :: Nil in
+          and l' = "1" :: "2" :: "3" :: Nil in
+          and const k _ = k in
+          let x  = f (_ + 1) l in
+          and y  = f (const ()) l'
+          in (x, y)
+      \end{minted}
+      This is perfectly acceptable, yet, do note the importance of rigids:
+      \(a\) and \(b\) are rigid within each use,
+      within each call. This allows the independent instantiation of them as
+      \(f\) is specialized to different concrete type
+      at \(x\) (\(a\mapsto \mathsf{Int}, b\mapsto\mathsf{Int}\))
+      and \(y\) (\(a\mapsto \mathsf{String}, b\mapsto\mathsf{Unit}\)).
+  \end{itemize}
+\end{remark}
+
+\subsubsection{Instance resolution}
+Merely associating instances with typeclasses is not enough at all: We, or, to be precise,
+the compiler, requires a general procedure (algorithm) to
+lookup the right instance for the right type of some class.\footnote{
+  Or as in PL jargon: finding a \emph{dictionary} (evidence term) that \emph{witnesses} a
+  predicate constraint \(\Pred = C\;\bar{\tau}\).
+}
+This process is called \emph{instance resolution}. The algorithm described below searches
+the instance environment for a matching instance, recursively resolving any context constraints.
+
+\paragraph{Instance metadata} Each registered instance \(I\)'s metadata is a structure
+\[
+  I = \langle\iname, \cls,\bar{\alpha},\bar{\pi}_{\ctx}\rangle
+\]
+where
+\begin{itemize}
+  \item \(\iname\) is the instance's unique identifier (naming convention: \texttt{i\_Eq\_0}),
+  \item \(\cls\) is the class head,
+  \item \(\bar{\alpha}\) is the list of type arguments in the instance head,
+  \item \(\bar{\pi}_{\ctx}\) is the list of context predicates.
+\end{itemize}
+e.g. an instance declaration \mintinline{lean4}|instance : forall α [Eq α], Eq (List α) = ... | produces
+\[
+  I = \langle \texttt{i\_Eq\_1}, \texttt{Eq}, [\texttt{List}\;\alpha], [\texttt{Eq}\;\alpha] \rangle
+\]
+
+\paragraph{Head Unification} refers to the procedure of checking whether a goal \(C\;\bar{\tau}\) can
+match an instance head \(C\;\bar\alpha\) before attempting full resolution.
+
+\begin{algorithm}[H]
+  \caption{Head Unification}
+  \begin{algorithmic}[1]
+    \Function{UnifyHead}{$\bar{\tau}_\mathsf{goal}, \bar{\alpha}_\mathsf{inst}$}
+    \If{$|\bar{\tau}_{\mathsf{goal}}| \neq |\bar{\alpha}_{\mathsf{inst}}|$}
+    \State \Return $\mathbf{error}$
+    \EndIf
+    \State $\theta \gets \varnothing$
+    \For{$i \gets 1$ \textbf{to} $|\bar{\tau}_{\mathsf{goal}}|$}
+    \State $\theta' \gets \unify(\apply(\theta, \tau_i), \apply(\theta, \alpha_i))$
+    \State $\theta \gets \theta' \circ \theta$
+    \EndFor
+    \State \Return $\theta$
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\paragraph{Resolution Algorithm}
+The main resolution algorithm maintains a \emph{visited set} $\Visited$ to detect
+cycles (which indicates either ambiguous or divergent instance resolution).
+\begin{algorithm}[H]
+  \caption{Instance Resolution}
+  \begin{algorithmic}[1]
+    \Function{Resolve}{$[[G]], \Pred, \Visited$}
+    \State \textbf{Input:} Environment $[[G]]$, predicate $\Pred = C\;\bar{\tau}$, visited set $\Visited$
+    \State \textbf{Output:} Evidence expression $e$ s.t. $e :  C\;\bar{\tau}$, or error
+    \State
+    \If{$\Pred \in \Visited$} \label{line:cycle}
+    \State \Return $\mathbf{error}$:  ``cyclic instance resolution''
+    \EndIf
+    \State $\Visited \gets \Visited \cup \{\Pred\}$
+    \State
+    \State $\mathit{insts} \gets [[G]].\instInfo[C]$ \Comment{All instances for class $C$}
+    \If{$\mathit{insts} = \varnothing$}
+    \State \Return $\mathbf{error}$: ``no instance for $\Pred$''
+    \EndIf
+    \State
+    \State $\mathit{found} \gets \mathbf{none}$
+    \For{\textbf{each} $I = \langle \iname, C, \bar{\alpha}, \bar{\pi}_{\ctx} \rangle$ \textbf{in} $\mathit{insts}$} \label{line:search}
+    \State \textbf{try}:
+    \State \quad $\theta \gets \Call{UnifyHead}{\bar{\tau}, \bar{\alpha}}$ \label{line:unify}
+    \State \quad $\bar{\pi}'_{\ctx} \gets \apply(\theta, \bar{\pi}_{\ctx})$ \label{line:apply-ctx}
+    \State \quad \textbf{for each} $\pi' \in \bar{\pi}'_{\ctx}$ \textbf{do} \label{line:recurse}
+    \State \quad\quad $\_ \gets \Call{Resolve}{[[G]], \pi', \Visited}$ \Comment{Ensure solvable}
+    \State \quad \textbf{end for}
+    \State \quad $e \gets (\iname :  C\;\bar{\tau})$ \Comment{Ascribed instance reference} \label{line:evidence}
+    \State \quad \textbf{if} $\mathit{found} \neq \mathbf{none}$ \textbf{then} \label{line:ambig}
+    \State \quad\quad \Return $\mathbf{error}$:  ``ambiguous instance for $\Pred$''
+    \State \quad \textbf{end if}
+    \State \quad $\mathit{found} \gets \mathbf{some}(e)$
+    \State \textbf{catch}:  \textbf{continue} \Comment{Try next instance}
+    \EndFor
+    \State
+    \If{$\mathit{found} = \mathbf{none}$}
+    \State \Return $\mathbf{error}$:  ``no matching instance for $\Pred$''
+    \EndIf
+    \State \Return $\mathit{found}$
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{remark}[\textsf{ResolveM}]
+  The algorithm described above runs inside \mintinline{haskell}|ResolveM| monad.
+  Just like any monad we previously mentioned, it is a \texttt{ST} backed state monad
+  with error handling (hence \texttt{EST}), whose state is
+  \textsf{ResolveState}, which is precisely the visited set $\Visited$.
+  \begin{minted}{lean4}
+    abbrev ResolveState := Std.HashSet Pred
+    abbrev ResolveM σ := StateRefT ResolveState (EST TypingError σ)
+
+    variable {σ : Type}
+
+    instance : MonadLift (Except TypingError) (EST TypingError σ) where
+      monadLift
+      | .error e => throw e
+      | .ok e => return e
+  \end{minted}
+  Meanwhile, the \texttt{MonadLift} instance defines a natural transformation from \texttt{Except} to
+  \texttt{EST}, lifting fail-able but pure actions to run in it.
+
+\end{remark}
+
+\begin{remark}[Properties of instance resolution]
+  The key design points of this algorithm are described below:
+  \subparagraph{Termination} has not been proved, as noted by the \texttt{partial} modifier in the source.
+  Intuitively, It terminates if the dependency graph of a instance is well-founded i.e. does not contain infinite
+  chains of instance dependencies. The set $\Visited$ (line~\autoref{line:cycle}) detects direct cycles,
+  but may not (or does not) guarantee termination for all pathological instances.
+  \subparagraph{Semantic coherence} is enforced through a \emph{single-match} policy: If multiple
+  instances could match a goal (line~\autoref{line:ambig}), resolution fails with an ambiguity error, which,
+  guarantees that the meaning of a program \underline{does not depend on which instance is arbitrarily chosen}.
+  However, users should note that, contrary to the usual practice, this restriction applies to
+  all instances regardless of their generality,
+  that is, the more specific one would \underline{not} be chosen although it may make more sense doing so,
+  and will result in a compile-time error. To allow the existence of multiple matched instances,
+  one way is to introduce a precedence and a default rule like the above practice,
+  but this currently is not supported.
+
+  \subparagraph{Evidence generation} refers to ascribed instance identifiers:
+  \[
+    e = (\iname : C\;\bar{\tau})
+  \]
+  Which is later \emph{elaborated} into dictionary-passing style during the System F IR
+  translation phase from which is then encoded in the field projection node
+  $\mathsf{Proj}\;src\;mname\;i\;ty$.
+  \subparagraph{Context propagation} refers to instantiating context predicates
+  with the unifying substitution (line~\autoref{line:apply-ctx}) and the
+  recursively resolving of them (line~\autoref{line:recurse}), from
+  instances with context predicates $\bar{\pi}_{\ctx}$
+  (e.g., \mintinline{haskell}|Eq a| in \mintinline{lean4}|instance : forall α [Eq α], Eq (List α) = ... |)
+\end{remark}
+We shall simulate this algorithm with a simple example below:
+Consider resolving $\mathsf{Eq}\;(\mathsf{List}\;\mathsf{Int})$ with instances:
+\begin{align*}
+  I_0 &= \langle \textsf{i\_Eq\_0}, \mathsf{Eq}, [\mathsf{Int}], \varnothing \rangle, \\
+  I_1 &= \langle \textsf{i\_Eq\_1}, \mathsf{Eq}, [\mathsf{List}\;\alpha], [\mathsf{Eq}\;\alpha] \rangle.
+\end{align*}
+
+\begin{enumerate}
+  \item Goal: $\mathsf{Eq}\;(\mathsf{List}\;\mathsf{Int})$
+  \item Try $I_0$:  $\unify(\mathsf{List}\;\mathsf{Int}, \mathsf{Int})$ fails
+  \item Try $I_1$: $\unify(\mathsf{List}\;\mathsf{Int}, \mathsf{List}\;\alpha)$ succeeds with $\theta = [\alpha \mapsto \mathsf{Int}]$
+  \item Context: $\apply(\theta, [\mathsf{Eq}\;\alpha]) = [\mathsf{Eq}\;\mathsf{Int}]$
+  \item Recursively resolve $\mathsf{Eq}\;\mathsf{Int}$:
+    \begin{enumerate}
+      \item Try $I_0$: $\unify(\mathsf{Int}, \mathsf{Int})$ succeeds with $\theta = \varnothing$
+      \item Context: $\varnothing$, no recursion needed
+      \item Return $(\mathsf{i\_Eq\_0} : \mathsf{Eq}\;\mathsf{Int})$
+    \end{enumerate}
+  \item Return $(\mathsf{i\_Eq\_1} :  \mathsf{Eq}\;(\mathsf{List}\;\mathsf{Int}))$
+\end{enumerate}
+
+\begin{remark}[Comparison with GHC]
+  GHC implements a more robust, sophisticated typeclass facility. Although \Tigris has learned and taken
+  many inspirations from it, its instance resolution strategy is much simpler than GHC's:
+  \begin{itemize}
+    \item Tigris does not allow overlapping instances, regardless of any ordering, whereas GHC
+      provides precedence that controls the granularity of instance resolution;
+    \item Tigris does not have instance chains as there is no mechanism for specifying fallback
+      instances or instance priority
+  \end{itemize}
+  However, when compared to Haskell '98 or 2010,
+  \Tigris' instance declarations is somewhat more expressive as
+  we have some form of \texttt{FlexibleContexts}\footnote{
+    An extension of GHC that lifts the Haskell 98 restriction
+    that the type-class constraints (anywhere they appear) must have the form
+    \texttt{class type-variable} or \texttt{class (type-variable type1 type2 .. typen)}.
+  }
+  as it is possible to define
+  \mintinline{lean4}|instance ∀a [Eq a], Eq (a * a) = ..|; Additionally, multi-parameter
+  classes are also supported, such as the \texttt{HAdd} and \texttt{HEq} class mentioned above.
+
+\end{remark}
+
+\subsubsection{System F elaboration}
+The typed syntax \texttt{TExpr}, after instance resolution, is elaborated to \texttt{FExpr}.
+Below, we discuss an informal description of the elaboration.
+
+Given a scheme
+\[
+  \forall \alpha_1 \cdots \alpha_n [P_1, \dots, P_k], \tau
+\]
+we elaborate a binding rhs to
+\[
+  \Lambda \alpha_1,\dots,\alpha_n.\lambda d_1,\dots,d_k.\ body
+\]
+where $d_1,\dots,d_k$ are the respective instances of preds $P_1,\dots,P_k$. Except when
+the rhs already starts with the exact $k$ dictionary lambdas, that is, wrappers auto-generated for
+class methods, in which case we only add \texttt{TyLams}.
+
+At each \texttt{Var} occurrence:
+\[
+  \mathsf{Var}\ x:\sigma\ \mathrm{where}\ \sigma = \forall \bar{\alpha}\ \bar{P},\, tbody
+\]
+is elaborated to
+\begin{align*}
+  &\Tyapp\ \cdots\ (\Tyapp\ (\FVar x ty_\mathsf{mono})\ \alpha_1)\ \cdots\ \alpha_n\\
+  &\mathsf{App} (\cdots) d_1\\
+  &\vdots\\
+  &\mathsf{App} (\cdots) d_k
+\end{align*}
+
+A dictionary argument\footnote{named $\mathsf{d}\_\mathsf{P.cls}\_\mathsf{i}$ where $P$ is the predicate, $i$ is
+the instance counter for that class; a case it is memoized, the identifier is prepend with a \texttt{r}.}
+is either
+\begin{itemize}
+  \item in scope, that is, matching one of the predicate templates introduced by lambdas, or,
+  \item synthesized by instance resolution, producing an untyped expression.
+    Inference and elaboration is then re-run on that expression to transform it to an \texttt{FExpr}. This
+    procedure is recursive.
+\end{itemize}
+In case if a method field type is polymorphic (e.g. $\mathsf{Functor}$), as in \texttt{TSch (Forall as [] τ)},
+it is reified as a
+System F type abstractions by wrapping the projected field with $\Tylam$, for each binder in \texttt{as}. This is
+thought to be canonical for Higher-ranked types.
+Do note, however, per-method predicate contexts inside \textbf{TSch} are currently unsupported and will be
+rejected.
+
+\paragraph{Dictionary memoization} refers to the memoization of synthesized dictionaries. It is common
+for a single instance to be used multiple times, in which case it becomes rather inefficient, both compile-time
+and runtime as each encounter results in a newly synthesized dictionary,
+or a \underline{dictionary application} of multiple dependent dictionaries
+(as is the case for instances with contexts).
+Memoization tracks the first usage of a dictionary at function-level, upon encountering multiple usage,
+the synthesized instance is reused, and
+the function body is prepended by a let-exp that binds this instance
+that \emph{hoist} the inlined dictionary application.
+This is similar to common subexpression elimination, except in this case it is targeted and not general at all,
+which comes with the benefit of being more convenient to implement. Consider the hierarchy of
+\texttt{Functor}, \texttt{Applicative} and \texttt{Monad}, in a rather elaborated example:
+
+\begin{minted}{lean4}
+class Applicative (f : 1) =
+  { pure : ∀ a, a -> f a
+    -- lazy to preserve eval semantics
+  , seq : ∀a b, f (a -> b) -> (Unit -> f a) -> f b}
+class Monad (m : 1) =
+  { bind : ∀a b, m a -> (a -> m b) -> m b
+  , return : ∀a, a -> m a}
+
+infixl 55 ">>=" => bind
+instance ∀(m : 1) [Monad m], Applicative m =
+  { pure = return
+  , seq f x = f >>= fun f => x () >>= fun x => return $ f x
+  }
+instance ∀(f : 1) [Applicative f], Functor f =
+  {map f x = seq (pure f) fun _ => x}
+
+instance Monad Option =
+  { return = Some
+  , bind
+    | None, _ => None
+    | Some x, f => f x}
+
+let seqOp = seq (Some id)
+\end{minted}
+
+With \texttt{i\_Monad\_0, i\_Applicative\_0} corresponding to the \texttt{Option} instance of
+\texttt{Monad} and the general \texttt{Applicative} instance, the System F IR result is
+
+\begin{minted}[ignorelexererrors=true]{ocaml}
+let seqOp : ∀ α, (Unit → Option α) → Option α =
+  let rd_Applicative_1 : Applicative Option =
+    let rd_Monad_0 : Monad Option = i_Monad_0
+    in i_Applicative_0@Option rd_Monad_0
+  in (Λ α. rd_Applicative_1[1, seq]@Option (Some@(α → α) id@α))
+\end{minted}
+
+As shown above, memoization have come into effect as the application of dictionary is cached and is bound by
+\texttt{rd\_Applicative\_1}, which, has a counter of $1$, this indicates that dictionary application creates
+(synthesizes) new dictionaries.
+Therefore it is much necessary to have memoization as it mainly boosts compile performance.
+
+In practice, any elaboration runs inside the $\mathsf{F}$ monad,
+which, together with recursion state\footnote{
+  It is worth noting that elaboration does not only depend on the state shown below,
+  additional trivial environments are not shown here, please refer to \texttt{fsyntax.lean} and
+  \texttt{fexpr.lean}.
+}
+, is defined to be
+\begin{minted}{lean4}
+  structure FState where
+    log    : Logger := ""
+    memo   : Std.HashMap Pred (String × Scheme × FExpr) := ∅
+    gensym : Nat := 0
+  deriving Inhabited
+
+  abbrev F := EStateM TypingError FState
+\end{minted}
+
+A canonical state monad equipped with error reporting is used here, contrary to before: This is because
+of the many usage of local states in recursive call during elaboration. Stack-allocated (function parameters)
+states are much easier to work with in this case, than a \emph{real} threadlocal mutable state.
+
+\begin{remark}[SysF IR pretty-printed syntax]
+  Here we have shown a more elaborated example of pretty-printed System F IR source. It should be obvious
+  for anyone that is familiar with OCaml or Haskell, especially the type application syntax \texttt{<term>@<type-expr>}.
+  But for reference, we present the relevant pretty-printer implementation below:
+
+\begin{Verbatim}[numbers=left]
+local instance : Std.ToFormat Pattern where
+  format := .text ∘ Pattern.toStr
+open Std Std.Format in
+partial def FExpr.unexpand : FExpr -> Format
+  | .CI i _ | .CB i _ | .CS i _ => repr i
+  | .CUnit _ => format ()
+  | .App f a _ => parenL? f ++ group (indentD (parenR? a))
+  | .Proj src mname i _ => parenL? src ++ sbracket (format i ++ ", " ++ format mname)
+  | .Cond c t e _ =>
+    "if" <> unexpand c <+> "then" ++ indentD (unexpand t)
+    <+> "else" ++ indentD (unexpand e)
+  | .Fix e _ => "rec" <> unexpand e
+  | .Var x _ => format x
+  | .Prod' p q _ => paren $ unexpand p <> "," <> unexpand q
+  | .Fun param pTy body _ =>
+    group $ "fun" <> param <> ":" <> pTy.toStr <> "=>" ++ group (indentD (unexpand body))
+  | .Match discr branches .. =>
+    let discr := discr.map unexpand
+    let br := branches.map fun (pats, e) =>
+      "|" <> joinSep' pats ", " <> "=>" ++ group (indentD (unexpand e))
+    group $ "match" <> joinSep' discr ", " <> "with" <+> joinSep' br line
+  | .Let binds body _ =>
+    let (binds, recflag) := binds.foldl (init := (#[], false)) fun (acc, recflag) (id, sch, fe) =>
+      match fe with
+      | .Fix (.Fun _ _ body _) _ =>
+        (acc.push $ id <> ":" <> toString sch <> group ("=" ++ indentD (unexpand body)), true)
+      | _ =>
+        (acc.push $ id <> ":" <> toString sch <> group ("=" ++ indentD (unexpand fe)), recflag)
+    let recStr := if recflag then .text " rec " else .text " "
+    "let" ++ recStr ++ joinSep' binds (line ++ "and ") <+> "in" <> unexpand body
+  | .TyLam a body =>
+    let (tvs, body) := Helper.peelTyLam [a.elimStr] body
+    group $ paren $ "Λ" <> joinSep tvs " " ++ "." ++ indentD (unexpand body)
+  | .TyApp f ty => parenL? f ++ "@" ++ parenT ty
+where
+parenR?
+  | p@(.App ..) | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
+  | p => unexpand p
+parenL?
+  | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
+  | p => unexpand p
+parenT
+  | t@(TVar _) | t@(TCon _) | t@(TApp _ []) | t@(KApp _ []) => text t.toStr
+  | t => paren t.toStr
+\end{Verbatim}
+\end{remark}
+
+\begin{remark}[On the usefulness of System F IR]
+  Since the beginning of this project/thesis, the author himself has a very clear goal
+  of compiling \Tigris to Common Lisp (SBCL). Since Lisp is a dynamically typed language
+  with some form of type inference and propagation (SBCL-only, probably not gradual typing),
+  There is not much need to do specialization of generics, or to preserve typing information for
+  next-stage lowering.\footnote{though it has been painfully proven to be convenient, through coding practice.}
+
+  Because of this, we \emph{did not} actually need a proper system F IR, despite we did, as
+  typeclass elaboration is perfectly doable without it. This is where the author has displayed both
+  his long-term thinking ability and his shortsightedness:
+  \begin{itemize}
+    \item The former, as in for later proper implementation of arbitrary rank polymorphism and/or
+      inductive families, a System F IR is useful to have;
+    \item The latter, as in after Lambda IR, typing information is gone since it does not preserve
+      types, leaving codegen harder, and most importantly, \emph{much less robust}. Where we have to
+      record the \emph{shapes} of symbols\footnote{
+        which itself, is not perfectly reliable.
+      }
+      and to do some form of pattern matching on IR to temporarily fix a bug.
+      Moreover, it is much less feasible if we were to develop some other backends that need types (e.g. C).
+
+      Although this does not have much to do with the usefulness of SysF IR, the insight is the same:
+  \end{itemize}
+  \centering{\underline{It is crucial to have a properly typed IR
+  throughout compilation of programs.}}
+
+\end{remark}
+
+\subsection{The \Lambdair, Codegen \& FFI}
+Elaboration to System F IR marks the end of ``going up'', whereas \Lambdair\footnote{
+  The name \emph{Lambda} is a direct reference to the IR Appel used in his \emph{Compiling with Continuations}
+  and presumably used in the SML/NJ compiler. \Tigris itself is a nod to Appel's \emph{Modern Compiler Implementation in ML},
+  of which the cover features a tiger. \emph{Tigris} is latin.
+}
+serves as an actual
+intermediate language that marks the beginning of code lowering. \Lambdair should be classified
+as in A-normal form, or ANF for short, a type of IR frequently used in functional programming language
+compilers.
+
+The essence of ANF is \emph{names}. Object, or any (nontrivial) expression, is referred by name, by
+immediately capture them in a let-bound variable. This, to some form, mimics the assembly code of
+the same program. Although \Tigris compiles to a high-level language, its form is not what normal
+programming styles looks like and thus SBCL may benefit from it, as the \Tigris compiler
+is doing some of the jobs for it.
+
+\paragraph{Definition of \Lambdair}
+Design of \Lambdair focuses on five aspects: \texttt{Value}, \texttt{Rhs}, \texttt{Stmt}, \texttt{Tail}
+and \texttt{LExpr}. We shall present the definition of these parts individually, together with a brief explanation of
+their intents. \underline{Readers shall note that these definitions are mutually recursive}.
+
+\subparagraph{\texttt{Value}} Also called immediate values. They cannot be further reduced.
+\begin{minted}{lean4}
+  inductive Value where
+    | var    (x : Name)
+    | cst    (k : Const)
+    | constr (tag : Name) (fields : Array Name)
+    | lam    (param : Name) (body : LExpr)   -- single-argument lambdas; multi-arg via tuples
+  deriving Repr, Inhabited
+\end{minted}
+Note that \emph{closures} (lambdas) at this stage are not yet converted and capture free variables.
+
+\subparagraph{\texttt{Rhs}} denotes the right-hand sides of ANF where all arguments are variables
+\begin{minted}[mathescape]{lean4}
+  inductive Rhs where -- $x : \mathsf{Rhs}$
+    | prim     (op : PrimOp) (args : Array Name)         -- $x := op(args_1,\dots,args_n)$
+    | proj     (src : Name) (idx : Nat)                  -- $x := src_{idx}$
+    | mkPair   (a b : Name)                              -- $x := \langle a, b \rangle$
+    | mkConstr (tag : Name) (fields : Array Name)        -- $x := tag\llbracket fields_1,\dots,fields_n\rrbracket$
+    | isConstr (src : Name) (tag : Name) (arity : Nat)   -- $x := src\ \mathbf{matches}\ \llangle tag/arity \rrangle$
+    | call     (f : Name) (arg : Name)                   -- $x := f(arg)$
+  deriving Repr, Inhabited
+\end{minted}
+
+\subparagraph{\texttt{Stmt}} right now only has single let binding, which, in practice, is no difference
+from a letexp.
+\begin{minted}{lean4}
+  inductive Stmt where
+    | let1 (x : Name) (rhs : Rhs)
+  deriving Repr, Inhabited
+\end{minted}
+
+\subparagraph{\texttt{Tail}} denotes the tail positions, which includes return, application, conditional and
+pattern matching branches. \texttt{Tail} is important in marking tail positions, which is utilized in later
+tailcall transformations.
+\begin{minted}[mathescape]{lean4}
+  inductive Tail where -- $tl : \mathsf{Tail}$
+    | ret  (x : Name)                                  -- $tl := \mathbf{RET}\ x$
+    | app  (f : Name) (arg : Name)                     -- $tl := f(arg)^\mathsf{T}$
+    | cond (condVar : Name) (tBranch eBranch : LExpr)  -- $tl := \mathbf{if}\ cond\ \mathbf{then}\ t\ \mathbf{else}\ e$
+    | switchConst (scrut : Name)                       -- $tl := \mathbf{case}^\mathsf{C}\ \mathbf{of}\ cases_i$
+        (cases : Array (Const × LExpr))
+        (default? : Option LExpr)
+    | switchCtor (scrut : Name)                        -- $tl := \mathbf{case}\ \mathbf{of}\ cases_i$
+        (cases : Array (Name × Nat × LExpr))
+        (default? : Option LExpr)
+    | matchFail (pats : Array Name)                    -- $tl := \mathsf{MATCHFAIL}(pats)$
+  deriving Repr, Inhabited
+\end{minted}
+Note that constant switches and constructor switches are treated differently -- This is to
+facilitate later constant folding more convenient to implement.
+
+$\mathsf{MATCHFAIL}$ is made a special token to denote the \emph{fallback} branch of a partial match. As said before,
+entering such branch results in a nonrecoverable runtime error. The reason that it takes \texttt{pats}, an array of \texttt{Names} i.e.
+strings, is to provide the users with the symbols of the match discriminants, which, is directly passed onto codegen, printing
+from the Lisp debugger.
+
+\subparagraph{\texttt{LExpr}} is the main body of an program in \Lambdair.
+\begin{minted}[mathescape]{lean4}
+  inductive LExpr where
+    /-- always ends in tails -/
+    | seq    (binds : Array Stmt) (tail : Tail)
+    | letVal (x : Name) (v : Value) (body : LExpr) -- $\mathbf{let}\iota\ x = v\ \mathbf{in}\ body$
+    /-- Nested let Rhs bindings. -/
+    | letRhs (x : Name) (rhs : Rhs) (body : LExpr) -- $\mathbf{let}\ x = rhs\ \mathbf{in}\ body$
+    /-- Recursive function bindings. -/            -- $\mathbf{let}\omega$
+    | letRec (funs : Array LFun) (body : LExpr)    -- $\ \ \mathbf{label}\ fun_1 : \cdots$
+                                                   -- $\ \ \mathbf{label}\ fun_2 : \cdots$
+                                                   -- $\ \ \vdots$
+                                                   -- $\mathbf{in}\ body$
+  deriving Repr, Inhabited, BEq
+
+  /-- A top-level function in the Lambda IR. -/
+  structure LFun where
+    fid    : Name
+    param  : Name
+    body   : LExpr
+  deriving Repr, Inhabited
+\end{minted}
+Here, normally what would be one letexp is divided into 3 sub-lets based on their RHS: a $\mathbf{let}\iota$ that binds
+immediate value, a $\mathbf{let}$ that binds regular \texttt{Rhs}, and finally a $\mathbf{let}\omega$
+that binds a group of mutually recursive functions.
+
+In addition to these mutually recursive definitions, we additionally have \texttt{LFun} that represents a
+top-level function. Readers with a keen heart will notice that \texttt{letRec} carries an array
+of \texttt{LFun}s -- \texttt{LFun} at this position doesn't mean that \texttt{funs} have to be toplevel.
+We use \texttt{LFun} instead of \mintinline{lean4}|Name × Name × LExpr|
+is purely out of \underline{performance reasons}: they have compatible representation, which, could
+save some potentially unnecessary conversions.
+
+Sequence operations -- \texttt{seq} -- although \Tigris is a pure language, we use \texttt{seq} to capture tails as
+it is the only constructor in \texttt{LExpr} that takes \texttt{Tail}s. Also, we may someday turn \Tigris into a
+impure functional language like OCaml which, can be convenient if \texttt{seq} is present in \texttt{LExpr}.
+
+\section{Conclusions and Future Work}
+
+From our experiments we can conclude that \ldots
+
+\bibliographystyle{abbrv}
+% \bibliography{references}  % need to put bibtex references in references.bib
+\end{document}

@@ -1,0 +1,442 @@
+metavar tname, x, y, z, f, g ::=
+  {{ com variables }}
+  {{ lex alphanum }}
+
+metavar ident ::=
+  {{ ocaml string }}
+  {{ lex Alphanum }}
+
+metavar lowerident ::=
+  {{ lex aplhanum0 }}
+  {{ coq String.string }}
+  {{ coq-equality }}
+  {{ com lowercase identifier }}
+
+metavar upperident ::=
+  {{ lex Alphanum }}
+  {{ coq String.string }}
+  {{ coq-equality }}
+  {{ com capitalized identifier }}
+
+metavar intlit ::=
+  {{ coq z }}
+  {{ coq-equality }}
+  {{ lex numeral }}
+  {{ com integer literals }}
+
+metavar strlit ::=
+  {{ coq String.string }}
+  {{ coq-equality }}
+  {{ com string literals }}
+
+metavar evidx ::=
+  {{ coq nat }}
+  {{ lex numeral }}
+  {{ com evidence index for dictionary passing }}
+  
+indexvar index, i, j, n, m ::=
+  {{ ocaml int }}
+  {{ lex numeral }}
+  {{ com index variables }}
+
+grammar 
+terminals :: 'terminals_' ::= %% copied from pi-forall
+  | <->               ::   :: iso           {{ tex \leftrightarrow }}
+  | <=>               ::   :: lrarrow       {{ tex \Leftrightarrow }}
+  | -->               ::   :: step          {{ tex \longrightarrow }}
+  | min               ::   :: min           {{ tex \mathsf{min} }}
+  | ==                ::   :: definitional  {{ tex \equiv }}
+  | all               ::   :: forall        {{ tex \forall }}
+  | elem              ::   :: elem          {{ tex \in }}
+  | notin             ::   :: notin         {{ tex \not\in }}
+  | <=                ::   :: check         {{ tex \Leftarrow }}
+  | =>                ::   :: infer         {{ tex \Rightarrow }}
+  | |->               ::   :: Mapsto        {{ tex \mapsto }}
+  | =>*               ::   :: minfer        {{ tex \Rightarrow^{\ast} }}
+  | ->                ::   :: arrow         {{ tex \to }}
+  | /\                ::   :: ilam          {{ tex \mathrm{\Lambda} }}
+  | []                ::   :: box           {{ tex \Box }}
+  | |-                ::   :: entails       {{ tex \vdash }}
+  | |=                ::   :: hs_entails    {{ tex \vDash }}
+  | /=                ::   :: neq           {{ tex \neq }}
+  | |>                ::   :: cast          {{ tex \triangleright }}
+  | ok                ::   :: ok            {{ tex \ \mathsf{ok} }}
+  | _                 ::   :: blank         {{ tex \_ }}
+  | *                 ::   :: product       {{ tex \times }}
+  | ~>                ::   :: produce       {{ tex \leadsto }}
+  | ~>*               ::   :: multistep     {{ tex \leadsto^{\ast} }}
+  | empty             ::   :: empty         {{ tex \varnothing }}
+  | hole              ::   :: hole          {{ tex \circ }}
+  | fv                ::   :: fv            {{ tex \mathsf{fv}\! }}
+  | dom               ::   :: dom           {{ tex \mathsf{dom} }}
+  | ~                 ::   :: twiddle       {{ tex \sim }}
+  | ~~                ::   :: compatible    {{ tex \asymp }}
+  | '|'               ::   :: bar           {{ tex | }}
+  | o                 ::   :: bullet        {{ tex \bullet }}
+  | 'fun'             ::   :: 'fun'         {{ tex \mathbf{fun} }}
+  | fst               ::   :: fst
+  | snd               ::   :: snd
+  | let               ::   :: let           {{ tex \mathbf{let} }}
+  | and               ::   :: and           {{ tex \mathbf{and} }}
+  | in                ::   :: in            {{ tex \mathbf{in} }}
+  | if                ::   :: if            {{ tex \mathbf{if} }}
+  | then              ::   :: then          {{ tex \mathbf{then} }}
+  | else              ::   :: else          {{ tex \mathbf{else} }}
+  | match             ::   :: match         {{ tex \mathbf{match} }}
+  | with              ::   :: with          {{ tex \mathbf{with} }}
+  | ==>               ::   :: impl          {{ tex \implies }}
+  | :                 ::   :: colon         {{ tex : }}
+  | .                 ::   :: dot           {{ tex . }}
+  | \\                ::   :: setminus      {{ tex \setminus }}
+  | /\                ::   :: cap           {{ tex \cap }}
+  | \/                ::   :: cup           {{ tex \cup }}
+  | gen               ::   :: gen           {{ tex \mathsf{gen} }}
+  | inst              ::   :: inst          {{ tex \mathsf{inst} }}
+  | solve             ::   :: solve         {{ tex \mathsf{solve} }}
+  | unify             ::   :: unify         {{ tex \mathsf{unify} }}
+  | fresh             ::   :: fresh         {{ tex \mathsf{fresh} }}
+  | +                 ::   :: append        
+
+
+grammar
+const :: 'CONST_' ::= {{ com constants }}
+  | intlit                    :: :: CI
+  | strlit                    :: :: CS
+  | true                      :: :: true
+  | false                     :: :: false
+  | ()                        :: :: CUnit
+
+ctor :: 'Constr_' ::= {{ com constructor }}
+  | upperident :: :: Ctor
+
+expr, e :: 'E_' ::= {{ com term }}
+  | const                                ::  :: Const
+    {{ com constant }}
+  | tname                                ::  :: Var 
+    {{ com variable }}
+  | \ x . e                              ::  :: Function (+ bind x in e +)
+    {{ tex \lambda\ [[x]].\ [[e]] }}
+    {{ com lambda abstraction }}
+  | let x1 = e1 and .. and xn = en in e' ::  :: Let (+ bind x1 .. xn in e' +)
+    {{ com letexp }}
+  | e e'                                 ::  :: App
+    {{ com function application }}
+  | ( e1 , e2 )                     ::  :: Prod
+    {{ com product }}
+  | ( e )                                :: S:: Paren
+  | e [ e' / x ]                         :: M:: Subst
+  | if e1 then e2 else e3                ::  :: Cond
+    {{ com conditional }}
+  | fix e                                ::  :: Fix
+    {{ com fixpoint }}
+  | match e1 , .. , en with patmatrix    ::  :: Match
+    {{ com pattern matching }}
+  | e : sch                              ::  :: Ascribe
+    {{ com type ascription }}
+
+pattern, pat :: 'P_' ::= {{ com patterns }}
+  | tname                :: :: PVar (+ xs = tname +)
+    {{ com variable }}
+  | _                    :: :: PWild (+ xs = {} +)
+    {{ com wildcard }}
+  | const                :: :: PConst (+ xs = {} +)
+    {{ com constant }}
+  | ( pat1 , pat2 ) :: :: PProd (+ xs = xs(pat1) union xs(pat2) +)
+    {{ com product }}
+  | ctor pat1 .. patn    :: :: PCtor (+ xs = xs(pat1 .. patn) +)
+    {{ com constructor application }}
+
+patbranch, pb :: 'PB_' ::= {{ com pattern branch }}
+  | pat1 , .. , patn -> expr :: :: PBranch (+ bind xs(pat1..patn) in expr +)
+patmatrix, pm :: 'PM_' ::= {{ tex Pmatrix }} {{ com pattern matrix }}
+  | '|' pb1 '|' .. '|' pbm :: :: Pmatrix
+
+% typing
+
+grammar 
+
+tyctor :: TC_ ::=
+  | upperident  :: :: upperid
+  | Int         :: :: Int    {{tex \mathsf{Int} }}
+  | Bool        :: :: Bool   {{tex \mathsf{Bool} }}
+  | String      :: :: String {{tex \mathsf{String} }}
+  | Unit        :: :: Unit   {{tex \mathsf{Unit} }}
+
+tyvar, tv, a, b :: TV_ ::=
+  | lowerident  :: :: lowerid
+
+tvset, tvs {{ tex \bar{\alpha} }} :: 'TVS_' ::= {{ com type variable set }}
+  | empty                    ::   :: Empty   {{ tex \varnothing }}
+  | tv                       ::   :: Single  {{ tex \{ [[tv]] \} }}
+  | tvs1 \/ tvs2             ::   :: Union   {{ tex [[tvs1]] \cup [[tvs2]] }}
+  | tvs1 /\ tvs2             ::   :: Inter   {{ tex [[tvs1]] \cap [[tvs2]] }}
+  | tvs1 \\ tvs2             ::   :: Diff    {{ tex [[tvs1]] \setminus [[tvs2]] }}
+  | ftv ( G )                ::   :: FtvG    {{ tex \mathsf{ftv}([[G]]) }}
+  | ftv ( ty )               ::   :: FtvTy   {{ tex \mathsf{ftv}([[ty]]) }}
+  | ftv ( ps )               ::   :: FtvPs   {{ tex \mathsf{ftv}([[ps]]) }}
+  | ftv ( pred )             ::   :: FtvPred {{ tex \mathsf{ftv}([[pred]]) }}
+  | ( tvs )                  ::  S:: Paren
+
+kvar, kv {{ tex \kappa }} :: KV_ ::=
+  {{ com higher-kinded type variable }}
+  | lowerident :: :: lowerid_k
+
+tyargs, tys ::  TYS_ ::= {{ com one or more type arguments }}
+  | ty              ::  ::  One
+  | ty tys          :: ::  Cons
+
+typeexpr, ty, t {{ tex \tau }} :: TE_ ::= {{ com type expression }}
+  | tyctor            ::  :: TCon {{ com nullary type constructor }}
+  | tv                ::  :: TVar {{ com type variable }}
+  | ty -> ty'         ::  :: TArr {{ com arrow type }}
+  | ty * ty'          ::  :: TProd {{ com product type }}
+  | ( ty )            :: S:: TParen
+  | tyctor tys        ::  :: TApp {{ com nominal type application }}
+  | kv tys            ::  :: KApp {{ com higher-kinded TV head application }}
+  | [ S ] ty          :: M:: TSubst {{ com substitution }}
+
+predicate, pred, P {{ tex \pi }} :: Pr_ ::= {{ com predicate }}
+  | ctor ty1 .. tyn   ::  :: Pred
+  | [ S ] pred        :: M:: PredSubst {{ com substitution }}
+
+predicates, preds, ps {{ tex \bar{\pi} }} :: Prs_ ::=
+  | empty      ::  :: PNil
+  | pred       ::  :: PSingle
+  | pred, ps   ::  :: PCons
+  | ps1 ++ ps2 ::  :: PAppend {{ tex [[ps1]], [[ps2]]}}
+  | [ S ] ps   :: M::PSSubst 
+
+scheme, sch, s {{ tex \sigma }} :: S_ ::= {{ com scheme }}
+  | all tv1 .. tvn . ps => ty   ::   :: Forall
+  | ( tvs . ps => ty )          ::   :: ForallSet  {{ com from tvset }}
+  | ty                          ::   :: Mono {{ com Monotype }}
+  | [ S ] sch                   ::  M:: SSubst 
+
+
+context, G {{ tex \Gamma }} :: 'Ctx_' ::= {{ com typing environment}}
+  | empty       ::  :: GNil
+  | G , x : sch ::  :: GCons {{ tex [[G]], [[x]] : [[sch]] }} 
+  | x : sch     ::  :: GOne
+  | ( G )       :: S:: GParen
+
+constraint, c :: 'C_' ::= {{ com constraint }}
+  | ty1 ~ ty2             :: :: CEq    {{ com equality constraint }}
+  | pred @ evidx          :: :: CPred  {{ com predicate constraint with evidence }}
+    {{ tex [[pred]]_[[evidx]] }}
+
+constraints, C :: 'Cs_' ::= {{ com constraint set }}
+  | empty                 ::  :: CNil
+  | c                     ::  :: CSingle
+  | ( C )                 :: S:: CParen
+  | C1 , C2               ::  :: CJoin  {{ tex [[C1]], [[C2]] }} {{ com set join }}
+  | [ S ] C               :: M:: CSubst {{ com substitution }}
+
+subst, S {{ tex \theta }} :: Sub_ ::= {{ com substitution }}
+  | empty                 ::  :: SNil   {{ tex \varnothing }}
+  | tv |-> ty             ::  :: SSingle {{ tex [[tv]] \mapsto [[ty]] }}
+  | S1 . S2               ::  :: SComp  {{ tex [[S1]] \circ [[S2]] }} {{ com composition }}
+  | ( S )                 :: S:: SParen
+
+evidence, ev :: 'Ev_' ::= {{ com evidence term }}
+  | x                     :: :: EvVar  {{ com evidence variable }}
+  | ctor ev1 .. evn       :: :: EvDict {{ com dictionary constructor }}
+
+evctx, D {{ tex \Delta }} :: 'EvCtx_' ::= {{ com evidence context }}
+  | empty                 :: :: DNil
+  | D , evidx : pred      :: :: DCons {{ tex [[D]], [[evidx]]:[[pred]] }}
+
+formula ::  'formula_' ::=
+  | judgement                   :: :: judgement
+  | formula1 ..  formulan       :: :: dots
+  | tv elem tvs                 :: :: tvInSet     {{ tex [[tv]] \in [[tvs]] }}
+  | tv notin tvs                :: :: tvNotInSet  {{ tex [[tv]] \notin [[tvs]] }}
+  | tvs1 = tvs2                 :: :: tvsEq
+  | tvs /= empty                :: :: tvsNonempty {{ tex [[tvs]] \neq \varnothing }}
+  %| tv notin ftv ( G )          :: :: tvNotInG
+  %| tv notin ftv ( ty )         :: :: tvNotInTy
+  | x : sch elem G              :: :: xInG
+  | x notin dom ( G )           :: :: xNotInG
+  % | S = unify ( ty1 , ty2 )     :: :: unifyResult
+  % | ( S , ps ) = solve ( C )    :: :: solveResult
+  % | sch = gen ( G , ty , ps )   :: :: genResult
+  % | ( ty , ps ) = inst ( sch )  :: :: instResult
+  | tv = fresh                  :: :: freshTV
+  | evidx = fresh               :: :: freshEv
+  | C1 = C2                     :: :: constraintEq
+  | ty1 = ty2                   :: :: typeEq
+  | ps1 = ps2                   :: :: predsEq
+    % metafunction. 
+    % workaround for subst list literal
+  | S = { tv1 |-> ty1 , .. , tvn |-> tyn }  :: ::  substBuild
+  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+defns TigrisTyping :: '' ::=
+
+defn
+S = unify ( ty1 , ty2 ) :: :: Unify :: 'U_'
+  {{ com Unification of types }}
+by
+
+  ------------------- ::  Refl
+  empty = unify(ty, ty)
+
+  tv notin ftv(ty)
+  -------------------------- :: VarL
+  tv |-> ty = unify(tv, ty)
+
+  tv notin ftv(ty)
+  -------------------------- :: VarR
+  tv |-> ty = unify(ty, tv)
+
+  S1 = unify(a, a')
+  S2 = unify([S1]b, [S1]b')
+  ----------------------------------------- :: Arrow
+  S2 .  S1 = unify(a -> b, a' -> b')
+
+  S1 = unify(a, a')
+  S2 = unify([S1]b, [S1]b')
+  ----------------------------------------- ::  Prod
+  S2 . S1 = unify(a * b, a' * b')
+
+defn
+( S , ps ) = solve ( C ) :: :: Solve :: 'Slv_' {{ com Constraint solving }}
+by
+
+  ------------------------------- :: Empty
+  (empty, empty) = solve (empty)
+
+  S = unify(ty1, ty2)
+  (S', ps) = solve([S]C)
+  ---------------------------------- :: Eq
+  (S' . S, ps) = solve(ty1 ~ ty2, C)
+
+  (S, ps) = solve(C)
+  ---------------------------------- :: Pred
+  (S, [S]pred, ps) = solve(pred @ evidx, C)
+
+defn
+( ty , ps ) = inst ( sch ) :: :: Instantiate ::  'Inst_'
+  {{ com Scheme instantiation }}
+by
+
+  tv1' = fresh .. tvn' = fresh
+  S = { tv1 |-> tv1' , .. , tvn |-> tvn' }
+  ------------------------------------------------- :: Forall
+  ( [S]ty , [S]ps' ) = inst ( all tv1 .. tvn . ps => ty )
+
+defn
+sch = gen ( G , ty , ps ) :: :: Generalize :: 'Gen_'
+  {{ com Generalization }}
+by
+
+  tvs = (ftv(ty) \/ ftv(ps)) \\ ftv(G)
+  -------------------------------------------------------------------- :: Gen
+  (tvs. ps => ty) = gen (G, ty, ps)
+
+defn
+G |- e => ty ; C :: :: InferExpr :: 'I_'
+  {{ com Constraint-based inference }}
+by
+
+  x : sch elem G
+  (ty, ps) = inst(sch)
+  ------------------------------------------- :: Var
+  G |- x => ty ; C
+
+  -------------------- :: Int
+  G |- intlit => Int ; empty
+
+  -------------------- :: String
+  G |- strlit => String ; empty
+
+  -------------------- :: True
+  G |- true => Bool ; empty
+
+  -------------------- :: False
+  G |- false => Bool ; empty
+
+  -------------------- :: Unit
+  G |- () => Unit ; empty
+
+  tv = fresh
+  G , x : tv |- e => ty ; C
+  ------------------------------ :: Lam
+  G |- \ x . e => tv -> ty ; C
+
+  G |- e1 => ty1 ; C1
+  G |- e2 => ty2 ; C2
+  tv = fresh
+  ------------------------------ :: App
+  G |- e1 e2 => a ; (C1, C2), ty1 ~ ty2 -> a
+
+  G |- e1 => ty1 ; C1
+  G |- e2 => ty2 ; C2
+  ----------------------------------------------- :: Prod
+  G |- (e1, e2) => ty1 * ty2 ; C1, C2
+
+
+  G |- e1 => ty1 ; C1
+  G |- e2 => ty2 ; C2
+  G |- e3 => ty3 ; C3
+  ------------------------------------------------------------ :: Cond
+  G |- if e1 then e2 else e3 => ty2 ; (((C1, C2), C3), ty1 ~ Bool), ty2 ~ ty3
+
+  G |- e1 => ty1 ; C1
+  (S, ps) = solve(C1)
+  sch = gen(G, [S]ty1, ps)
+  G, x : sch |- e2 => ty2 ; C2
+  ------------------------------------------------ :: Let
+  G |- let x = e1 in e2 => ty2 ; [S]C2
+
+  tv = fresh
+  G, f : tv |- e => ty ; C
+  ---------------------------------- :: Fix
+  G |- fix (\f. e) => ty ; C, tv ~ ty
+
+  tv = fresh
+  G, x : (tv) |- e1 => ty1 ; C1
+  (S, ps) = solve(C1)
+  sch = gen(G, [S]ty1, ps)
+  G, x : sch |- e => ty ; C
+  --------------------------------------------------------------------- :: LetRec
+  G |- let x = e1 in e => ty1 ; [S]C
+
+  G |- e => ty ; C
+  (ty', ps) = inst(sch)
+  -------------------------------------- :: Ascribe
+  G |- e :  sch => ty' ; C, ty ~ ty'
+
+
+defn
+G |- pat => G' ; C ; ty :: :: InferPat :: 'P_'  
+  {{ com Pattern inference }}
+by
+  ------------------------- :: Wild
+  G |- _ => G ; empty ; ty
+
+  x notin dom(G)
+  ------------------------- :: Var
+  G |- x => G, x : ty ; empty ; ty
+
+  ------------------------- :: ConstInt
+  G |- intlit => G ; ty ~ Int ; ty
+
+  ------------------------- :: ConstStr
+  G |- strlit => G ; ty ~ String ; ty
+
+  ------------------------- :: ConstTrue
+  G |- true => G ; ty ~ Bool ; ty
+
+  ------------------------- :: ConstFalse
+  G |- false => G ; ty ~ Bool ; ty
+
+  ------------------------- :: ConstUnit
+  G |- () => G ; ty ~ Unit ; ty
+
+  a = fresh
+  b = fresh
+  G |- pat1 => G1 ; C1 ; a
+  G1 |- pat2 => G2 ; C2 ; b
+  ----------------------------- :: Prod
+  G |- (pat1, pat2) => G2 ; (C1, C2), ty ~ a * b ; ty
