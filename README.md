@@ -14,7 +14,7 @@ it looks like a hybrid of OCaml & Haskell & Lean,
 > But runs like shit.
 
 > [!WARNING]
-> This readme hasn't been updated for a while. Contains obsolete information
+> This readme hasn't been updated for a while. Contains obsolete information.
 
 thanks to
 

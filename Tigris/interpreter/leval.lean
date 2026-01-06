@@ -55,7 +55,7 @@ def asConst? : Val -> Const ⊕ Val
 def getVar (ρ : Env) (ft : FunTab) (gρ : GlobalEnv) (x : Name) : Except TypingError Val :=
   match ρ[x]? with
    | some v => .ok v
-   | none => 
+   | none =>
     if x ∈ ft then .ok (.code x)
     else
       match gρ[x]? with
@@ -143,7 +143,7 @@ partial def evalTail (ft : FunTab) (ρ : Env) (gρ : GlobalEnv)
     match <- getVar ρ ft gρ s with
     | .ctor tag fs =>
       let ar := fs.size
-      match cases.findSome? fun (t, arity, b) => 
+      match cases.findSome? fun (t, arity, b) =>
         if t == tag && arity == ar then some b else none
       with
       | some b => evalExpr ft ρ gρ b

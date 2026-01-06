@@ -23,7 +23,7 @@
 
 OTT	     = ott $(OTTFLAGS)
 OTTFLAGS	= -signal_parse_errors true \
-		  -tex_wrap false -tex_show_meta false
+		  -tex_wrap false -tex_show_meta false -tex_name_prefix rp
 
 %.ottdump: %.ott
 	$(OTT) -picky_multiple_parses true -i $< -writesys $@

@@ -1,4 +1,4 @@
-metavar tname, x, y, z, f, g ::=
+metavar tname, x, y, z, f, g, n ::=
   {{ com variables }}
   {{ lex alphanum }}
 

@@ -1,4 +1,4 @@
-/-- generated from C:\Users\notch1p\Downloads\tigris\runtime.lisp -/
+/-- generated from /home/notch1p/Downloads/tigris/runtime.lisp -/
 def runtime : String :=
 r###"
 (declaim (inline %string=))

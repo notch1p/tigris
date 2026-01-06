@@ -1,0 +1,77 @@
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\semK}[2]{\llbracket #1 \rrbracket_{#2}}
+\newcommand{\Lam}{\mathsf{L}}
+\newcommand{\CPS}{\mathsf{C}}
+\newcommand{\Val}{\mathsf{Val}}
+\newcommand{\Ans}{\mathsf{Ans}}
+\newcommand{\Env}{\rho}
+\newcommand{\Kont}{\kappa}
+\newcommand{\FunTab}{\Phi}
+\newcommand{\KontTab}{\Phi_\kappa}
+\newcommand{\halt}{\mathsf{halt}}
+\newcommand{\app}{\mathsf{app}}
+\newcommand{\appK}{\mathsf{appK}}
+\newcommand{\ite}{\mathsf{ite}}
+\newcommand{\letone}{\mathbf{let}_1}
+\newcommand{\letK}{\mathbf{letK}}
+\newcommand{\letRec}{\mathbf{let\;rec}}
+\newcommand{\proj}{\mathsf{proj}}
+\newcommand{\mkpair}{\mathsf{mkPair}}
+\newcommand{\mkctor}{\mathsf{mkCtor}}
+\newcommand{\isctor}{\mathsf{isCtor}}
+\newcommand{\prim}{\mathsf{prim}}
+\newcommand{\switch}{\mathsf{switch}}
+\newcommand{\fail}{\mathsf{matchFail}}
+\newcommand{\code}{\mathsf{code}}
+\newcommand{\clos}{\mathsf{clos}}
+\newcommand{\ctor}{\mathsf{ctor}}
+\newcommand{\pair}{\mathsf{pair}}
+\newcommand{\unit}{()}
+\newcommand{\inmark}[1]{\langle #1 \rangle}
+\newcommand{\Name}{\mathsf{Name}}
+\newcommand{\Const}{\mathsf{Const}}
+
+\newcommand{\Tigris}{\emph{Tigris}\xspace}
+\newcommand{\tigris}{\emph{tigris}\xspace}
+\newcommand{\Tigrisd}{\emph{Tigrisd}\xspace}
+\newcommand{\tigrisd}{\emph{tigrisd}\xspace}
+\newcommand{\numberthis}{\addtocounter{equation}{1}\tag{\theequation}}
+\newcommand{\ftv}{\mathsf{ftv}}
+\newcommand{\inst}{\mathsf{inst}}
+\newcommand{\fresh}{\mathsf{fresh}}
+\newcommand{\solve}{\mathsf{solve}}
+\newcommand{\gen}{\mathsf{gen}}
+\newcommand{\peel}{\mathsf{peel}}
+\newcommand{\skolem}{\mathsf{skolem}}
+\newcommand{\pushRigid}{\mathsf{pushRigid}}
+\newcommand{\popRigid}{\mathsf{popRigid}}
+\newcommand{\rigid}{\mathcal{R}}
+\newcommand{\Pred}{\pi}
+\newcommand{\cls}{\mathsf{cls}}
+\newcommand{\args}{\mathsf{args}}
+\newcommand{\ctx}{\mathsf{ctx}}
+\newcommand{\iname}{\mathsf{iname}}
+\newcommand{\unify}{\mathsf{unify}}
+\newcommand{\apply}{\mathsf{apply}}
+\newcommand{\resolve}{\mathsf{resolve}}
+\newcommand{\instInfo}{\mathsf{instInfo}}
+\newcommand{\Visited}{\mathcal{V}}
+\newcommand{\Tyapp}{\mathsf{TyApp}}
+\newcommand{\Tylam}{\mathsf{TyLam}}
+\newcommand{\FVar}{\mathsf{Var}}
+\newcommand{\Int}{\mathsf{Int}}
+\newcommand{\Lambdair}{\emph{Lambda}\ IR\xspace}
+
+
+\makeatletter
+\newcommand{\AlignFootnote}[1]{%
+  \ifmeasuring@
+    \chardef\@tempfn=\value{footnote}%
+    \footnotemark
+    \setcounter{footnote}{\@tempfn}%
+  \else
+    \iffirstchoice@
+      \footnote{#1}%
+    \fi
+  \fi}
+\makeatother
