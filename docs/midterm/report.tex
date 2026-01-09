@@ -14,7 +14,7 @@
 \usepackage{graphicx}
 \usepackage{quiver}
 \usepackage{ottalt}
-\usepackage{amsmath,amssymb,bbm,amsthm}
+\usepackage{amsmath,amssymb,bbm,amsthm,extarrows}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{bm}
@@ -29,10 +29,9 @@
 \usepackage{fancyhdr,fancyvrb}
 \usepackage{booktabs}
 \pagestyle{fancy}
-\theoremstyle{remark}
-\newtheorem*{remark}{Remark}
-\theoremstyle{definition}
-\newtheorem*{definition}{Definition}
+\theoremstyle{remark}\newtheorem*{remark}{Remark}
+\theoremstyle{definition}\newtheorem*{definition}{Definition}
+\newtheorem{theorem}{Theorem}
 \title{Mid-Term Report}
 \author{高振明/Zhenming Gao}
 %\date{}
@@ -40,7 +39,7 @@
 \input{doublebrackets}
 \input{preamble}
 \inputott[rp]{report.ott}
-\inputott[dd]{dist-tigrisd}
+\inputott[dd]{tigrisd}
 \renewottcommands[rp]
 
 \begin{document}
@@ -3822,6 +3821,12 @@ in \Tigris, but it is all inlined and not as a standalone package, which, can be
 Though, we may someday rewrite it in Lean.
 The point being that at least there is a working prototype.
 
+\paragraph{Nomenclature} The word \emph{term}, when used along, includes what would
+be considered a \emph{type} in regular programming languages. When \emph{term} and
+\emph{type} are used together, sometimes the former includes latter, sometimes it does not,
+readers should be able to deduce the exact meaning of it;
+Unconditionally, \emph{type} is used exclusively to reference types, no matter dependent or not.
+
 \subsection{The basics} The syntax is of \Tigrisd is very similar to \Tigris, with
 a few exceptions, especially in relation to its dependently-typed nature. The implementation
 of this syntax also uses monadic parsing, in the form of parser combinators, specifically,
@@ -3959,7 +3964,7 @@ to why ZF sets need an axiom of regularity; Otherwise there
 could be a Russell-style paradox.
 } , we adopt
 it nonetheless for its simplicity. Similarly, bounded recursion
-or termination checking is nonexistent in \Tigrisd.
+, termination checking or totality checking is nonexistent in \Tigrisd.
 
 \end{itemize}
 
@@ -4031,12 +4036,14 @@ The bidirectional type system \Tigrisd implementation is (check/infer)
 , sigma
 , let
 , eq
-, subst
-}
+, subst}
 
 Readers paying attention will notice that some inference rules
-use defintional (also judgmental in MLTT, and typal in 1-level TT) equality, 
-such as \rref{C-switch-mode, I-App, C-WHNF}. We define the equality as follows:
+use defintional (also judgmental in MLTT, and typal in 1-level TT) equality,
+such as \rref{C-switch-mode, I-App, C-WHNF}. Note that these rules only specifies
+\emph{what it means to be ``equal''},
+They are not computational rules nor used for implementation purposes.
+We define the equality as follows:
 
 \drules[e]{$\Gamma\vdash A = B$}{Defintional/Judgmental/Typal equality}
 { refl
@@ -4049,48 +4056,151 @@ such as \rref{C-switch-mode, I-App, C-WHNF}. We define the equality as follows:
 , sigma-congr
 , app-congr
 , lam-congr
-, beta
 , pair-elim
 , pair-congr
 , var
 , let-beta
 , let
-, subst-beta
-, subst
+, typalsubst-beta
+, typalsubst-congr
 , typaleq-congr
 , exfalso-congr
 , eapp-congr
 , elam-congr
-, epi-congr
-}
+, epi-congr}
 
-
-
-Where the judgment $\Gamma\vdash\mathbf{WHNF}\ tm\leadsto nf$ reads: under context $\Gamma$, $tm$ reduces to $nf$, which is
+\paragraph{Weak Head Normal Form}
+or the judgment $\Gamma\vdash\mathbf{WHNF}\ tm\leadsto nf$ appeared above
+reads: under context $\Gamma$, $tm$ reduces to $nf$, which is
 in \emph{weak head normal form}\footnote{
 this term supposedly came from Peyton Jones (SPJ), for its relations to reduction/evaluation strategies.
 }. Before introducing WHNF, let us recall the definition of a \emph{value}. As mentioned in \Tigris,
-a value $v$ is in normal form if $\langle v, \sigma\rangle\Downarrow\langle v\rangle$ where $\sigma$ denotes a state (if any). 
+a value $v$ is in normal form if $\langle v, \sigma\rangle\Downarrow\langle v\rangle$ where $\sigma$ denotes a state (if any).
 In \Tigrisd, $v$ is defined as
 
 \nonterms{v}
 
-
-WHNF has similar form to $v$ and contains $v$, but is generalized to quantify more forms. 
+WHNF has similar form to $v$ and contains $v$, but is generalized to quantify more forms.
 Readers should pay attention to the phrase \underline{``cannot be reduced further''} as this
 is precisely what WHNF quantifies.
-This additional part that WHNF quantifies, is called \emph{neutral form}. A neutral term mainly 
-contains a sequence of applications, with its head being a variable. 
+This additional part that WHNF quantifies, is called \emph{neutral form}. A neutral term mainly
+contains a sequence of applications, with its head being a variable.
 Although we knew that the arguments to this variable
 may be redexes\footnote{reducible expressions} themselves, this application itself
-cannot be reduced further. Therefore, it belongs in WHNF. For example, the term
-$(x : \mathbf{Type})\times (\lambda x. \mathsf{Nat})\ \mathsf{Unit}$ is in WHNF,
-because, though its RHS is $\beta$-reducible, this term itself is not: It is
-a coproduct.
+cannot be reduced further. Therefore, it belongs in WHNF. In this calculus, the neutral
+terms are given by
+
 \nonterms{neutral}
 
-\section{Summary}
+For example, the term
+$(x : \mathsf{Type})\times (\lambda x.\,\mathsf{Nat})\ \mathsf{Unit}$ is in WHNF,
+because, though its RHS is $\beta$-reducible, this term itself is not: It is
+a coproduct; Or the neutral term $\mathsf{add}\ 1\ 3$, which,
+judging from its apperance, should reduce to $4$ but
+we are unsure of that
+yet as we did not \emph{unfold} the definition of $\mathsf{add}$,
+therefore, this term is also irreducible in WHNF.
+We introduce this concept because
+it concerns
+with \underline{reduction strategies}, or normalization of forms (as mentioned in the footnote), which
+in turn, \underline{matters a \emph{lot} when implementing equality} as
+we want equality check to not only cover terms
+that \emph{look exact}\footnote{
+as in syntactic equality (w/o $\alpha$-renaming)
+}, but also several basic equivalence in the lambda calculus, which
+though possible by a naive evaluator that performs \emph{full reduction}, is not good enough and
+can potentially be harmful.
+Therefore, we want to set \emph{standards}
+for terms (i.e. terms that should \underline{not} be eagerly reduced) in order to
+\emph{control reduction strategies} of properly constructed evaluators
+that respect these standards. WHNF is exactly the standard we are looking for.
 
-\bibliographystyle{abbrv}
+Specifically,
+\begin{itemize}
+\item WHNF allow us to \emph{defer}\footnote{
+do note the difference between \emph{deferred} evaluation and \emph{lazy} evaluation.
+Usually the latter encapsulate the former.
+} the unfolding of definitions until needed, similar to a
+call-by-need evaluation strategy. This, intuitively, mimics the
+\emph{symbolic} computational thought process of a normal human; Consider the equation
+$f\ 3 = f\ (1 + 2)$ where $f$ represents a \emph{lengthy computation}.
+Both sides are in WHNF, where a naive evaluator may spend time reducing all the application of $f$,
+A WHNF-respecting evaluator can instead compare $3, (1+2)$ because both sides share the same
+\emph{head} $f$. \emph{Deciding} this equality is
+simple enough that we do not need to unfold $f$ at all. In fact, this is just a
+special case of the \emph{congruence} relation of functions.
+
+\item However, the equality relation in \Tigrisd is \emph{semidecidable}, as in sometimes it is
+possible for a computation to diverge because totality is not guaranteed. WHNF
+\emph{alleviates} this problem by -- as mentioned above -- deferring unfolding as
+even if $f$ diverges, the equality still holds, proven by \Tigrisd.
+Though it does \emph{not} entail that no unfolding is taken place -- As to prove
+$\mathsf{1 + 1 = 2}$, we must unfold $+$, and in the case $+$ diverges, the
+reduction loops no matter what, leading to the eventual crash of the system
+when it runs out of stack/heap spaces; Though, the REPL implementation has
+similar feature to that of \Tigris, allowing users to interrupt with \texttt{<C-c>}.
+\end{itemize}
+
+Furthermore, readers with relatively little prover knowledge may draw intuition from
+Lean's \texttt{rfl} tactic/term and Coq's \texttt{reflexivity} tactic, both of
+which instructs the typechecker to perform normalization to decide equality, which
+is arguably much more stronger than \Tigrisd's, implemented in similar way,
+if not more complex, of
+\underline{making rules to avoid eager reductions}. Moreover, they have some form of \emph{normalization by evaluation} (NBE) which compiles expressions
+to forms suitable for running, such as (OCaml) bytecode, if using Coq.
+It is about
+the granularity of these rules and the performance of normalization that set us apart.
+
+We now define the \emph{reduction}\footnote{
+we emphasize \emph{reduction} because this transformation does not change
+the ``meaning'' of a term.
+}
+rules to WHNF and finally,
+the implementation of equality in \Tigrisd :
+
+\drules[WHNF]{$\Gamma\vdash\mathbf{WHNF}\ a\leadsto nf$}{WHNF normalization}
+{ var
+, lam
+, pi
+, type
+, lam-beta
+, letpair
+, prod-congr
+, def
+, let-beta
+, typaleq-refl
+, refl
+, typalsubst
+, typalsubst-congr}
+
+\drules[impleq]{$\Gamma\vdash a \xlongequal{\mathsf{impl}} b$}{equality implementation}
+{ refl
+, lam-congr
+, app-congr
+, pi-congr
+, WHNF-ext}
+
+Which, reveals an important property of WHNF:
+
+\begin{theorem}[WHNF equality invariant]
+Two terms are equal if and only if their WHNF reductions are equal.
+
+From left to right, this property is guaranteed by the invariant of reduction;
+From right to left, this property is shown by \rref{impleq-WHNF-ext}.
+\end{theorem}
+
+\section{Summary}
+Regarding \Tigris, the work is somewhat completed.
+Regarding \Tigrisd, while the working prototype is available,
+it's implementation notes and rules of dependent pattern matching and usage examples
+are omitted in this report, but I'm working on delivering it in the final thesis.
+
+此外, 格式部分并不符合要求\footnote{
+之后会将本文内容誊抄到 GitHub 上师兄师姐制作的学校本科生论文模板中.
+}
+, 语言部分也较为粗糙, 不够精炼, 甚至可能有打错的部分. 但作为中期报告以及
+论文初稿的核心内容 (除去上面 \Tigrisd 中的部分) 来说应当是充分的.
+
+%\bibliographystyle{abbrv}
 % \bibliography{references}  % need to put bibtex references in references.bib
 \end{document}

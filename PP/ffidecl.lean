@@ -18,5 +18,3 @@
 opaque installSigintPipe : IO Int32
 @[extern "lean_read_fd_byte"]
 opaque readFdByte : @&Int32 -> IO Int32
-
-example : a = a := rfl
