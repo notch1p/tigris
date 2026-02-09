@@ -3,6 +3,7 @@ examples/typeclass*.tig linguist-language=haskell
 examples/* -linguist-vendored
 runtime.lean -linguist-vendored
 docs/midterm/report.tex -linguist-vendored
+docs/midterm/report-1-mng.tex -linguist-vendored
 docs/midterm/report.ott.tex -linguist-vendored
 docs/midterm/tigrisd.tex -linguist-vendored
 docs/midterm/listproc.sty -linguist-vendored
