@@ -380,8 +380,8 @@ parser combinator 的句法分析实现方式，我们主要对两者的不同�
 积类型和箭头类型，我们有以下优先级（越高者越先）与结合性表，见\autoref{tab:tyoperator-prec}。
 \paragraph*{类型变量}\label{fn:HKT} 亦称 TV（type variables），是小写字母开头的标识符。类型变量的\emph{类型}，
 即\emph{类型的类型}（kind）是由用户显式提供的，因为目前我们并未实现 TV 的类型推断（kind inference）。
-一个记作 \((\alpha : n)\) 的 TV 有类型 \(\mathsf{Type}\to \mathsf{Type}\)，否则默认为 $\mathsf{Type}$.
-但因目前我们不允许柯里化的高阶类型存在，\((\alpha : 2)\) 实际上是 \(\mathsf{Type}\times\mathsf{Type}\to\mathsf{Type}\).
+一个记作 \((\alpha : n)\) 的 TV 有类型 \(\mathbf{Type}\to \mathbf{Type}\)，否则默认为 $\mathbf{Type}$.
+但因目前我们不允许柯里化的高阶类型存在，\((\alpha : 2)\) 实际上是 \(\mathbf{Type}\times\mathbf{Type}\to\mathbf{Type}\).
 因而在称谓上，我们应当使用\emph{元数}（arity）一词而非 kind. 在数据类型定义中，TV 必须是被约束（bound）的，其约束位置可以是
 类型构造子的参数位置，或是右手侧的全称量词 $\forall$（forall）中。
 读者应当注意到，类型表达式的合法性检查（validity checking）基本在句法分析阶段完成，也就是说，若存在某一 TV 是自由变量（free variable），
@@ -893,7 +893,7 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 
 不仅如此，对于前缀/后缀算符而言，我们可以把一个字符串同时声明为这两种类型的运算符，例如
 （其中 \texttt{fact} 是阶乘，而 \texttt{not} 是取反）：
-\begin{minted}{haskell}
+\begin{minted}{lean4}
   postfix 65 "!" => fact ;; prefix 65 "!" => not
   let main = (50!, !true)
 \end{minted}
@@ -2262,254 +2262,127 @@ $\mu$ 则是 \texttt{M} 单子，专门用于降级过程，有定义
 之所以使用 CPS 风格实现递归，是根据上述的同像性我们能够轻易的将变量名从元语言（即 Lean）传播到对象语言（即 IR）中。
 
 \paragraph{增量式 API 与 \emph{Tigrisi} IR 解释器} 是本项目编程子系统的一个试验性扩展。
-While the \emph{Tigrisl} compiler compiles programs in one go, it is rather
-inefficient for REPLs as they have different use logic: users of a REPL session
-usually enter a program \emph{piece by piece}, while expecting immediate result after entering
-them. A naive REPL might track everything they entered since the start of REPL then \emph{re-compiles}
-it per user entrance, which, for multi-stages language implementations with several passes is horribly
-inefficient. Thus, the incremental APIs are born, which lives in the \texttt{Incremental} namespace.
+虽然 \Tigris 的编译器 \texttt{tigrisl} 能一遍直接完成从源代码到可执行程序的产生，这样的编译管线却
+不适用于 REPL，因为两者在编译过程上有着不同的使用逻辑和性能要求：用户使用交互式的 REPL 时通常
+\emph{一步步地}输入程序，但又希望在每一次输入后能立马得到当前的结果。一个最直接的 REPL 可能只是
+缓存用户到目前为止输入的所有程序，并在每一次输入之后重新编译\emph{整个程序}——对于具有多阶段的
+语言实现来说效率及其低下，尤其是当程序较大时，越往后的输入就需越多无用的重新编译。因而，我们编写了
+一套试验性质的增量 API，用于\emph{增量编译}：用户输入一部分程序，我们编译一部分；从不重新编译已经
+编译过的部分。
 
-When implementing the incremental APIs, we not only have to track every
-state \footnote{and temporary states that is dropped
-after the compilation of a program, but should be saved in this case.}, but also
-the use of it inside \texttt{\{ftransform,lift,opt\}.lean} (is it intertwined, etc):
-\begin{minted}{lean4}
-  structure LoweringState where
-    gensym : Nat
-    env    : Env
-    ctors  : Std.HashMap String Nat
-    arity  : Std.HashMap String Nat
-  deriving Inhabited
-\end{minted}
-Interested users shall refer to them in the bottoms of \texttt{ftransform.lean} and \texttt{lift.lean}. This
-is considered highly experimental and unstable since it is not thoroughly tested.
+实现增量编译，重点在于记录编译器每个阶段出现的状态——将用户上一次输入时的\emph{所有状态}，
+传递给下一次输入的编译过程即可
+——难点在于，虽然纯函数式编程通过单子或最基本的函数传参实现
+显式的状态管理与可预见的副作用管理，各个编译阶段仍然存在不少的中间（临时）状态，这些状态并不通过函数返回、
+且在对应编译过程结束后消失，造成 API 设计的困难。因为这套 API 并未经过全面测试且实现基本，
+我们认为其是试验性的。由这一套 API 为原点，我们开发了 \texttt{tigrisi} IR 解释器，以 \Lambdair
+作为解释对象。
 
-\subparagraph{the \emph{Tigrisi} IR interpreter} targets the \Lambdair and
-can run independently regardless of with incremental APIs or not. Though in the other case it runs much slower due to worse compilation performance.
-The interpreter itself is stable, but due to its partial dependency on the incremental APIs,
-we still consider it experimental.
+\subparagraph{\emph{Tigrisi} 解释器} 严格说来，可以独立于增量 API 运行。
+虽然启用增量 API 能带来更好的编译期性能——解释器本身是稳定的。下面介绍这一解释器的设计。
 
-Interpreters, just like virtual machines, have \texttt{states},
-such as the OCaml VM that runs the bytecode produced by \texttt{ocamlc}. Same is applied to \Tigris. Largely,
-these states are introduced by bindings, whether local or global, or functional.
-In this case, the state is a \emph{mapping}, or \emph{table} (e.g. a Hashmap or Treemap).
-An important design aspect to consider is to make the state as lightweight as possible, since allocating them,
-projecting/modifying them consumes time and space.
-In our implementation, we define immediate values and environments as:
+解释器，如同虚拟机（virtual machine）或物理机一般，存在\emph{状态}。例如 OCaml VM 能够运行 \texttt{ocamlc}
+输出的字节码，是因为其存在一全局状态。广泛地说，需要这些状态是因为绝大多数编程语言都存在绑定这一语法结构，无论全局/本地，
+或是函数式与否。因而，状态本质上是一个映射，或键值对构成的表（例如哈希表或树表）。设计解释器一个重要的性能考量是想办法
+将这些状态做得\emph{轻量}。作为数据结构来说，分配/投影/修改这些状态都需要时间与空间。
 
-\begin{minted}{lean4}
-  inductive Val where
-    | unit
-    | int (i : Int)
-    | bool (b : Bool)
-    | str (s : String)
-    | pair (p q : Val)
-    | ctor (tag : Name) (fields : Array Val)
-    | code (pointer : Name)
-  deriving Repr, BEq, Inhabited
+我们定义解释器的状态为：由哈希表编码的，字符串（变量）到立即数的映射。
+而此处的立即数则包含函数指针、所有的常量、
+元组、构造值且后两种结构亦只能由立即数组成。
+\emph{Tigrisi} 解释器的状态有三种，分别记录本地绑定、全局绑定与函数绑定。
 
-abbrev Env    := Std.HashMap Name Val       -- local binding table
-abbrev FunTab := Std.HashMap Name LFun      -- Function table
-abbrev GlobalEnv := Std.HashMap Name Val    -- global binding table
-\end{minted}
+当遇到一个 \texttt{let*}\footnote{
+  此处的 \texttt{*} 指通配符，可以匹配空字符串、$\iota$ 或 $\omega$，与 \Lambdair pretty-printed 的
+  语法一致。和 LISP 或 OCaml 的序列绑定没有任何关系。
+}，其携带的绑定会按类型插入到上述任一表中。此外，解释器还运行在 \texttt{EIO}（带 I/O 与错误处理副作用的单子）中，
+且支持多线程：求值过程独立运行于一个线程中，这使得用户能够通过快捷键 \texttt{<C-c>} 来终止
+当前求值线程。在 Lean 中线程的终止是需要合作实现的，并非只要用户请求，线程就一定会被杀死，需要线程本身作出回应。
+我们通过在解释器的热点分支之前做线程终止检测，以回应来自用户的线程终止信号，并在收到信号的同时跳出函数，实现
+线程的正常终止。而用户之所以能够通过 CLI 前端按快捷键终止线程，是我们通过 Lean 的 C FFI 初始化
+POSIX SIGINT 管道，捕捉用户发出的中断信号，并提供管道的读写方法实现的。同时，我们还在 Lean 侧设置
+一\emph{哨兵线程}，不断地读取管道值，以检测信号是否发出，如果发出则终止。
 
-On encountering a \texttt{let*}\footnote{
-  \texttt{*} is wildcard, matching empty string, $\iota$ or $\omega$, as in the pretty-printed syntax of \Lambdair.
-  It has nothing to do with sequential application from LISP or OCaml.
-}, relevant bindings are inserted to one of the three tables defined above.
-
-\emph{Tigrisi} runs in \texttt{EIO}\footnote{
-  that is, \texttt{IO} with exception handling.
-}
-and is \emph{multi-threaded}: evaluation runs in a separate thread.
-This way it can respond to the keystroke \texttt{<C-c>} from user,
-on encountering which the REPL thread is terminated. Termination of threads is \emph{cooperative}: A joint effort of the interpreter, through \texttt{checkInterrupt} up front at crucial branch (\texttt{eval*} functions):
 \begin{Verbatim}[numbers=left]
-  /-! leval.lean -/
-  private def checkInterrupt : EIO TypingError Unit :=
-    IO.checkCanceled >>= fun
-    | true  => throw .Interrupted
-    | false => return ()
-
-  /-! ffidecl.lean -/
-  @[extern "lean_sigint_pipe"]
-  opaque installSigintPipe : IO Int32
-  @[extern "lean_read_fd_byte"]
-  opaque readFdByte : @&Int32 -> IO Int32
-
-  /-! Tigrisi.lean -/
-  -- (.. within main ..)
-  let stdin <- getStdin
-  let replST <- mkRef LApp.initREPL
-  let EVS : IO.Ref EvalState <- mkRef none
-
-  let fd <- installSigintPipe
-
-  if fd >= 0 then
-    discard $ asTask (prio := .dedicated) do
-      repeat do
-        let r <- readFdByte fd
-        if r <= 0 then pure ()
-        else
-          if let some t <- EVS.get then
-            IO.cancel t
-          else pure ()
-  -- (..)
-\end{Verbatim}
-
-with the help of CLI frontend (above) and Lean's C FFI interface (we omit the win32 implementation):\footnote{
-  this approach is adopted from the deprecated REPL \texttt{tigris} (which is a subset of the current \Tigris).
-}
-\begin{minted}[numbers=left]{c}
-  typedef lean_obj_res OBJRES;
-  /* (.. win32 impl ..) */
-  static int32_t sig_pipe[2] = {-1, -1};
+  typedef lean_obj_res OBJRES; static int32_t sig_pipe[2] = {-1, -1};
 
   static void sigint_handler() {
-    // write is async-signal-safe
     char b = 1;
-    if (sig_pipe[1] >= 0) {
-      (void)!write(sig_pipe[1], &b, 1);
-    }
+    if (sig_pipe[1] >= 0) (void)!write(sig_pipe[1], &b, 1);
   }
-
   LEAN_EXPORT OBJRES lean_sigint_pipe() {
-    if (sig_pipe[0] != -1)
-      return lean_io_result_mk_ok(lean_box(sig_pipe[0])); // already installed
-    if (pipe(sig_pipe) != 0)
-      return lean_mk_io_user_error(
-          lean_mk_string("sigint pipe installation failed"));
     struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = sigint_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART; // restart interrupted syscalls
+    if (sig_pipe[0] != -1) return lean_io_result_mk_ok(lean_box(sig_pipe[0]));
+    if (pipe(sig_pipe) != 0) return lean_mk_io_user_error(lean_mk_string(/* ..错误信息.. */));
+    memset(&sa, 0, sizeof(sa)); sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask); sa.sa_flags = SA_RESTART;
     if (sigaction(SIGINT, &sa, NULL) != 0) {
-      close(sig_pipe[0]);
-      close(sig_pipe[1]);
+      close(sig_pipe[0]); close(sig_pipe[1]);
       sig_pipe[0] = sig_pipe[1] = -1;
-      return lean_mk_io_user_error(lean_mk_string("call to sigaction() failed"));
+      return lean_mk_io_user_error(lean_mk_string(/* ..错误信息.. */));
     }
     return lean_io_result_mk_ok(lean_box(sig_pipe[0]));
   }
+\end{Verbatim}
 
-  LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t fd) {
-    char b;
-    for (;;) {
-      ssize_t r = read(fd, &b, 1);
-      if (r == 1)
-        return lean_io_result_mk_ok(lean_box(1));
-      if (r == 0)
-        return lean_io_result_mk_ok(lean_box(0)); // EOF
-      if (errno == EINTR)
-        continue; // retry
-      return lean_mk_io_user_error(lean_mk_string("read() failed"));
-    }
-  }
-\end{minted}
-
-The CLI frontend is responsible for launching evaluation threads \texttt{EVS} as well as a \emph{sentinel thread} that
-keeps reading \underline{the sigint pipe}, on detecting cancel signals from the user, signals \texttt{EVS} to exit,
-which is then responded by \texttt{checkInterrupted} within the thread, who exits \emph{gracefully} i.e. through normal returns. \texttt{EVS} is a threadlocal mutable state \texttt{IO.Ref EvalState} where \texttt{EvalState} is defined as
+而这整套机制，由状态 \texttt{EvalState} 记录，
 \begin{minted}{lean4}
-  abbrev EvalState := Option
-                    $ Task
-                    $ Except Error
-                    $ LApp.REPLState × LInterpreter.Val × Scheme
+abbrev EvalState := Option $ Task $ Except Error $ LApp.REPLState × LInterpreter.Val × Scheme
 \end{minted}
-where, \texttt{Task} is a \underline{Lean primitive representing asynchronous computation}, similar to \emph{coroutines}, such as Scala's \texttt{Future}, Javascript's \texttt{Promise} and Rust's \texttt{JoinHandle}. The POSIX sigint pipe can only be read if it is installed. Implementation of this pipe, its handler and reader
-is in C, through the FFI to be called in Lean, as shown above.
+其中 \texttt{Task} 是 Lean 原生类型，表示异步计算，与协程（coroutine）相仿，例如 Scala 的 \texttt{Future}，JS 的 \texttt{Promise} 和 Rust 的 \texttt{JoinHandle}.
+总的来说，\emph{Tigrisi} 的实现是多方努力的成果：Lean 侧与 C 侧通过 FFI 实现中断机制的底层；
+REPL 前端与解释器协作实现用户输入、编译器前端处理与降级、解释器求值与输出、出错中断、手动中断这一循环。
 
-Now, if some computation diverges, e.g., \mintinline{ocaml}|let rec loop x = loop x in loop ()|, users can press
-\texttt{<C-c>} to interrupt a thread: \autoref{img:term1}. Though, users should note that there is a caveat: an tigris
-REPL launched through Lake\footnote{Lean's build system} has \texttt{broken sigint pipe}
-where \texttt{<C-c>} just terminates the program,
-instead, users should launch the program directly,
-which, should be the default behavior if not building from source.
+现在，若某程序不停机或运算时间过长，例如 \mintinline{ocaml}|let rec loop x = loop x in loop ()|，用户
+即可通过 \texttt{<C-c>} 终止对应线程，如\autoref{img:term1}所展示的那样。
+
 \begin{figure}
   \centering
   \includegraphics[width=0.5\linewidth]{assets/term1}
   \caption{A user interrupting a computation}\label{img:term1}
 \end{figure}
 
-The \emph{Tigrisi} interpreter can be invoked with \texttt{interpretL} (w/o incr. APIs) or \texttt{interpretI}, of which the former is stable and is used to quickly test the lowering stage to see if there is any issue.
+\emph{Tigrisi} 作为一个整体是试验性的，但用户可以自由选择是否使用增量 API 作为内部实现。其主要功用并非
+运行程序，而是方便开发者，即笔者，能够快速判断编译器的 IR 降级阶段是否实现出错。
 
-\subsection{CPS transformation}
-\paragraph{CPS transformation} refers to the transformation of \Lambdair into its CPS counterparts where
+\subsection{CPS 化}
+\paragraph{CPS 变换} 亦称 CPS 化，指将 \Lambdair 转变为 CPS 风格 IR 的变换过程。以我们的实现为例，
+CPS 变换后的 IR 具备以下特征：
 \begin{itemize}
-  \item every function takes an explicit continuation parameter $k$,
-  \item function calls pass results to continuations rather than returning,
-  \item continuations are \emph{not} first-class: they are either
-    locally-bound labels or the special parameter $k$,
-  \item ANF is maintained.
+  \item 所有函数接受一显式续点参数 $k$；
+  \item 函数调用返回的结果应当传给续点，而非直接返回；
+  \item 续点\emph{并非}头等公民，必须通过本地绑定产生，或上述的续点参数 $k$. 任一函数
+    从不能独立返回续点本身；
+  \item 前述的 ANF 特征仍然保留。
 \end{itemize}
-The use of CPS, as explained in the section about tailcall, is to transform non-tailrec functions.
-This is rather specific as in general, mechanized CPS is used to \underline{encode complex control flow},
-similar to a \texttt{longjmp} and CPS transformation is to \underline{make control flow explicit}, at the expense of
-increased heap usage, as continuations are usually lambda abstraction\footnote{
-  which usually is allocated in heap. Though most compilers may force stack allocation
-  if there is an optimization window, that defeats the purpose of using CPS to save stack space if it is
-  too naive.
-}
-them selves, being passed around together
-with function parameters. The intuition is that, CPS trades heap space for stack space,
-by allocating and \emph{compositing} continuations, which, can be thought as
-\begin{center}
-  \underline{an explicit call stack (that replaces the actual call stack)
-  which is unwinded when applied.}
-\end{center}
 
-The CPS IR is similar to \Lambdair, defined as (\texttt{CName} is \texttt{Name})
-\begin{minted}[numbers=left]{lean4}
-  inductive CRhs where
-    | prim     (op : PrimOp) (args : Array CName)
-    | proj     (src : CName) (idx : Nat)
-    | mkPair   (a b : CName)
-    | mkConstr (tag : Name) (fields : Array CName)
-    | isConstr (src : CName) (tag : Name) (arity : Nat)
-    | const    (k : Const)
-    | alias    (y : CName)   -- x = y
-  deriving Repr, Inhabited, BEq
+在尾调用优化一节我们曾提到过 CPS 可以用于将非尾调用函数变换成尾调用——这实际上是一个很具体且片面的说法。
+全面地说，机械化（即编译器所作的，而非程序员手动的）的 CPS 变换的目的是\underline{编码复杂控制流}，
+类似 C 语言的 \texttt{longjmp}. CPS 变换能够以堆空间为代价，显式化控制流交接，因为续点通常
+以 lambda 编码\footnote{
+  后者主要在堆上分配。虽然大多数编译器也会将其优化成栈上分配，如果条件允许——虽然这么做
+  相当于抵消了用 CPS 来节约栈空间的目的。
+}，并与其他参数一起在函数间相互传递。一言以蔽之，
+CPS 通过在堆上复合续点，以堆空间换取栈空间。而复合而成的“大续点”则可以看作一个能够
+替代调用栈但位于堆上的\emph{续点栈}，后者在被应用时会（在思想上）不断出栈，释放堆空间。
 
-  mutual
-  inductive CTail where
-    | appFun      (f : CName) (payload : CName) (k : CName)
-    | appKont     (k : CName) (value : CName)
-    | ite         (condVar : CName) (tBranch eBranch : CExpr)
-    | switchConst (scrut : CName)
-                  (cases : Array (Const × CExpr))
-                  (default? : Option CExpr)
-    | switchCtor  (scrut : CName)
-                  (cases : Array (Name × Nat × CExpr))
-                  (default? : Option CExpr)
-    | halt        (value : CName)
-    | matchFail   (pat : Array Name)
-  deriving Repr, Inhabited, BEq
+CPS IR 在定义上与 \Lambdair 相仿，但为了满足续点传递风格的需求新增、修改了一些语言构件。
+在尾调用 \texttt{CTail} 中，我们增加新的构造子用于表示 CPS 风格的函数应用（\texttt{appFun}），
+与续点应用（\texttt{appKont}），后者在 Reynolds 的论文中又称为 APPLY 操作；统一了
+立即数与右手侧，统称 \texttt{CRhs}；并在表达式 \texttt{CExpr} 中统一了不同种类的 Let-绑定，
+同时新增了专门用于绑定续点的 \texttt{letKont} 构造子。而相较于 \texttt{LFun}，\texttt{CFun}
+用于表示 CPS 下的函数，自然也新增了一个栏位 \texttt{kontParam} 用于记录续点参数 $k$.
+此外，我们还引入一个新的指令 \texttt{halt}，但并不常用——因为在 SBCL 下程序运行完不会终止，
+控制权交移 SBCL，我们可以在此基础上继续编写 LISP 代码并使用 \Tigris 程序的计算结果。
 
-  /-- CPS expression in ANF: pure let1 / letKont / local fun groups, ending with a tail. -/
-  inductive CExpr where
-    | let1    (x : CName) (rhs : CRhs) (body : CExpr)
-    | letKont (kid : CName) (param : CName) (kBody : CExpr) (body : CExpr)
-    | letRec  (funs : Array CFun) (body : CExpr)
-    | tail    (t : CTail)
-  deriving Repr, Inhabited, BEq
+CPS 变换是 IR 降级的最后一步，此后将由 SBCL 后端直接降级到 Common Lisp.
+在不考虑后端的情况下，编译产物的程序的语义与 CPS IR 的语义应该一致。
+为了能够使用 CPS IR 考察 \Tigris 的操作性语义，
+我们下面给出 CPS 变换的指称语义\footnote{
+  对于不熟悉 PLT 的用户来说，可以将这一步看成是 CPS 变换的变换法则，指导着
+  具体实现。
+}，与 CPS IR 自身的指称语义。
 
-  structure CFun where
-    fid          : CName
-    payloadParam : CName
-    kontParam    : CName
-    body         : CExpr
-  deriving Repr, Inhabited, BEq
-  end
-\end{minted}
-
-The CPS transformation is the last step of the IR lowering process, which, is further lowered by
-the SBCL backend to Common Lisp. Semantics of the actual program should be similar to that of CPS,
-provided if there is not any backend inconsistency\footnote{
-  which, unfortunately, remains an assumption because \Tigris is not formally verified. Note that, the \texttt{M} monad is continued to use for this transformation.
-}
-
-First, we present the formal grammar of \Lambdair, and its CPS target:
+如同第二部分介绍类型系统一样，首先我们给出 \Lambdair、CPS IR 的形式文法。
 
 \begingroup\allowdisplaybreaks
 \begin{align*}
@@ -2539,8 +2412,8 @@ First, we present the formal grammar of \Lambdair, and its CPS target:
   &\mid \mathsf{tail}\, \tau_c
 \end{align*}\endgroup
 
-We define the \emph{domain of semantics} (i.e. datatypes) as:\footnote{
-  think of $(+)$ and $(\times)$ as coproduct and product, respectively.
+并定义语义域（domain of semantics，可看作数据类型）为，\footnote{
+  $(+)$ 和 $(\times)$ 即分别为上文介绍过的 categorical product/coproduct.
 }
 
 \begin{align*}
@@ -2551,17 +2424,13 @@ We define the \emph{domain of semantics} (i.e. datatypes) as:\footnote{
   \mathsf{Ans} &= \Val + \mathsf{Error}
 \end{align*}
 
-The transformation $\mathcal{C} :  \mathsf{LExpr} \to \mathsf{CExpr}$ is defined
-with respect to a \emph{current continuation} $k$, which is either a continuation
-variable or should be the identity continuation $\mathrm{id}_\mathsf{Ans}$\footnote{
-  The standard \emph{driver} in SBCL backend is this.
-}
-for top-level expressions.
+变换法则 $\mathcal{C} :  \mathsf{LExpr} \to \mathsf{CExpr}$ 是在给定\emph{当前续点} $k$ 下
+定义的，$k$ 应当是一个指代续点的变量，或恒等续点（函数）$\mathrm{id}_\mathsf{Ans}$，
+后者仅限于顶层，且为 SBCL 后端的标准入口点。
 
-Below, we present the denotational semantics for this transformation. Note that $C^k_{[\bullet]}$ represents a
-a transformation with bound continuation $k$, with a hole denoting an element of the input domain $[\bullet]$, which is one of
-$v, r, s, \tau, e$; And $C^k_s\sem{\bullet}(e_c)$ threads $e_c$. We simplify \texttt{let*} and \texttt{switch*} to
-just one binding/one discriminant.
+下面，我们给出这一变换的指称语义。注意 $C^k_{[\bullet]}$ 表示 $k$ 绑定的、挖空的变换法则，下标的空
+表示输入域元素 $[\bullet]$，为以下之一：$v, r, s, \tau, e$，而 $C^k_s\sem{\bullet}(e_c)$ 携带（thread）$e_c$.
+此外，我们简单化 \texttt{let*}、\texttt{switch*} 为单绑定/匹配对象，可类推多个。
 
 \begingroup
 \allowdisplaybreaks
@@ -2574,7 +2443,7 @@ just one binding/one discriminant.
   \mathcal{C}_r\sem{\mkpair(x, y)} &= \mkpair(x, y) \\
   \mathcal{C}_r\sem{\mkctor(t, \bar{x})} &= \mkctor(t, \bar{x}) \\
   \mathcal{C}_r\sem{\isctor(x, t, n)} &= \isctor(x, t, n) \\
-  \mathcal{C}_r\sem{f(a)} &= \text{(see call transformation below)}\\
+  \mathcal{C}_r\sem{f(a)} &= \text{（见下方函数调用变换）}\\
   \mathcal{C}_\tau^k\sem{\mathbf{ret}\, x} &= \mathsf{tail}\, k(x) \tag{Tails} \\[6pt]
   \mathcal{C}_\tau^k\sem{f(a)^{\mathsf{T}}} &= \mathsf{tail}\, f(a, k) \\[6pt]
   \mathcal{C}_\tau^k\sem{\mathbf{if}\, c\, \mathbf{then}\, e_1\, \mathbf{else}\, e_2} &=
@@ -2605,20 +2474,18 @@ just one binding/one discriminant.
 \end{align*}
 \endgroup
 
-Finally, we present the denotational semantics of CPS IR \emph{itself}. Just as above, the semantics is
-given by
+最后，我们给出 CPS IR 本身的指称语义，由以下两变换给定：
 \begin{align*}
   \mathcal{E} &: (\mathsf{CExpr}\oplus\mathsf{CTail}) \to \Env \to \FunTab \to \KontTab \to (\Val \to \mathsf{Ans}) \to \mathsf{Ans}\\
   \mathcal{R} &: \mathsf{CExpr}\to\Env\to\Val
 \end{align*}
-where the fifth parameter i.e. of type $\Val\to\Ans$ is the \emph{outermost continuation},
-or the \emph{meta-continuation}, denoted $\mu$,
-which represents the toplevel continuation that is $\mathrm{id}_\mathsf{Ans}$ or $\halt$.
-We write $\rho[n\mapsto v]$ to denote the insertion\footnote{
-  insertion follows the standard behavior: if the key $m$ exists, its value is replaced by $v$.
-}
-of mapping $n\mapsto v$ to $\rho$; Readers should acknowledge that $\rho,n,v$ are metavariables.
-Note that $\mathcal{E}$ takes both tails and expressions.
+其中第五个参数 $\Val\to\Ans$ 是外层（顶层）续点 $\mu$，亦称元续点（metacontinuation），表示
+能够使该续点层级的函数返回（无论有多深）。
+
+我们记 $\rho[n\mapsto v]$ 为绑定（映射）$n\mapsto v$ 到 $\rho$ 的插入操作，
+具有如下语义：若键 $m$ 存在及其对应值存在，用值 $v$ 替换之。注意此处所用 $\rho,n,v$ 都是元变量；
+$\mathcal{E}$ 接受一 sum/coproduct type $\mathsf{CExpr}\oplus\mathsf{CTail}$，
+表示这一参数既可以是尾调用 $\mathsf{CExpr}$，也可以是表达式 $\mathsf{CTail}$.
 
 \begingroup\allowdisplaybreaks
 \begin{align*}
@@ -2641,7 +2508,7 @@ Note that $\mathcal{E}$ takes both tails and expressions.
   \end{cases}\\
   \text{where}\quad\Env' &= \{p_f \mapsto \Env(p),\, k_f \mapsto \Env(k)\} \\
   \FunTab' &= \FunTab \\
-  \KontTab' &= \varnothing \quad \text{(local continuations are scoped)}\\
+  \KontTab' &= \varnothing \quad \text{（本地绑定的续点不逸出）}\\
   \footnotemark\mathcal{E}\sem{\kappa(v)}\Env\FunTab\KontTab\mu &=
   \begin{cases}
     \mathcal{E}\sem{e_\kappa}\Env[p_\kappa \mapsto \Env(v)]\FunTab\KontTab\mu
@@ -2685,90 +2552,81 @@ Note that $\mathcal{E}$ takes both tails and expressions.
 \endgroup
 
 \addtocounter{footnote}{-2}
-\footnotetext{where $\delta$ is the interpretation of primitive operations and $\pi_i$ is projection.}
+\footnotetext{$\delta$ 指原生操作；$\pi_i$ 指投影。}
 \stepcounter{footnote}
-\footnotetext{The second case handles the distinguished continuation parameter: applying it
-invokes the toplevel continuation $mu$, effectively returning from the current function.}
+\footnotetext{情况二处理顶层续点 $mu$，相当于从当前函数返回。}
 \stepcounter{footnote}
-\footnotetext{Note that continuations are \emph{not} values in the environment; they are stored
-in a separate continuation table $\KontTab$, \underline{reflecting that they are not first-class.}}
+\footnotetext{注意续点自身不构成值（是二等公民）；续点由单独的续点表 $\KontTab$ 记录。}
 
-Experienced readers should immediately notice some key properties based on the definition of
-this CPS IR, nevertheless, we list them as remarks below:
+受过训练的读者可以立马反应出上述 CPS IR 的一些特征，我们列在下面。
 
-\begin{remark}[Non-first class continuations] refer
-  to continuations appear only in specific syntactic positions, as listed below:
+\begin{remark}[二等公民续点] 指在本 IR 中续点只能出现在下列语法位置
   \begin{enumerate}
-    \item As the second argument to function calls:  $f(p, k)$
-    \item As the target of continuation application: $\kappa(v)$
-    \item Bound by $\letK$: $\letK\, \kappa(p) = e\, \mathbf{in}\, \ldots$
+    \item 在函数调用的第二个参数上 $f(p, k)$；
+    \item 在续点应用中 $\kappa(v)$；
+    \item 由 $\letK$: $\letK\, \kappa(p) = e\, \mathbf{in}\, \ldots$ 绑定
   \end{enumerate}
-  This is enforced by the definition (abstract syntax) of CPS IR, where there is
-  no \texttt{CRhs} that captures a continuation as a value. Some users might be disappointed
-  as such IR could not support advanced control primitives such as $\mathsf{call/cc}$ or
-  $\mathsf{shift}$/$\mathsf{reset}$ from delimited continuation. Although such primitives can be more
-  efficiently treated by the compiler, this form of CPS really is not widely used and can be substituted
-  for more boilerplate code. Even If one must use it,
-  we suggest an \emph{internalized} version \texttt{Cont} which is more local with
-  good maintainability\footnote{since CPS itself can be convoluted and counterintuitive of which
-  the incautious use is just as bad as \texttt{goto}.}
-  through the \texttt{Monad} interface, similar to the one from \texttt{Control.Monad.Cont} in GHC.
-  Refer to testcase \texttt{examples/cont.tig} for an example.
+  这一性质由 CPS IR 的定义保证，因为 \texttt{CRhs} 根本不含续点。有一些读者可能感到失望，
+  因为他们发现这样的 IR 不支持更高端的原生控制流操作，例如著名的 $\mathsf{call/cc}$ 和 delimited
+  continuation 中的 $\mathsf{shift}$/$\mathsf{reset}$. 虽然必须承认将这些操作原生化以允许
+  编译器对待之能获得更好的运行时性能，但 CPS 本身并非常用的编程风格，且以程序员心智负担代价换来的
+  表达力是否值得亦是值得探讨的问题。我们建议，即便必须使用 CPS，也应该考虑 \texttt{Monad} 类型类/接口提供的\emph{内化}（internalized）
+  版本的 \texttt{Cont} 单子，最小化 CPS 代码在全局产生的影响，并提供更好的可维护性\footnote{
+    毕竟从思考难度上考虑，CPS 并不直观，且滥用之与 \texttt{goto} 无异。
+  }，参照 GHC 的 \texttt{Control.Monad.Cont}.
 \end{remark}
 
-\begin{remark}[Guaranteed tailcall] refers to the fact that all function calls in CPS are in tail position.
+\begin{remark}[尾调用保证] 指 CPS IR 中的任一函数调用都在尾调用位置。
   \[
-    \mathcal{E}\sem{f(p, k)}\ldots\ \text{directly invokes}\ f\ \text{without building stack frames}
+    \mathcal{E}\sem{f(p, k)}\ldots\ \text{直接调用}\ f\ \text{而不必压栈}
   \]
-  Non-tail calls in the source are transformed via $\letK$:
+  在 \Lambdair 中的非尾调用是通过 $\letK$ 编码的：
   \[
     \letone x = f(a)\, \mathbf{in}\, e
     \quad\leadsto\quad
     \letK\, \kappa(x) = \mathcal{C}^k\sem{e}\, \mathbf{in}\, \mathsf{tail}\, f(a, \kappa)
   \]
-  where the continuation $\kappa$ captures the \underline{rest of the computation} $e$.
+  其中续点 $\kappa$ 捕捉了\underline{程序的剩余部分} $e$.
 \end{remark}
 
-\begin{remark}[Closure representation after CPS]
-  Previously, we discussed the encoding and calling convention of function objects, this, is
-  largely unchanged after CPS:
-  \[
+\begin{remark}[CPS 变换后的闭包表示]
+  前文我们曾介绍过函数对象的编码与调用规范——这些标准在 CPS IR 中几乎一致。考虑
+  \(
     \mathbf{C}\llbracket \mathit{ptr}, \Gamma \rrbracket
-  \]
-  where $\Gamma$ is the captured environment.  In CPS, function calls become:
+  \)，
+  在 CPS IR 中，函数调用变为（$p$ 仍然是前文的 payload）
   \[
-    \mathcal{E}\sem{f(p, k)} = \ldots\ \text{where}\ f\ \text{is a code pointer}
+    \mathcal{E}\sem{f(p, k)} = \ldots\ \text{其中}\ f\ \text{是一函数指针}.
   \]
-  The payload $p$ is a pair $(\alpha, \Gamma)$ where $\alpha$ contains the user arguments.
 \end{remark}
 
-\begin{remark}[CPS Module semantics]
-  A CPS module consists of:
+虽然 \Tigris 没有提供任何的模块管理功能，但其已经具备一些先决条件，譬如 CPS 变换模块中已经定义了\emph{模块}——
+任一 \Tigris 源文件自动构成一个模块。
+
+\begin{remark}[CPS IR 模块语义]
+  CPS IR 的一个模块包含
   \begin{align*}
     M &= (\bar{F}, F_{\mathit{main}}) \\
     F &= (f, p, k, e)
   \end{align*}
-
-  The semantics of a module is:
+  其语义为
   \[
     \mathcal{M}\sem{(\bar{F}, F_{\mathit{main}})} =
     \mathcal{E}\sem{e_{\mathit{main}}}\Env_0\FunTab_0\varnothing\,\mathrm{id}_\mathsf{Ans}
   \]
-  where:
+  其中
   \begin{align*}
     \FunTab_0 &= \{f_i \mapsto (p_i, k_i, e_i) \mid F_i\ \mathbf{of}\ (f_i, p_i, k_i, \cdot) \in \bar{F}\} \cup \{f_{\mathit{main}} \mapsto (p_m, k_m, e_m)\} \\
     \Env_0 &= \{p_m \mapsto (\unit, \mathbf{E}\llbracket\rrbracket)\}
   \end{align*}
 
-  The initial payload is $(((), ()), \mathbf{E}\llbracket\rrbracket)$\footnote{
-    Recall, for function with parameter $a$ of arity 1, we construct $(a, ())$ even if
-    $a = ()$.
-  }. Though, this behavior can be changed in the backend by modifying the driver wrapper code to pass
-  whatever value to \texttt{main} in Common Lisp.
+  默认的初始 payload，即 main 函数的参数为 $(((), ()), \mathbf{E}\llbracket\rrbracket)$\footnote{
+    回忆，对参数为 $a$ 的 1-元函数，我们构造 $(a, ())$ 即便 $a = ()$.
+  }，这一默认值可以轻易修改。
 \end{remark}
 
-\subsection{Backend: Common Lisp (SBCL) \& FFI}\label{sect:ffi}
-Before proceeding further, let us recap all the stages in the implementation of Tigris, through datatypes:
+\subsection{后端: Common Lisp (SBCL) 与 FFI}\label{sect:ffi}
+在进行这一部分的介绍之前，我们不妨通过对应的数据类型先回忆一下 \Tigris 实现的所有阶段。
 
 \begin{align*}
   \text{\Tigris source}&
@@ -2787,118 +2645,80 @@ Before proceeding further, let us recap all the stages in the implementation of 
   \quad\text{\textcircled{\footnotesize 6}}:\text{SBCL codegen}
 \end{align*}
 
-\paragraph{The SBCL backend} simply translate CPS IR to Common Lisp source.
-Since SBCL is functional and dynamically typed, specialization or most type information is not needed,
-continuations are created as-is and
-\emph{defunctionalization} is not attempted.
-The reason
-for choosing Common Lisp
-instead of other languages such as JS or Go is because the author considers himself a LISPer,
-who enjoys using macros.
+\paragraph{SBCL 后端} 直接将 CPS IR 翻译为 Common Lisp 目标代码。由于 SBCL 是动态类型的函数式语言，
+且 LISP 家族的语言可以直接看作无类型\lambdacalc（untyped ~, UTLC），
+多态特殊化或大部分的类型信息都不必要且续点直接由 lambda 编码，不存在任何形式的\emph{去函数化}（defunctionalization）。
 
-Informally, we describe the translation as follows:
-\subparagraph*{toplevel functions} refer to all functions, of shape $fid(pl, k)$, as
-\mintinline{lisp}|(defun fid (pl k))|;
-\subparagraph*{let-binding} i.e. \texttt{let1} as the standard \mintinline{lisp}|(let ((n v)) ..)|;
-\subparagraph*{kont-binding} i.e. \texttt{letKont k v = ..} is translated to \mintinline{lisp}{(labels ((k (v) ..)) body)};
-\subparagraph*{kont-app} i.e. \texttt{APPLY k v} as \mintinline{lisp}|(funcall (the function k) v)|
-\subparagraph*{closure} i.e. $\mathbf{C}\sem{ptr, \Gamma}$ as \mintinline{lisp}|#'ptr| if $ptr$ is
-toplevel/label-bound, or otherwise, store as-is;
-\subparagraph*{$\Gamma$} i.e. $\mathbf{E}\sem{\bar{f}}$, for each field $f$,
+选择 Common Lisp 而不是其他语言（譬如 JS）的原因纯粹是笔者的个人偏好，因为其喜欢使用宏。下面直接以
+非正式形式给出各语言构件的直接翻译。
+\subparagraph*{顶层函数} 指所有的函数（因为经过闭包转换）。函数 $fid(pl, k)$ 对应 \mintinline{lisp}|(defun fid (pl k))|.
+\subparagraph*{Let/Kont 绑定与 kontapp} Let 绑定，即 \texttt{let1}，对应 \mintinline{lisp}|(let ((n v)) ..)|；
+Kont 绑定指续点绑定，形如 \texttt{letKont k v = ..}，对应 \mintinline{lisp}{(labels ((k (v) ..)) body)}；
+kontapp 指续点应用，形如 \texttt{APPLY k v}，对应 \mintinline{lisp}|(funcall (the function k) v)|.
+\subparagraph*{闭包与函数调用} 闭包形如 $\mathbf{C}\sem{ptr, \Gamma}$，对应 \mintinline{lisp}|#'ptr| 若 $ptr$ 为顶层或 LISP \texttt{label} 语句绑定，
+否则按构造值直接存储；闭包环境 $\Gamma$ 即 $\mathbf{E}\sem{\bar{f}}$，对每一栏位 $f$，
 \begin{itemize}
-  \item store as-is if $f$ is a local functional value,
-    \item store \mintinline{lisp}|#'f| if $f$ is toplevel/label-bound,
-  \item store as-is, otherwise.
+  \item 直接存储之，若其为闭包（即上述构造值），
+    \item 以 \mintinline{lisp}|#'f| 引用之，若 $f$ 为顶层或 LISP \texttt{label} 语句绑定，
+  \item 否则直接存储之。
 \end{itemize}
-\subparagraph*{funcall} i.e. $f(a, k)$ as \mintinline{lisp}|(funcall (the function f) ..)| where $f$ is local, or \mintinline{lisp}|(funcall #'f ..)| where $f$ is toplevel/label-bound
-\subparagraph*{conditionals} i.e. $\ite(c,t,e)$ as \mintinline{lisp}|(if c t e)|
-\subparagraph*{switch} where
+
+函数调用形如 $f(a, k)$，对应 \mintinline{lisp}|(funcall (the function f) ..)|，如 $f$ 是本地函数指针；或 \mintinline{lisp}|(funcall #'f ..)|，如 $f$ 为顶层或 LISP \texttt{label} 语句绑定。
+可以看出，函数定义、调用的形式都是一一对应的，这也符合我们的直观认识。
+\subparagraph*{条件表达式与 switch 语句} 条件表达式形如 $\ite(c,t,e)$，对应 \mintinline{lisp}|(if c t e)|；
+构造子匹配，形如 $\isctor(x, tag, \dot)$，对应 \mintinline{lisp}|(eq (car x) tag)|；
+switch 语句，按构造子/常量，分为
 \begin{itemize}
-  \item $\switch^{\Const}(x, \overline{k_i \to e_i}, e_?)$ as
+  \item $\switch^{\Const}(x, \overline{k_i \to e_i}, e_?)$ 对应
     \mintinline{lisp}|(cond (((equal x k_i) e_i) .. (t e_?)) ..)|
-  \item $\switch^{\ctor}(x, \overline{(t_i, n_i) \to e_i}, e_?)$
+  \item $\switch^{\ctor}(x, \overline{(t_i, n_i) \to e_i}, e_?)$ 对应
     \mintinline{lisp}|(cond (((eq x t_i) e_i) .. (t e_?)) ..)|
 \end{itemize}
-\subparagraph*{product} i.e. $pr = (p, q)$ to \mintinline{lisp}|(cons p q)|
-and projects with the standard \mintinline{lisp}|(car pp)| or \mintinline{lisp}|(cdr pp)|
-\subparagraph*{variant} i.e. $ctag\sem{\overline{fld}}$ as \mintinline{lisp}|(cons tag (vector @fld))|\footnote{
-  as in \mintinline{lisp}|'simple-vector|, the fastest stock array variant. Note that \texttt{@x} denotes
-  the splice of x.
-}
-with projection $x_i$ as \mintinline{lisp}|(svref (cdr x) i)|. $\mathbf{E}$ and $\mathbf{C}$ are encoded
-this way as well.
-\subparagraph*{test-ctor} i.e. $\isctor(x, tag, \dot)$ as \mintinline{lisp}|(eq (car x) tag)|. Note that
-arity is \underline{not} checked at this time.
-\emph{Symbols} appear inside CPS IR are escaped with bars \texttt{||} to preserve the case, as in
-\begin{minted}{lean4}
-  def sym (s : Name) : String :=
-    let esc := s.foldl (init := "|") fun acc ch =>
-      match ch with
-      | '|' => acc ++ "\\|"
-      | '\\' => acc ++ "\\\\"
-      | _ => acc.push ch
-    esc.push '|'
-\end{minted}
-The caveats, as described in \autoref{sbcl:cav} (uncurrying), because type information is erased, we
-collect \emph{shapes} on demand to \emph{alleviate} this problem, where \texttt{Shapes} can be thought as degenerate types
-\begin{minted}{lean4}
-  inductive Shape where
-    | unknown
-    | pair
-    | ctor (tag : Name) (arity : Nat)
-    | fn -- function object inside value cell
-  deriving Inhabited, BEq, Repr
-abbrev ShapeEnv := Std.HashMap Name Shape
-\end{minted}
-where \texttt{ShapeEnv} associates a name with a shape.
-The initial shape of a name is always \texttt{unknown},
-but will be \emph{refined} as the code is being compiled.
-However we use the word \emph{alleviate} because this method is \underline{not robust} as it it local to functions and does not deal with the root cause: design flaws.
-Major refactor of adding type information to Lambda IR, threading through CPS transformation and
-codegen must be made to address the issue.
+\subparagraph*{元组与构造值} 元组形如 $pr = (p, q)$，对应 \mintinline{lisp}|(cons p q)|，并通过标准的
+\mintinline{lisp}|(car pp)|、\mintinline{lisp}|(cdr pp)| 投影；构造值形如 $ctag\sem{\overline{fld}}$，对应
+\mintinline{lisp}|(cons tag (vector @fld))|\footnote{
+  其中 \texttt{vector} 表示 \mintinline{lisp}|'simple-vector|，即 LISP 自带数据结构中最快的连续型数组。
+}，而其投影 $x_i$ 对应 \mintinline{lisp}|(svref (cdr x) i)|. 上述特殊构造子 $\mathbf{E}$、$\mathbf{C}$ 的值亦
+按此翻译。
 
-\paragraph{The runtime system} refers to the primitive operator implementations, driver code and
-the definitions of low-level exceptions, e.g. the string equality \texttt{\%string=}
-, the integer addition \texttt{\%int+} and the \texttt{MATCH-FAILURE} condition \texttt{+NOMATCH+}\footnote{
-  Common Lisp have \emph{conditions}, which, is arguably more expressive and general then
-  other languages' exception system as it encodes all kinds of control flow, not just exceptions.
-  In fact, it can be
-  used to implement an internalized continuation facility.
+此外，出现在 CPS IR 中的所有符号，根据 LISP 的语法用 \texttt{||} 保持大小写区别。前文（\autoref{sbcl:cav}）曾提到过
+因为类型信息已经擦除，我们只能通过按需收集\emph{形状}来\underline{缓解}歧义问题。形状有定义
+\begin{minted}{lean4}
+  inductive Shape | unknown | pair | ctor (tag : Name) (arity : Nat) | fn -- function object
+  deriving Inhabited, BEq, Repr
+\end{minted}
+其中初始形状为 \texttt{unknown}，但随着翻译进行，有可能被精练为其他形状。由于这一做法是函数层级的，没有考虑跨函数层级的精练，且
+没有解决根本问题：笔者的设计失误，所以最终只能够缓解问题。如果要从根本上解决，就必须重构降级、CPS 化，使得类型信息
+在经过这些阶段后能传递到后端。
+
+\paragraph{运行时系统} 指原生操作的实现、入口代码和底层异常定义，譬如字符串等号 \texttt{\%string=}
+和 \texttt{MATCH-FAILURE} 条件。\footnote{
+  Common Lisp 有\emph{条件系统}，较之其他语言的异常系统更加强大且泛化，因为
+  可以用这一系统编码各种控制流，甚至还可以用之实现一套续点机制。
 }
-is implemented as
+在底层有定义
 \begin{minted}[numbers=left]{lisp}
-  (declaim (inline %string=))
   (defun %string= (s1 s2)
     (declare (type simple-string s1 s2))
     (the boolean (sb-kernel:%sp-string= s1 s2 0 nil 0 nil)))
 
-  (declaim (ftype (function (integer integer) integer) %int+) (inline %int+))
-  (defun %int+ (a b)
-    (declare (optimize (speed 3) (debug 0) (safety 0)))
-    (sb-kernel:two-arg-+ a b))
-
   (define-condition match-failure (error)
     ((discriminant :initarg :discr :reader discriminant :type string))
-    (:report
-     (lambda (condition stream)
-       (format stream "No branch can be matched against ~A" (discriminant condition)))))
-  (defconstant +NOMATCH+ 'match-failure)
+    (:report (lambda (condition stream)
+               (format stream "No branch can be matched against ~A" (discriminant condition)))))
 \end{minted}
-Interested readers should refer to \texttt{runtime.lisp}.
 
-Common Lisp have all kinds of equality relations. To minimize overhead on dynamically typed languages, we largely follow \autoref{tab:lisp-eq}.
-\texttt{EQ} is the most efficient as it compares memory address
-(i.e. physical equality rather than structural equality), which,
-is used most, in our case,
-such as comparing constructors as they are always unique, which has the same memory address.
-Compared to the usual encoding of constructors as integers, we achieve same performance here with
-better readability since the name of the constructor is the symbol itself.
-
+Common Lisp 针对不同的数据类型有各种各样的等号。
+为了减少 LISP 因为动态语言产生的 overhead, 我们依照\autoref{tab:lisp-eq}针对
+不同类型使用各自最适合的等号。\texttt{EQ} 是物理等号，而非结构等号，即它
+比较内存地址，因而速度最快。例如在 Lean 中，构造子由整数编码，比较构造子就是比较整数——
+因为 LISP 支持符号计算，在此处构造子就是符号，由于符号在 LISP 中唯一，我们用 \texttt{EQ} 比较其
+内存地址最快，媲美 Lean 在这一步的性能。
 \begin{table}[]
   \centering
   \begin{tabular}{@{}ll@{}}
     \toprule
-    \textbf{To compare against..} & \textbf{Use..}                               \\ \midrule
+    \textbf{比较对象} & \textbf{等号实现}                               \\ \midrule
     Objects/Structs               & \texttt{EQ}                                         \\
     Symbols                       & \texttt{EQ}                                         \\
     NIL                           & \texttt{EQ/NULL}                                  \\
@@ -2913,459 +2733,233 @@ better readability since the name of the constructor is the symbol itself.
   \caption{LISP equalities}\label{tab:lisp-eq}
 \end{table}
 
-\begin{remark}[Inlining runtime]
-  The content of \texttt{runtime.lisp} is \emph{inlined} in the compiler, through a trick
-  used in the build script (also in Lean.) which detects whether there is a change in the file, and
-  writes to \texttt{runtime.lean} if so:
-
-\begin{Verbatim}[numbers=left]
-  input_file runtime.lisp where
-    path := __dir__ / "runtime.lisp"
-    text := true
-  target runtime.lean : Unit := do -- NOTE: see also `meta` (modifier)
-    let runtimep <- runtime.lisp.fetch
-    let rstrBegin := "r###\"\n".toUTF8
-    let rstrEnd   := "\"###".toUTF8
-    runtimep.mapM fun path =>
-      IO.FS.withFile path .read fun rt =>
-        IO.FS.withFile (__dir__ / "runtime.lean") .write fun h => do
-          let runtime <- rt.readBinToEndInto rstrBegin
-          h.putStrLn s!"/-- generated from {path} -/"
-          h.putStrLn "def runtime : String :="
-          h.write $ runtime.pushMany rstrEnd
-\end{Verbatim}
-\end{remark}
-
-\paragraph{FFI} or \emph{foreign function interface}, refers to calling functions external to the language.
-Since \Tigris compiles to SBCL, a rather high and low-level\footnote{
-  Common Lisp is high-level in having GC and being a dynamically typed functional language;
-  and is low-level in having basic special operators and a bunch of low-level features such as
-  \mintinline{lisp}{go}, \mintinline{lisp}{block}, \mintinline{lisp}{progn} that
-  dates back to 1950s.
-}
-language, FFI is obtained for \emph{free} if one is familiar with the calling convention
-described before as we do not have to deal with memory management or boxing/unboxing.
-Metaprogramming is used extensively
-to make the use of FFI as convenient as possible.
-Since \Tigris is not able to see an externally defined function, it
-puts every trust it has in the user whom is responsible for
-\begin{center}\underline{making sure the function is correctly typed,
-  both in LISP and in the \texttt{extern} declaration.}
+\paragraph{FFI} 又称外部函数接口，指用于调用外部函数的语言机制。因为我们编译到 SBCL，一个
+既高层又底层的语言\footnote{
+  Common Lisp 的高层在于其有垃圾回收内存管理（GC），是动态类型语言；
+  其底层在于有许多可与 C 媲美且更底层的控制流操作符，例如
+  \mintinline{lisp}{go}、\mintinline{lisp}{block}、\mintinline{lisp}{progn}，其历史可
+  追溯到上世纪五十年代。
+}，FFI 机制已经自动成型，只要用户清楚上文介绍的函数调用规范即可。这是因为我们不必关心内存管理问题，
+或是值的 boxing/unboxing 问题\footnote{即决定一个值是立即数还是通过指针引用的问题。此处的指针就是底层的内存指针。}。
+此外，我们还活用 LISP 的元编程能力，化简 FFI 函数的定义过程，方便用户使用。
+当然，因为 \Tigris 编译器看不见，也看不懂 FFI 函数的定义，因此其全盘信任用户，后者
+有责任
+\begin{center}
+  \underline{确保 FFI 函数在 LISP 侧的名字正确、具有正确的类型声明。}
 \end{center}
 
-However, schemes declared this way can not be checked for their \emph{sanity}, i.e.,
-it is possible to \underline{inhabit the types that should otherwise be empty},
-or types that can only be proved (inhabited) with circular argument such as
-$\forall\alpha.\;\alpha$ or $\forall\alpha,\beta.\;\alpha\to\beta$. Though, the former
-already exists because of the deprecated fixpoint combinator \texttt{rec}, as in $\mathsf{rec}\ \mathrm{id}_\alpha$,\footnote{
-  while it damages the soundness of the type system, we keep it nonetheless for educational
-  purposes. Besides, users can avoid it, since normal programming do not use \texttt{rec} at all.
-}
-whereas the latter could be useful, though unsafely, when specialized
-to $\forall\alpha.\;\mathsf{Unit}\to\alpha$ (as seen in an example later).
+显然，以这种方式声明的类型签名（模式）是没有办法检查其正确性的，也就是说，可以
+引入一些类型明显为空的值，或者那些只有通过循环论证（不停机递归函数）才能证明的类型，
+例如 $\forall\alpha.\;\alpha$ 或 $\forall\alpha,\beta.\;\alpha\to\beta$.
+当然，后者并不是完全没用。考虑一个特殊化的版本 $\forall\alpha.\;\mathsf{Unit}\to\alpha$，
+在之后的一个例子中就能用上。
+此外，从证明论的角度考虑，一个外部函数声明其实就是一条\emph{公理}——因为我们直接声明某一个类型存在值，
+却不给出证明——这就是公理化（axiomatic）的。
 
-We illustrate the use of FFI through a somewhat elaborate example:
+下面我们以一个稍有复杂的例子说明 FFI 的设计和使用。
 
 \begin{minted}{lean4}
-  extern println "%println" : forall a, a -> Unit
-  extern append "%string-append" : String -> String -> String
-  extern toString "%to-string" : forall a, a -> String
-  extern read "%read" : forall a, Unit -> a
-  infixl 65 "++" => append
+extern println "%println" : forall a, a -> Unit
+extern append "%string-append" : String -> String -> String
+extern toString "%to-string" : forall a, a -> String
+extern read "%read" : forall a, Unit -> a
+infixl 65 "++" => append
 
-  let fact n =
-    let rec go acc
-      | 0 => acc
-      | m =>
-        let _ = println $ "fact "
-                       ++ toString (n - m) ++ " = "
-                       ++ toString (acc * m)
-        in go an @@ m - 1
-    in go 1 n
-  postfix 50 "!" => fact
+let fact n =
+  let rec go acc
+    | 0 => acc
+    | m => let _ = println $ "fact " ++ toString (n - m) ++ " = " ++ toString (acc * m)
+           in go an @@ m - 1
+  in go 1 n ;; postfix 50 "!" => fact
 
-  let main =
-    let _ = println "Enter a number:" in
-    let x = read () in
-    x ! -- x! is also a valid identifier. So we parenthesize it/use juxtaposition.
+let main =
+  let _ = println "Enter a number:"
+  and x = read () in x ! -- 因为 x! 也是合法标识符，所以我们用空格隔开
 \end{minted}
 
-\texttt{read} is an unsafe function whose return type can be specialized to any type,
-in this case, \texttt{Int}.
-Internally, a name associated to a FFI declaration is transformed, during parsing, to its
-FFI name, e.g., \texttt{read} becomes \texttt{\%read}. Where the implementations of these
-external functions are
-
+这个例子要求用户输入一个整数，并打印其阶乘值以及实现阶乘的各个步骤。
+\texttt{read} 不安全，因为其应用值可被实例化到任意类型，此处为 \texttt{Int}.
+具体实现中，与 FFI 定义相关联的标识符在句法分析期间就被替换为字符串内的符号，例如
+\texttt{read} 到 \texttt{\%read}. 而这几个外部函数在 LISP 侧的实现极为简单，例如
 \begin{minted}{lisp}
-(defforeign |%to-string| (x _) ;; e.g. toString : ∀a, a -> String
-  (declare (ignore gamma _))
-  (funcall k (princ-to-string x)))
 (defforeign "%string-append" (x y) ;; e.g. string-append : String -> String -> String
   (declare (ignore gamma) (type string x y))
   (funcall k (concatenate 'string x y)))
 (defforeign |%read| (_ __) ;; e.g. read (unsafe) : ∀a, Unit -> a
   (declare (ignore gamma _ __))
   (funcall k (read)))
-(defforeign |%println| (x _) ;; e.g. println : ∀a, a -> Unit
-  (declare (ignore gamma _))
-  (princ x) (terpri)
-  (funcall k nil))
 \end{minted}
-
-Compiling and running the program results in\footnote{though
-  \texttt{ffi.lisp} in this case in automatically linked. Linking it again with \texttt{--link} would
-  make SBCL complain about duplicate definitions. \texttt{--link} here is only to demonstrate its use.
-}
-
-\begin{Verbatim}[numbers=left]
+编译并运行这一程序得到输出
+\begin{Verbatim}
   $ tigrisl examples/fact.tig --link ffi.lisp -o dist-fact.fasl && chmod +x dist-fact.fasl
-  ; wrote (...)/dist-fact.fasl
-  ; compilation finished in 0:00:00.021
+    ; wrote (...)/dist-fact.fasl ; compilation finished in 0:00:00.021
   $ ./dist-fact.fasl
-  Enter a number:
-  > 5
-  fact 0 = 5
-  fact 1 = 20
-  fact 2 = 60
-  fact 3 = 120
-  fact 4 = 120
-  120
+    Enter a number:
+    > 5           ; stdin
+    fact 0 = 5    ; stdout
+    (.. 略 ..)
+    fact 4 = 120
 \end{Verbatim}
 
-For users with LISP experience, they will quickly notice the unfamiliar notation \texttt{defforeign}.
-This, together with other gadgets,
-are LISP macros to make the definition of foreign
-functions easier, which lives inside \texttt{ffi.lisp}. Amongst them, the most important are
-\begin{itemize}
-  \item \texttt{WITH-ARGS} destructures \texttt{payload = (cons α Γ)} and binds each user argument
-    to the symbols provided and a special variable \texttt{GAMMA} denoting the captured environment. Basically,
-    it generates the prelude part of a function where payload are destructured according to the provided
-    \emph{lambda list}\footnote{LISP jargon. Refers to s list that specifies a set of parameters (sometimes called lambda variables) and a protocol for receiving values for those parameters.}.
-    This macro is not supposed to be used along; It is intended to be called by
-    \texttt{defforeign} and users should use that instead.
-    \texttt{with-args} is defined as
-  \begin{minted}[numbers=left]{lisp}
-    (defmacro with-args (payload arg-list &body body)
-      (let* ((alpha (gensym "ALPHA"))
-             (tmp   (gensym "TMP")))
-        (labels ((build-binds (args)
-                              (cond
-                               ((null args) '())
-                               ((null (cdr args)) `((,(car args) (car ,tmp))))
-                               (t
-                                 (let ((head (car args))
-                                       (rest (cdr args)))
-                                   (append `((,head (car ,tmp))
-                                             (,tmp  (cdr ,tmp)))
-                                     (if (null (cdr rest))
-                                         `((,(car rest) ,tmp))
-                                         (build-binds rest))))))))
-          `(let* ((,alpha (car ,payload))
-                  (gamma  (cdr ,payload))
-                  (,tmp   ,alpha)
-                  ,@(build-binds arg-list))
-             (declare (ignorable gamma))
-             ,@body))))
-  \end{minted}
-  \item \texttt{DEFFOREIGN} defines a tigris-callable foreign function. It is modeled
-    after \mintinline{lisp}{defun} and combines \mintinline{lisp}{defparameter}/\texttt{with-args}.
-    A foreign function definition takes the form of\footnote{
-      Here we use the same BNF syntax from X3J13/CLtL2. Unexperienced users may interpret it as:
-      \mintinline{lisp}|(defforeign function-name (x y) forms)| that returns a closure object,
-      where \texttt{(x y)} is \texttt{ffi-lambda-list} representing
-      function parameters that may vary in length;
-      \texttt{forms} refers to a list of forms
-      that is the function body.
-    }
-    \[
-      \mathbf{defforeign}\ \textit{function-name}\ \textit{ffi-lambda-list}\ \{\textit{form}\}^*\longrightarrow \textit{closure-object}
-    \]
-    Aside from \texttt{GAMMA}, it additionally binds \texttt{k} i.e. the continuation,
-    applying \texttt{k} can be thought as returning the value of the function as this is the canonical way to do so.
-    \texttt{function-name}, or \texttt{name} in the implementation below, is the name of the foreign function, can be a string \texttt{"\%println"} (preserves case), or a symbol \texttt{|\%println|}.
-    Users are highly recommended to escape the symbol (to preserve cases)
-    as LISP by default does not distinguish cases but
-    \Tigris does.
-    \texttt{defforeign} is implemented as
-  \begin{minted}[numbers=left,escapeinside=\%\%]{lisp}
-    (defmacro defforeign (name arg-list &body body)
-      (flet ((name-to-string (x)
-                               (etypecase x
-                                 (string x)
-                                 (symbol (symbol-name x))))
-             (escape-bar (s)
-                         (with-output-to-string (out)
-                           (loop for c across s do
-                                   (case c
-                                     (#\| (write-string "\\|" out))
-                                     (#\\ (write-string "\\\\" out))
-                                     (t (write-char c out))))))
-             (make-closure (f)
-                           `(cons %$\mathbf{C}$% (vector
-                                       (function ,f)
-                                       (cons %$\mathbf{E}$% (vector))))))
-        (let* ((ns     (name-to-string name))
-               (fn-sym (intern (escape-bar ns)))
-               (cell   (intern ns))
-               (clos   (make-closure fn-sym)))
-          `(eval-when (:compile-toplevel :load-toplevel :execute)
-             (defun ,fn-sym (payload k)
-               (with-args payload ,arg-list ,@body))
-             (defparameter ,cell ,clos)))))
-  \end{minted}
-    Note that the use of special operator \mintinline{lisp}|eval-when| is to make sure that any
-    foreign functions defined in this way gets compiled and bound when \mintinline{lisp}|(load ..)|.
-\end{itemize}
+其中 \texttt{defforeign} 是一自定义宏，用于简化 FFI 函数的定义，有语法\footnote{
+  这里我们使用与 X3J13/CLtL2 相同的语法。读者只需要理解为：宏 \mintinline{lisp}|(defforeign function-name (x y) forms)|
+  声明并返回一闭包对象，其中 \texttt{(x y)} 是 \texttt{ffi-lambda-list}，表示
+  声明的函数参数，长度不定；\texttt{forms} 表示由多个语句组成的函数体。
+}
+\[
+  \mathbf{defforeign}\ \textit{function-name}\ \textit{ffi-lambda-list}\ \{\textit{form}\}^*\longrightarrow \textit{closure-object}
+\]
+其关键部分如下所示，本质上是 LISP 函数声明与全局变量声明的结合体。
+\begin{minted}[numbers=left]{lisp}
+  (let* ((ns     (name-to-string name))
+         (fn-sym (intern (escape-bar ns)))
+         (cell   (intern ns))
+         (clos   (make-closure fn-sym)))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (defun ,fn-sym (payload k)
+         (with-args payload ,arg-list ,@body))
+       (defparameter ,cell ,clos)))
+\end{minted}
 
-With these macros, defining foreign functions should be as easy as defining normal LISP functions.
+通过宏的帮助，在 LISP 侧定义 \Tigris 的 FFI 函数就和定义普通 LISP 函数一般简单。
 
-\subparagraph*{caution!} Any function output by the SBCL backend has the following compiler instructions:
-  \begin{minted}{lisp}
-    (declare (optimize (speed 3) (safety 0) (debug 0)))
-  \end{minted}
-which removes most safety features of LISP, maximizing performance.
-Any error can result in a compromised LISP image (memory environment) with
-unreadable low-level error messages. It is best to remove this instruction when debugging.
-
-\paragraph{\texttt{tigrisl}} is the CLI interface to interact with the compiler.
-\texttt{tigrisl} uses a simple hand-written recursive descent parser to parse command line arguments;
-Multiple input files are compiled in parallel with the same amount of threads launched.
-An invocation takes the form of
+最后，我们介绍编译器 CLI 前端，\texttt{tigrisl}. 其用简单的手写递归下降句法分析器来处理
+命令行参数，多个源代码文件的编译是通过启动相等多个线程实现\emph{并行编译}的。读者只需知道
+其可以输出各个阶段（System F IR、\Lambdair、CC 后的 \Lambdair 和 CPS IR）的 IR；
+产生 FASL 二进制文件；编译器链接其他 LISP 源文件即可。
+\texttt{tigrisl} 可通过以下语法调用：
 \[
   \texttt{tigrisl}\ [\textit{flags}]\ \textit{ifiles}\ [\textsf{-o}\ \textit{ofiles}]
 \]
+关于其余的参数，见 \texttt{tigrisl} 的命令行帮助。
+\subsubsection{本章小结}（..略..）
+\section{PP：\emph{依赖类型}的表格打印器}
+本文倡导依赖类型编程实践，而最好的倡导方式就是讲解实例。各种实例中，又以
+那些具有工程价值，被实际运用于项目中的为贵。因而，我们专门用一部分来介绍 \Tigris 实践中使用的
+依赖类型编程，以此作为范例，并承上启下，令读者熟悉何为依赖类型，为下一部分的定理证明子系统 \Tigrisd 叙述奠基。
 
-where \textit{ifiles} and \textit{ofiles} refers to a list of input and output files that should either
-\begin{itemize}
-  \item matches one to one. As in,
-    for all $i$, input file name $f^\mathsf{in}_i$,
-    there always exists a output file name $f^\mathsf{out}_i$, vice versa.
-  \item matches one to one, with residual \textit{ifiles}. As in,
-    for \textit{ifiles}
-    $f^\mathsf{in}_1,\dots,f^\mathsf{in}_i,f^\mathsf{in}_{i+1},\dots,f^\mathsf{in}_{n}$ and
-    \textit{ofiles} $f^\mathsf{out}_1,\dots,f^\mathsf{out}_i$,
-    we have $f^\mathsf{in}_1,\dots,f^\mathsf{in}_i$
-    matching $f^\mathsf{out}_1,\dots,f^\mathsf{out}_i$,
-    with residual \textit{ifiles} $f^\mathsf{in}_{i+1},f^\mathsf{in}_{n}$ using default
-    output naming convention i.e. appending with \texttt{.lisp}.
-  \item any other situation results in a exception.
-\end{itemize}
-...and \underline{notable} \textit{flags} are
-\begin{itemize}\itemsep0em
-  \item \texttt{--lam}, emit raw \Lambdair with optimizations;
-  \item \texttt{--cc}, emit CC'd \Lambdair;
-  \item \texttt{--cps}, emit CPS IR;
-  \item \texttt{--sysf}, emit System F IR; These four flags can be used together.
-  \item \texttt{-nl, --no-lisp}, do not emit Common Lisp source.
-  \item \texttt{-ne, --no-entry}, do not generate entrypoint, where entrypoint is also
-    called driver code, that is the following:
-    \begin{minted}{lisp}
-      (defun |__start| ()
-        (format nil "~A"
-          (funcall #'|main| nil #'identity)))
-    \end{minted}
-  \item \texttt{--legacy}, use deprecated typechecker/IR/backend. Not recommended;
-  \item \texttt{-l, --link <path>}, link additional lisp source from <path>, can be used multiple times. Default behavior: link \texttt{ffi.lean}. Note that, internally, linking
-    a file $f$ adds a \mintinline{lisp}|(load f)| to the top of the object code. The order of
-    multiple \texttt{--link}s is preserved here.
-  \item \texttt{-o <ofiles>}, \emph{positional vararg}, anything beyond this point is considered a part of \texttt{-o}.
-    \texttt{<ofiles>} has file extension-directed output where \texttt{*.fasl} generate FASL executables and anything else for LISP sources. FASL generation is done by concatenating
-    every linked LISP files together with the generated object code, then feed them into
-    the launched SBCL with \emph{block compilation} on to generate a monolithic binary.
-    This binary can usually run directly in shell. If that is not the case, users may
-    also use \texttt{sbcl --script <fasl>} to run fasl files.
-  \item \texttt{--fasl}, emit FASL, applies to all input files.
-\end{itemize}
+实际上，\Tigris 使用的依赖类型完全不止本节的标题，还包括一些（互）递归函数的停机证明，但下文
+以叙述 PP 打印器的设计与实现为主，并以此展示依赖类型论如何能帮我们在编译期发现更多的程序错误，
+并为读者提供依赖类型方法论的基本认识。PP 打印器自身，被广泛运用于命令行信息的\emph{美观输出}，例如
+\Tigris 的 REPL 可以通过 \texttt{\#check} 命令打印类型环境表格；编译器 CLI 前端则可通过
+\texttt{-h, --help} 参数打印帮助信息表格。
 
-\section{PP: The \emph{dependently-typed} table printer}
-What's the fun when there is \Tigrisd, the theorem prover counterpart of \Tigris, but
-the implementation of them doesn't involve some dependent type practices -- Actually,
-both CLI interfaces and REPLs use a dependently-typed table printer that lives inside
-the \texttt{PP} module, not to mention the termination proofs of some recursive functions.
+表格，本质上来说无非是一\emph{矩阵}。各种表格因为其承载数据的不同，即\emph{表头}的不同而不同。例如，
+表头（姓名、性别、年龄）显然和表头（产品名称、制造商、序列号、定价）指代的表格在意义上不同。然而，
+我们如何在语言中自然的区分两者——一种想法是利用类型检查器，只要能够区分两种表格的\emph{类型}即可，
+因此，我们转向依赖类型论的支持，PP 打印器由此而生。
 
-The author, and this project advocates for the use of dependent types in programming and
-below, we'll discuss
-the design and implementation of this simple printer, hopefully, to provide
-some insights into how dependent types can help users
-catch more unexpected errors at compile-time,
-rather than runtime.
+考虑作为 \texttt{List}（列表）的表头，可将其变换为\emph{动态长度}的元组，即
+使元组类型\emph{依赖于}表头长。这样，我们就要求该元组的类型与长度必须与表头一致，
+才能通过类型检查器的检查。
 
-We wish the types of table are distinguished by their headers, say, the header (name, gender, age)
-should be different from (product name, manufacturer, serial number, price).
-To achieve this at compile-time, we shall rely on the typechecker.
-Suppose the header is a list, we may turn it into a \emph{dynamically-sized}\footnote{
-  In the sense that its size depends on the length of the header.
-}
-product \emph{type} whose length
-and component type must match for the product types to be unified (Text.SString is stylized string):
-\begin{minted}{lean4}
-  abbrev ToProd (as : List α) (motive : Type -> Type) : Type :=
-    match as with
-    | [] => PUnit
-    | [_] => motive α
-    | _ :: x :: xs =>
-      motive α × ToProd (x :: xs) motive
-
-variable (header : List Text.SString)
+\begin{figure}[H]
+  \begin{subfigure}[c]{0.5\textwidth}
+  \begin{minted}[numbers=left]{lean4}
+abbrev ToProd (as : List α) (m : Type -> Type) : Type :=
+  match as with
+  | [] => PUnit
+  | [_] => mα
+  | _ :: x :: xs =>
+    m α × ToProd (x :: xs) m
 abbrev Row := ToProd header id
 \end{minted}
+  \end{subfigure}%
+  \begin{subfigure}[c]{0.5\textwidth}
+    \begin{align*}
+      &\mathsf{ToProd}\ (as : \mathsf{List}\ \alpha)\ (m : \mathbf{Type}\to\mathbf{Type}) =\\
+      &\quad\begin{cases}
+        \mathsf{PUnit} &as = [];\\
+        m\ \alpha &as = [x];\\
+        m\ \alpha \times \mathsf{ToProd}\ (x :: xs)\ m &as = \cdot :: x :: xs.
+      \end{cases}\\
+      &\mathsf{Row}\ \textit{h} = \mathsf{ToProd}\ \textit{h}\ \mathrm{id}_\mathbf{Type}.
+    \end{align*}
+  \end{subfigure}
+\end{figure}
 
-The above reads: $\mathsf{ToProd}\ (as : \mathsf{List}\ \alpha)\ f$ can be eliminated to one of 1) $\mathsf{PUnit}$\footnote{
-\emph{universe-polymorphic} version of $\mathsf{Unit}$. Though since the result lives
-in $\mathsf{Type}\equiv\mathsf{Type}\ 0\equiv\mathsf{Sort}\ 1$, it is effectively $\mathsf{Unit}$.
-}, 2) $f\ \alpha$, or 3) $f\ \alpha \times \mathsf{ToProd}\ (\mathsf{cdr}\ as)\ f$,
-based on the \emph{shape} of $as$:
-\begin{enumerate}
-\item where $as$ is empty;
-\item where $as$ is a \emph{singleton};
-\item where $as$ contains \emph{two or more} elements.
-\end{enumerate}
-This effectively tells us that $\mathsf{ToProd}$ can
-\emph{eliminate} to one of the three\footnote{
-To be precise, it is $2 + n$ for $as$ of length $n$.
-} types depending on the value of $as$, specifically, its shape.
-Readers should pay great attention to this approach, or thought process, as the
-pattern matching used here is interpreted differently\footnote{different than a \emph{operational} interpretation, in the sense of regular programming.}
-(more of a \emph{recursor}-based interpretation),\footnote{
-And it is indeed in the form of recursor invocations inside the Lean \emph{kernel}.
-}
-which is mirrored later.
+上述定义可以理解为，$\mathsf{ToProd}\ (as : \mathsf{List}\ \alpha)\ f$ 可\emph{消去到} 1) $\mathsf{PUnit}$
+泛类型宇宙的幺元 2) $f\ \alpha$ 或 3) $f\ \alpha \times \mathsf{ToProd}\ (\mathsf{cdr}\ as)\ f$，
+根据 $as$ 的形状 1) 为空；2) 为单个类型；3) 包含两个及以上的类型。
 
-Note that \emph{motive} is type theory jargon.
-It represents the target type (or a part of it) we want it to be eliminated to. Informally,
-it can be best compared to the function used when mapping some data structures. Also, the
-use of \mintinline{lean4}{abbrev} rather than \mintinline{lean4}{def} here guarantees the
-definition to be \emph{reducible}, not \emph{semireducible} or \emph{irreducible}, allowing
-the automatic unfolding of the definition when using tactics such as \texttt{rfl}, short for
-reflexivity.
+也就是说，\texttt{ToProd} 类型构造子（在此可看作类型上的函数）可以根据
+$as$ 的\emph{值}（长度）\footnote{
+准确地说，是 $2 + n$ 个类型之一，对长度为 $n$ 的 $as$.
+}，消去到上述三个类型之一。可以发现，虽然我们是通过模式匹配实现这一变换的，
+但为了和值上的编程做区分，称这种思考方式为基于\emph{消去子}（eliminator/recursor）的解读，且
+该模式匹配在 Lean 的内核中也确实以消去子应用的形式存在。
 
-Now, we may encode an entry (a \texttt{Row}) of a table as \texttt{ToProd header id}. This way,
-we require the entry of some table to match the shape of its header, otherwise it is
-a type error; And the table type itself, obviously, can be defined as
-\begin{minted}{lean4}
-  abbrev TableOf := Array $ Row header
-\end{minted}
+注意 \emph{motive}（动机，定义中是 $m$）是类型论术语，表示消去的目标类型（或其一部分），可以理解为
+函数式编程在数据结构中常用的 \texttt{map} 函数。而 \mintinline{lean4}{abbrev} 比起 \mintinline{lean4}{def}
+又可保证上述定义是\emph{可消去的}（reducible），而非\emph{半消去}或\emph{不可消去}，这使得 Lean 的类型检查器
+能够自动按需查看上述定义。
 
-We use \texttt{Array} here because it is overridden in the runtime with \emph{real continuous
-data structures} rather than a linked list \texttt{List}. Besides, it also makes sense as we want
-\emph{the shape} of the entry to match its header, but there should not be any size restriction
-when it comes to the size of a table, i.e. the numbers of entry a table has.
+现在规定，表格的一行（\texttt{Row}）由 \texttt{ToProd header id} 编码。这样，我们保证
+某一表格必须与其表头的格式（形状）一致，保证不同表格可以根据表头区分，否则产生
+类型检查器将报错。在此基础上，我们又可定义表格类型 \mintinline{lean4}{abbrev TableOf := Array (Row header)}.
 
-Furthermore, since we are making a \emph{printer}, we want the output to look good, or at least,
-looks like a table. Here we define
+读者注意，上述定义的类型 \texttt{Row}、\texttt{TableOf} 实际上是类型构造子，需要表头（\texttt{header}）作为参数传入。
+之所以使用连续数组 \texttt{Array} 而非列表（链表）\texttt{List}，是因为前者性能更加。此外，虽然表格的列数由
+表头固定，但表格的行数（条目数）显然是可以自由增长的，因而此处用动态数组编码是恰当的。
+
+作为用户，表格打印器最重要的需求是\emph{美观}，最少也应当\emph{看起来像一个表格}。因而我们定义
 \begin{minted}{lean4}
   inductive Alignment | left | center | right
   inductive PadsBy | perCell | perCol
   abbrev Align := ToProd header λ _ => Alignment
   abbrev OverrideWidth := ToProd header λ _ => Option Nat
 \end{minted}
-
-where
+其中
 \begin{itemize}\itemsep0em
-\item \texttt{Align} is a tuple of the same shape as a header, denoting each column's alignment;
-\item \texttt{PadsBy} is the padding strategy. \texttt{perCell} makes every cell
-to have the same size as the largest one in them. This is rarely useful, but may look good
-if the table isn't too large; \texttt{perCol} is the one that is actually useful and more familiar to users since it applies the same strategy but \underline{local to each column}.
-\item \texttt{OverrideWidth}, despite its name, stores the calculated width of each column.
-It is named \texttt{OverrideWidth} because it can be
-overridden (\emph{before} the calculation) to have more manual
-control over the output, providing better granularity.
+\item \texttt{Align} 和表头形状相同，表示每一列的对齐格式（左对齐、居中、右对齐）；
+\item \texttt{PadsBy} 表示空白填充（padding）策略。\texttt{perCell} 要求所有格子具有相同宽度，且
+该宽度由最大的格子决定；\texttt{perCol} 则与之类似，但单独为\emph{每列}按照其最大的格子设置宽度；
+\item \texttt{OverrideWidth} 则能够给用户以细粒度的格子宽度控制，允许用户手动、独立设置每一列的
+宽度。
 \end{itemize}
 
-Based on this, we sketch the configuration of this printer as
-
-\begin{minted}{lean4}
-  structure PPSpec (header : List Text.SString) where
-    align    : Align header
-    width    : OverrideWidth header := 0
-    header?  : Bool := true
-    margin   : Nat := 3
-    padsBy   : PadsBy := .perCol
-    truncate : Bool := false
-\end{minted}
-where \texttt{margin} is \emph{sum} of a cell's left and right margin. And \texttt{truncate},
-which is a flag that toggles the skip of a cell if it is empty i.e. gets replaced by the cell to its right (also respects \texttt{margin});
-Despite its simple nature, this is actually more interesting than one might imagine, as this could be
-used to create indentation, together with margin, to achieve some interesting effects, such as
-simulating tool tips, which is most useful when
-printing command helppages as shown in \autoref{pp:comp}.
+除此之外，我们还定义了格子两侧的留白（margin）长度、截断开关，后者用于在输出时跳过零长度的格子。听起来很简单，
+但使用恰当时能产生意想不到的作用，比如\autoref{pp:comp}通过结合两者实现缩进功能，用于打印编译器前端的帮助信息。
 \begin{figure}\centering
-\begin{subfigure}{0.45\textwidth}\centering
+\begin{subfigure}{0.5\textwidth}\centering
 \includegraphics[width=\textwidth]{assets/term2}
 \end{subfigure}%
-\begin{subfigure}{0.75\textwidth}\centering
+\begin{subfigure}{0.5\textwidth}\centering
     \begin{minted}{lean4}
-  (.str "<ofiles>", .str "a list of output files written to")
-  (.str "", .byl "file extension-directed output:")
-  (.str "", .str " - '*.fasl' for FASL output, regardless of --fasl")
-  (.str "", .str " - anything else for LISP output")
+  (.str "<ofiles>", .str "a list of ..")
+  (.str "", .byl "file extension-directed ..")
+  (.str "", .str " - '*.fasl' for FASL ..")
+  (.str "", .str " - anything else for ..")
     \end{minted}
 \end{subfigure}
-\caption{output of the table printer and its equivalent table entry}\label{pp:comp}
+\caption{表格打印器的输出与对应的源代码条目}\label{pp:comp}
 \end{figure}
 
-Now, we can actually implement this printer by first
-defining some helper functions that calculates the width of every column: \autoref{code:pp-col}.
-This is where the aforementioned thought process come into use. The type \texttt{ToProd},
-can somewhat be interpreted as having multiple values (though this ``value'' are \emph{types}),
-as it \emph{depends} on its \texttt{List} argument, though, it remains as one type at a moment because
-it is statically typed. We illustrate the usage of this thought process by introducing a concept called
-\emph{discriminant refinement}.
+基于这些类型定义，\autoref{code:pp-col} 实现了一些辅助函数。我们以这些函数为引子，引入一个在后续的 \Tigrisd，或任何
+依赖类型论语言中都十分重要的机制：\emph{被匹配对象的精练}（discriminant refinement）。\texttt{ToProd}，
+某种意义上可以看作一个“多态”的类型（长度不同，依赖表头形状）——但无论如何，其在同一时刻只能具有一个值（类型），
+因为 Lean 是静态类型语言。那么，如何告诉编译器 \texttt{ToProd} 在\underline{何时具有何种类型}呢——我们就需要通过精练
+被匹配对象来实现这点了。
 
-Discriminant refinement is, a jargon, though fairly straightforward,
-stating that the type information of a match discriminant can be \underline{\emph{refined} based on the pattern}
-matching against it. An example being \mintinline{lean4}{match x with | 0 => ...}\footnote{
-Though, in non-dependent type context, this feature may need to be enabled manually, in the form of
-\mintinline{lean4}{match h : x with ..}, by prefixing \texttt{x} with a name \texttt{h},
-for binding the hypotheses in each branch
-in order to for them be picked up by the typechecker.
-},
-where Lean knows
-that within this branch, \underline{\texttt{x} must be 0}, or as a \emph{hypothesis} that becomes
-part of the \emph{ambient types}: $h : x = 0$. -- A very reasonable, and true take. This technique,
-is used fairly a lot in programming with dependent types, as is in this case: we \emph{guide} Lean
-the underlying type of \texttt{ToProd} through patterns against \texttt{header}:
-\begin{enumerate}
-\item a \texttt{[]}, stating $\textit{header} = []$, refines \texttt{ToProd} to $\mathsf{PUnit}$,
-as stated in its definition;
-\item a \texttt{[\_]}, stating $\textit{header} = [\cdot]$, a singleton, or, a \texttt{List} with one element of type $\alpha$, refines \texttt{ToProd} to $f \alpha$,
-as stated in its definition;
-\item an Erlang-like \texttt{\%[\_, \_ | \_]}, which is syntactic sugar for \texttt{\_ :: \_ :: \_}, stating
-$\textit{header} = \cdot :: (\cdot :: \cdot)$, a list with two or more elements, refines \texttt{ToProd} to
-a dynamically-sized product.
+精练被匹配对象是类型论术语，其含义即为字面义，指模式矩阵可以用来精练（补充）被匹配对象的
+类型信息。例如，\mintinline{lean4}{match h : x with | 0 => ...} 告诉编译器 \texttt{x} 在
+模式矩阵的第一个分支下\underline{一定等于 0}（而不仅仅是 $x$ 具有类型 $\mathsf{Int}$），
+并在类型环境中添加一条\emph{假设}（assumption）$h : x = 0$ 以供用户使用之——根据模式匹配的语义
+这显然是正确的。这一技巧在依赖类型编程中极为常见，例如在此处我们通过三个分支\emph{指导}编译器 \texttt{ToProd} 应该
+具有的具体形状：
+\begin{enumerate}\itemsep0em
+\item 模式 \texttt{[]} 指出 $\textit{header} = []$，根据定义，\texttt{ToProd} 只能是 $\mathsf{PUnit}$；
+\item 模式 \texttt{[\_]} 指出 $\textit{header} = [\cdot]$，匹配单元素（类型为 $\alpha$）列表。根据定义 \texttt{ToProd} 只能是 $f\ \alpha$；
+\item 模式 \texttt{\%[\_, \_ | \_]}，是 \texttt{\_ :: \_ :: \_} 的语法糖，指出
+$\textit{header} = \cdot :: (\cdot :: \cdot)$，匹配两个及以上元素的列表。根据定义 \texttt{ToProd} 只能是“动态”长度的元组。
+此外，这一模式语法糖起源于 Erlang.
 \end{enumerate}
-Where $f$ is the motive, in this case, the constant function that maps all types to \texttt{Option Nat}.
-The point of these seemingly useless patterns
-differs from the regular purpose of providing templates for destructuring; Instead, it is to
-provide additional information to the typechecker, which,
-if not omitted, results in a type error as Lean cannot deduce the type of \texttt{header} on its own.
-It is the user's responsibility to do case-by-case analysis just as in proofs. From the outsider's
-perspective, it is as simple as to \underline{mirror the cases in the type definition}.
 
-\begin{remark}[Common usage of discriminant refinement]
-Furthermore, discriminant refinement deals with surrounding environment.
-\texttt{foldr1} on \texttt{List} usually does not permit empty lists,
-applying to such is a runtime error in Haskell, for example. In Lean, we simply make
-this requirement an assumption and defines the function as:
-\begin{minted}{lean4}
-  def foldr1 (f : α -> α -> α) (as : List α) (h : as ≠ []) : α :=
-    match as with
-    | [] => h rfl |>.elim -- or simply remove this branch.
-    | [x] => x
-    | x :: y :: xs => f x (foldr1 f (y :: xs) nofun)
-\end{minted}
-where $h$ is refined to $[]\neq[]$ in the empty branch where we manually \emph{proved false} and used
-\emph{ex falso} to match the expected type. Though, this branch can simply be removed as Lean can automatically
-proves it \texttt{false}. Similiarly \texttt{nofun} is a shorthand used here to prove $y :: xs \neq []$, but the
-proof itself automatically handled by Lean. Users calling this function must prove that $as$ is nonempty through
-actual proofs or simply introducing a hypothesis using \mintinline{lean4}|if h : as ≠ [] then ..|. Though, we
-shall stop here as this is beyond the scope of this text, which is not a tutorial.
-\end{remark}
-
-Getting back to implementing table printer, we found ourself having several polymorphic helpers in the sense
-that they are independent of \texttt{header} and we may use it to implement some operations like \texttt{toString},
-$(\cdot\;\cup\;\cdot)$, max and $0$ where it denotes the zero element of some algebraic structure. From there,
-implementing printers becomes trivial.
+从前文模式匹配“是用于解构数据结构”的解读看来，这里的模式匹配毫无用处；这是因为此处的重点在于使用模式匹配进行\emph{分情况讨论}，
+告诉类型检查器额外的信息，因为其自身没有能力（类型推断做不到）分三种情况进行讨论。如果删去模式匹配，
+则会产生类型检查错误，因为 Lean 自身无法推断类型，且从证明的角度考虑，不分三种情况讨论也没有办法确定 \texttt{ToProd} 的具体类型。
+上面的叙述看起来复杂，但其思想很简单：任何一个接触过中学数学，学习过分情况讨论的用户，其实都已熟悉一定程度上的依赖类型编程。读者只需知道
+函数定义需要\emph{照抄}类型定义的形式（三种情况）即可。
 
 \begin{figure}
 \centering
@@ -3409,49 +3003,64 @@ instance : Max      $ OverrideWidth header := ⟨maxN⟩
 instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 \end{minted}
 \end{subfigure}
-\caption{Helper functions used to calculate column width}\label{code:pp-col}
+\caption{用于计算列宽的辅助函数}\label{code:pp-col}
 \end{figure}
+
+\begin{remark}[Discriminant Refinement 的常见用途]
+除上述用途之外，Discriminant Refinement 最为常见的用途就是向类型环境（证明环境）中
+添加条件/假设。例如，列表上的 \texttt{foldr1} 通常不允许空列表，在 Haskell 中
+将之应用于空列表会出现运行时错误。然而，在依赖类型编程语言中，如 Lean，我们只需
+将这一要求作为条件 $h$ 引入即可，
+\begin{minted}{lean4}
+  def foldr1 (f : α -> α -> α) (as : List α) (h : as ≠ []) : α :=
+    match as with
+    | [] => h rfl |>.elim -- Lean 知道这条分支矛盾，删除也没问题
+    | [x] => x
+    | x :: y :: xs => f x (foldr1 f (y :: xs) nofun)
+\end{minted}
+其中，由参数位置引入的假设 $h$ 在第一分支内精练为 $[]\neq[]$，矛盾！因而我们手动证伪，并通过爆炸原理（ex falso）匹配结果类型 $\alpha$.
+类似地，\texttt{nofun} 是一语法糖，要求 Lean 自动证明 $y :: xs \neq []$，这也是显然的：含有一个及以上元素的列表一定非空。
+这样，一些在其他语言中需要约定俗成、口头要求的条件，在 Lean 中都可形式化，并被类型检查器所认识，从根本上（编译期）
+杜绝一些语义错误。
+\end{remark}
+
+具有上述类型与辅助函数后，我们发现打印器的实现就相当简单了。由于篇幅所限，此处略过。
+
+\subsection{本章小结}（..略..）
 
 \vspace{1cm}
 
 \begin{center}
-\underline{This concludes the description of \Tigris}.
+\underline{\Tigris 子系统的论述到此结束}。
 \end{center}
 \pagebreak
 
 \section{\Tigrisd: a lightweight theorem prover}
 \renewottcommands[dd]
 
-\Tigrisd is a experimental dependently-typed theorem prover that demonstrates
-clear, modular and exemplary theorem prover design. \Tigrisd, together with \Tigris,
-is a bundled solution serving educational purposes that hopes to become useful in
-\underline{programming language/theorem proving education}. \Tigrisd is deeply influenced and takes much inspiration in terms
-of design/implementation from \href{https://github.com/sweirich/pi-forall}{pi-forall}\footnote{\url{https://github.com/sweirich/pi-forall}}
+\Tigrisd 是一个试验性质、以依赖类型作为理论基础的定理证明器。\Tigris 与 \Tigrisd 一同，
+构成了一套 PL(DI)/定理证明教育解决方案。\Tigrisd 在设计与实现上，受到了 \texttt{Lean}、\texttt{pi-forall}、\texttt{LambdaPi}、
+\texttt{elaboration-zoo} 项目的深刻影响。
 
-While currently \Tigrisd is written in Haskell, because of the latter's strong and vibrant
-ecosystem with libraries like \texttt{Unbound} providing useful methods to manipulate
-the lambda calculus and the AST so that we do not have to reinvent the wheel.
-\footnote{as we've sort of did so
-in \Tigris, but it is all inlined and not as a standalone package, which, can be difficult to use here.}
-Though, we may someday rewrite it in Lean.
-The point being that at least there is a working prototype.
+目前而言，\Tigrisd 使用 Haskell 实现，因其强壮、活跃的生态环境，拥有诸如 \texttt{Unbound} 等用于
+操作\lambdacalc、AST 的库使得我们不必重新造轮子\footnote{
+  相较而言，\Tigris 就是一个（几乎）全数独立实现的子系统。
+  其中用到的许多函数、实现都是针对这一语言特化的，因而较难将之迁移到此处为 \Tigrisd 所用。
+  }
+虽然未来展望中，我们希望有一天能将之用 Lean 重写，并配套一个定理证明过（verified）的实现——重点是
+当下我们已经拥有一个可以工作的原型。
 
-\paragraph{Nomenclature} The word \emph{term}, when used along, includes what would
-be considered a \emph{type} in regular programming languages. When \emph{term} and
-\emph{type} are used together, sometimes the former includes latter, sometimes it does not,
-readers should be able to deduce the exact meaning of it;
-Unconditionally, \emph{type} is used exclusively to reference types, no matter dependent or not.
+\paragraph{命名规范} “项（term）”一词，当单独使用时，包含常规语言（非依赖类型）中的\emph{类型}。
+当“项”与“类型”一起使用时，大部分情况下前者不包括后者。“类型”永远指代类型，无论依赖与否。
 
-\subsection{The basics} The syntax is of \Tigrisd is very similar to \Tigris, with
-a few exceptions, especially in relation to its dependently-typed nature. The implementation
-of this syntax also uses monadic parsing, in the form of parser combinators, specifically,
-the \emph{layout} combinators, which use off-side rules (i.e. indentation aware). This decision
-is made this way because proofs are generally more verbose than programs. Some of the
-connectives can be omit if we use indentation-aware parsing, which, is more closer
-to a human-readable form.
-We list some notable syntax changes below.
+\subsection{语言基础与基本概念}
+\Tigrisd 所支持的语法与 \Tigris 极为相似，仅有少数例外，且都与前者作为依赖类型语言相关。
+这一语法的实现仍然使用基于组合子的单子句法分析，其特殊之处在于 \emph{layout} 组合子，这一组合子
+使用 off-side rules（即缩进影响语义，如 Python）。这一例外是因为证明通常比程序更复杂，一些语法中的
+连接词，如 \texttt{let..in} 中的 \texttt{in}，在依赖缩进的语法中可以省略，降低\emph{语法噪音}，
+提升可读性。下面，我们将叙述重要语法构造的区别。
 
-\paragraph{Indexed family} has the form
+\paragraph{枚举组} 具有语法
 \begin{minted}{bnf}
   <dtype-decl>    ::= inductive <dtype-name> <dtype-ibinder>* : <dtype-univ>
                       "where"? ("|" <dtype-branch>)*
@@ -3464,7 +3073,7 @@ We list some notable syntax changes below.
   <dtype-univ>    ::= Type
 \end{minted}
 
-An concrete index family example in \Tigrisd is
+例如一个将长度\emph{嵌入}类型的列表（换句话说，类型依赖长度）定义：
 
 \begin{minted}{lean4}
   inductive Vector (α : Type) (n : Nat) : Type where
@@ -3472,138 +3081,100 @@ An concrete index family example in \Tigrisd is
     | Cons : {m : Nat} -> α -> Vector α (Succ m)
 \end{minted}
 
-With type irrelevant binders wrapped in curly brackets \texttt{\{\}} i.e. not used
-in programming.
-A constructor's result type is checked against the type
-that is being defined to see if their \emph{head} matches,
-in the case, they must be an application of \texttt{Vector}. Implicitly, two
-constraints are produced by this inductive family, identified by the variant\footnote{
-The word \emph{variant} here is used literally, which, has no connection to variant values.
-}:
-\begin{itemize}
-\item in the \texttt{Nil} branch, $n$ must equate to \texttt{Zero};
-\item in the \texttt{Cons} branch, $n$ must equate to \texttt{Succ m} where \texttt{m} is
-bound to the first field of \texttt{Cons}.
-\end{itemize}
-
-This example defines a List that encodes its length in the type, similar to the \texttt{Vector}
-in Lean. We can verify this with unnamed bindings, defined with \mintinline{lean4}|example|:
+其中我们使用花括号 \texttt{\{\}} 表示类型无关（不参与编程计算）的绑定子。
+构造子的结果类型将与定义类型做比较，确保两者的\emph{头}一致，在此处即 \texttt{Vector}.
+这一声明隐式地产生了两条约束，按分支分别为 $n = 0$ 与 $n = Succ m$. 通过 \texttt{example} 关键字，
+我们能引入匿名的定义用于测试这个类型定义的可用性：
 
 \begin{minted}{lean4}
   example: {α : Type} -> Vector α 0 = Nil
   example: Vector Unit 2 = Cons 1 () (Cons 0 () Nil)
 \end{minted}
 
-\paragraph{function} declaration now takes the form of:
-
+\paragraph{函数} 定义现在有形式
 \begin{minted}{bnf}
   <tm-lam> ::= fun <dtype-binder>+ => <tm>
   <tm-let> ::= let <ident> <dtype-binder>* : <tm> => <tm>
 \end{minted}
 
-The let-binding syntactic sugar described in \Tigris applies here:
+注意：\Tigris 中介绍的 pattern matching let 语法糖并不适用于此处。若想使用模式匹配，
+必须通过以下最基本形式使用：
 
 \begin{minted}{lean4}
   let map {α : Type} {β : Type} {n : Nat} (f : α -> β) (as : Vector α n) : Vector β n =
     match as with
     | Nil         => Nil
-    | Cons m x xs => Cons m (f x) (map α β m f xs)
+    | Cons m x xs => Cons m (f x) (map {α} {β} {n} f xs)
 \end{minted}
 
-Note that currently \Tigrisd does not perform implicit inference or implicit synthesis,
-which requires users to provide every relevant binders. \Tigrisd
-implements a simple bidirectional typechecker with limited
-inference ability.
+\Tigrisd 目前并不具备隐式变量推断（implicit inference）或隐式项合成（implicit synthesis），因而我们
+要求用户提供所有绑定的参数，如上例所示。\Tigrisd 的类型检查器仅实现一简单的双向算法，只具备有限的
+推断能力。
 
-Readers should now pay great attention to this
-new property:
+读者应当铭记下述 \Tigris 与 \Tigrisd 在函数定义上的差距，暨依赖类型论最显然的特征，
 \begin{center}
-\underline{function takes types just the same as taking values, since types are terms as well.}
+\underline{函数能接收\emph{类型}作为参数，就像其能接收值一样，因为\emph{值也是项}}。
 \end{center}
-Which, yields some interesting rules that previously, as in \Tigris, requires extensions, such as
-skolem variables.
-Consider replacing the recursive call of \texttt{map} with \texttt{xs}, i.e. \texttt{Cons m (f x) xs},
-which, immediately yields a type error because $\alpha$ and $\beta$ are distinctive parameters.
-The typechecker cannot establish that $\mathsf{Vector}\ \alpha\ n$ equals $\mathsf{Vector}\ \beta\ n$, unless
-the equality $h : \alpha=\beta$\footnote{
-Equality itself is a big topic. In this case, we are talking about definitional equality.
-Detailed information on this is described later.
-}
-is proven, only after which said types can be proved equal through $\alpha$-equivalence;
-In this case, it is not and it can't be, as $\alpha$ and $\beta$
-are arbitrary types and there is not any assumption that entails $h$.
+这一特性产生了一些在 \Tigris 中需要拓展类型系统（例如 skolems）才能实现的规则。考虑将第二个分支的右手侧递归应用 \texttt{map xs ..} 替换成
+\texttt{xs}，使得整个式子成为 \texttt{Cons m (f x) xs}——检查器将立马报错，因为其需要证明 $\mathsf{Vector}\ \alpha\ n$、$\mathsf{Vector}\ \beta\ n$
+相等，即证 $h : \alpha=\beta$.\footnote{
+  依赖类型论的\emph{相等性}是一个极为重要的概念，我们将在下一章给出具体介绍。
+}显然根据现有信息，我们没法、也不可能证出上述等式，因为等号两侧是随机选取的类型。
 
-\paragraph{pattern matching and product elimination} has been reduced to the primitive form
+\paragraph{模式匹配与（依赖类型）元组消去} 已经被减少到以下两种语法形式：
 \begin{itemize}
-\item \mintinline{lean4}|match e with ..| only accepts the variant pattern;
-\item \mintinline{ocaml}|let (x, y) = a in b| is exclusively used for product (pair) elimination.
+\item \mintinline{lean4}|match e with ..| 只接受构造值模式；
+\item \mintinline{ocaml}|let (x, y) = a in b| 并非上述结构的语法糖，而是专门用于实现
+（依赖类型）元组消去的语法构造。
 \end{itemize}
 
-\Tigrisd implements a lightweight version of discriminant refinement as mentioned above, we shall describe this later.
+关于上一部分提到过的 discriminant refinement，\Tigrisd 亦支持，我们将在后文介绍。
 
-\paragraph{Type/Proof Irrelevance} refers to the absent of proofs and types as they
-have no runtime representation and thus are erased. Therefore, it is crucial for the typechecker
-to make sure there is no unexpected erasure of meaningful values. \emph{Irrelevance} is the general
-word that describe this rule, as it may apply to not just types or proofs (see below).
+\paragraph{类型/证明无关性} 指的是类型、证明一定被擦除而不出现在最终的程序中的性质，因为
+两者并没有运行时表示。显然，对于类型检查器来说，确保擦除正确，不意外擦除\emph{有意义的}值十分重要。
+\emph{无关性}（irrelevance）一词指上述现象，但并非只有证明和类型是无关的，在下文我们还能看到其他的无关项。
 
-\paragraph{modules} are fancy names for files. A \Tigrisd source file automatically constitutes of
-a module, with the module name being its filename.
-Modules $M_1,\dots,M_i$ can be imported using the directive \mintinline{lean4}|import M_1,..,M_i|; which
-may only appear \underline{at the top of a file}.
+\paragraph{模块} 与 \Tigris 一致。任一 \Tigrisd 源文件自动构成一模块，由源文件名作为模块名。此外，
+我们也实现了类 Haskell 文件顶端的声明：通过 \mintinline{haskell}|module ... where| 定义一个模块。
+引入模块 $M_1,\dots,M_i$ 可将其中的所有声明引入当前模块，
+通过顶端声明 \mintinline{lean4}|import M_1,..,M_i| 实现。
 
-\paragraph{Builtin commands} are either proofs or commands used in interactive sessions (e.g. REPL), they are
+\paragraph{内置命令} 是\emph{证明}，或用于 REPL 的命令，包含
 \begin{itemize}\itemsep0em
-\item \texttt{sorry} (proof): can prove anything, which is obivously unsound. In practice, it is used
-to stub out the proofs that is to be typed out later. Any use of this command results a warning
-from the typechecker, with \underline{every definition depending on it being marked irrelevant}.
-\item \texttt{show} (cmd): is used to pretty print the typing context.
-\item \texttt{rfl}  (proof): is short for reflexivity, or $a = a$, for some term $a$. Some might say this is the root of all
-equality proofs as one is essentially substituting one side
-of the equality
-that eventually becomes the other side, which then can be \emph{discharged} with \texttt{rfl}. \texttt{rfl} is more nuanced than
-it seems: It respects $\alpha$-equivalence and
-$\beta$-equivalence.
-\item \texttt{exfalso tm} (proof): or \emph{ex falso quodlibet} (EFQ), is the famous principle of explosion.
-\texttt{exfalso} expects a term proved \texttt{false}, which then can be used
-to prove anything, or ``construct'' a value of any type.
-The system becomes unsound if some term can be proved false without assumptions.
-
-\paragraph{Universe}, or level, is 1 in \Tigrisd,
-which is also \emph{impredicative}, in the sense that
-\mintinline{lean4}|Type : Type|, instead of \mintinline{lean4}{Type 1}, reading \mintinline{lean4}{Type} lives in itself, or
-the \mintinline{lean4}|Type| of types is still \mintinline{lean4}|Type|.
-Although 1-level MLTT is unsound, as proven by Girard\footnote{
-We do not show why it is unsound, as that is mathematicians' job.
-Readers only have to know that the reason is similar
-to why ZF sets need an axiom of regularity; Otherwise there
-could be a Russell-style paradox.
-} , we adopt
-it nonetheless for its simplicity. Similarly, bounded recursion
-, termination checking or totality checking is nonexistent in \Tigrisd.
-
+\item \texttt{sorry}（证明）：可用于证明任意命题，显然是不合理的。实际使用中，我们用此
+来标记一个未完成的证明，方便之后补全，而不使得编译器报错。此命令的任一使用都会触发编译器的报警，
+并使得其本身和与之相关的所有定义都被标记为\emph{不相关}。
+\item \texttt{show}（命令）：用于 pretty-print 类型环境
+\item \texttt{rfl}（命令）：为 reflexivity（自反性）的简写，可证明 $a = a$，对任意项 $a$. 可以说这是
+所有等式命题的\emph{根证明}，因为更复杂的证明无非是将等式的任一一侧变换成另一侧，并通过自反性得证。\texttt{rfl}
+远比其看起来的复杂：其支持 $\alpha$-等价 和 $\beta$-等价，即经过任意有限步 $\alpha$/$\beta$-变换的两个项
+在 \texttt{rfl} 下直接相等。
+\item \texttt{exfalso tm}（证明）：即爆炸原理。\texttt{exfalso} 接收一个证伪的项，
+以此证明任意命题，或“构造”任意类型的一个值。在没有假设的前提下，若独立证出证伪的项，说明
+系统不合理（unsound）。
+\paragraph{类型宇宙} 亦称 level，在 \Tigrisd 中只有一个，且是\emph{非直谓的}，即 \mintinline{lean4}|Type : Type|，而非 \mintinline{lean4}{Type 1}，读作类型宇宙 \mintinline{lean4}{Type}，存在于自身中，或
+\mintinline{lean4}{Type} 的类型还是 \mintinline{lean4}|Type|. 虽然单一宇宙的直觉类型论
+（Martin-Löf/Intuitionistic Type Theory，MLTT. 依赖类型论的一种，但也可作为其别称）已由
+Girard 证明不合理\footnote{
+  我们并不细究其为何不合理，因为那是数学家的工作。读者只需知道其原因类似为什么 ZF 集合论中需要
+  正则公理；否则会产生罗素式（Russell-style）的悖论。
+}，我们仍然以之作为理论基础，因其简单性。此外，有界递归、停机/完备性检查在 \Tigrisd 中都不存在。
 \end{itemize}
 
-\subsection{A formal description of \Tigrisd}
-Unlike \Tigris, which can be considered \emph{stable}\footnote{
-Readers must acknowledge that ``stable'' here means that the chance to
-have a code refactoring, or any major change to the design of the language
-is quite unlikely.
-Not that \Tigris self is stable: it is absolutely \underline{not} and is \underline{not suitable for production environment.}
-}, while \Tigrisd already have a working prototype with desired features,
-huge refactors and design changes may still happen, such as rewriting it in Lean,
-implementing \emph{implicit argument synthesis} to reduce the verbosity
-of the proofs, and more. Because of this, we omit the implementation notes here and
-instead jump straight to the formal description of \Tigrisd, where the core
-calculus and the type system is most unlikely to change.
+\subsection{\Tigrisd 内核的形式化描述}
+类似第二部分，下面我们给出 \Tigrisd 内核的形式化描述。由于类型亦属于项，所以我们不再区分
+类型系统和值，统归于核心代数下。
 
-\paragraph{Core calculus \& context} is given by
+\paragraph{核心代数与类型环境} 给出于
 
 \nonterms{tm}
 \nonterms{context}
 
-where the construction of context and typing is given by
+其中类型环境上的操作由以下两条给出，
 
 \drules[g]{$\Gamma$}{Context construction}{nil, cons}
+
+项的类型判断规则为
 
 \drules[t]{$\Gamma\vdash a : A$}{Typing}
 { var
@@ -3621,14 +3192,25 @@ where the construction of context and typing is given by
 , subst
 , exfalso}
 
-Readers should note that some concrete types such
-as $\mathsf{Bool}$ and $\mathsf{Unit}$, is omitted. These
-types basically the same rules as in \Tigris.
-With irrelevant being the same, in terms of typing:
+其中 $\Pi/\Sigma$ 类型分别表示依赖积/余积（dependent product/coproduct）类型。
+Product，如其形式，与箭头类型 $(\cdot\to\cdot)$ 极为相似，可以看作其“升级版”。
+区别在于，现在我们为箭头左手侧（逆变位置）
+增加了一个标识符（label），允许箭头右侧提及左侧，即结果类型依赖于参数。显然，依赖积可以用于编码
+函数类型，且如果出现在类型层面，可以用于编码 $\forall$ binder ——依赖类型论“免费给予”我们一般语言
+中的参数多态，且毫不费力。
+同理，coproduct 的右手侧也可
+依赖左手侧，可用于编码元组类型。这两个类型的叫法很多，例如前者亦称 dependent function type，后者
+称 dependent sum type. 为了表述清晰，我们统一使用范畴论术语 product/coproduct.
+
+由于篇幅限制，我们略去一些常量（$\mathsf{Bool}$、$\mathsf{Unit}$）的规则，因为这些规则
+与 \Tigris 一致。不相关项的类型规则同上，但我们另外给出：
 
 \drules[t]{$\Gamma\vdash a : A$}{Irrelevant Typing}{evar, elambda, eapp, epi}
 
-The bidirectional type system \Tigrisd implementation is (check/infer)
+\Tigrisd 的双向类型算法存在两个类型判断（judgement）：推断与检查。这两个判断在实现中对应两个
+（互）递归的函数 \texttt{infer}、\texttt{check}. 显然，两者是互相依赖对方的。此外，对于
+类型检查器来说，上述两个判断其实是两个\emph{模式}，对于不同的语法结构，我们采用不同的模式：
+例如当其遇到 \rref{C-lambda} 时，是检查模式；遇到 \rref{I-app-nonwhnf} 时，是推断模式。
 \drules[c]{$\Gamma\vdash a\Leftarrow B$}{type checking}
 { lambda
 , switch-mode
@@ -3708,7 +3290,7 @@ terms are given by
 \nonterms{neutral}
 
 For example, the term
-$(x : \mathsf{Type})\times (\lambda x.\,\mathsf{Nat})\ \mathsf{Unit}$ is in WHNF,
+$(x : \mathbf{Type})\times (\lambda x.\,\mathsf{Nat})\ \mathsf{Unit}$ is in WHNF,
 because, though its RHS is $\beta$-reducible, this term itself is not: It is
 a coproduct; Or the neutral term $\mathsf{add}\ 1\ 3$, which,
 judging from its apperance, should reduce to $4$ but
