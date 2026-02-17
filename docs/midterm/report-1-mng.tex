@@ -34,7 +34,7 @@
 \theoremstyle{remark}\newtheorem*{remark}{Remark}
 \theoremstyle{definition}\newtheorem*{definition}{Definition}
 \newtheorem{theorem}{Theorem}
-\title{Mid-Term Report}
+\title{TinyTheorem：一个依值类型的编程语言暨定理证明器}
 \author{高振明/Zhenming Gao}
 %\date{}
 
@@ -54,12 +54,12 @@
 \section{绪论}
 \subsection{选题背景及意义}
 随着大语言模型、前端框架 React、Vue 的兴起，
-作为理论计算机历史悠久的分支之一编程语言理论\&设计实践（Programming Language Theory，PLT \& Programming Language Design \& Implementation, PLDI）与相关领域类型论（Type Theory，TT）、范畴论（Category Theory）重新进入人们的视野。
+作为理论计算机历史悠久的分支之一编程语言理论\&设计实践（Programming Language Theory，PLT \& PL Design \& Implementation, PLDI）与相关领域类型论（Type Theory，TT）、范畴论（Category Theory）重新进入人们的视野。
 作为其产物之一的函数式编程范式（functional programming）被活用于前端设计部分，
-而另一产物定理证明器则与大模型结合，产生了 AI4MATH 等证明自动化项目，
+而另一产物定理证明器则与大模型结合，产生了 AI4MATH 等证明自动化项目。
 尝试利用大模型解决奥林匹克数学问题的捷报频传，受到数学家陶哲轩等人的青睐。
 然而因其理论程度高（冷门）、对学生纯数学水平要求高的特点，许多大学并未开设该课程，
-推广PLT、PLDI、类型论和范畴论的教育与学界所倡导的编程实践仍然是一项挑战。
+推广 PLT、PLDI、类型论和范畴论的教育与学界所倡导的编程实践仍然是一项挑战。
 
 本文旨在探索一种同时面向工程化程序开发与形式化验证的语言与编译工具链原型，
 同时获得可运行的编译器产出与可用的证明重写器，作为本科生或研究生科研训练与工程原型，
@@ -86,41 +86,42 @@
 举例来说，数学的函数都没有副作用，这一点在 Haskell 语言中得到体现，除非是
 单子上（Monadic，是受范畴论同名代数结构启发，函数式编程中用于建模副作用概念）的函数\footnote{
   而即便是这样的函数，
-  除去输入输出、多线程、STM（Software transactional memory）这些真正与副作用相关的 \texttt{IO}、\texttt{ST} Monad 之外，其余都可以用纯函数\emph{模拟}出来，本文的实现亦完全参照这一设计模式，因为 Haskell 和 Lean 都是
+  除去输入输出、多线程、STM（Software transactional memory）这些真正与副作用相关的 \texttt{IO}、\texttt{ST} Monad 之外，其余都可以用纯函数\emph{模拟}出来，本文的实现亦完全符合这一设计模式，因为 Haskell 和 Lean 都是
   纯函数式语言。
 }。
 \paragraph{Hindley-Milner 类型系统} 由 Hindley、Milner 等奠基并由 Damas–Milner 系统化，形成“具有主类型/类型模式（principal type-schemes）”与“算法W（Algorithm W）”的经典框架。其核心优势为：对 $\lambda$-项的完全/全局类型推断（complete/global type inference）、良好的语义基础与实现简洁性。该系统的后续工作围绕“向多态更强方向扩展”与“保持推断可行性”展开：
-\subparagraph{类型类（typeclass）与限定类型（qualified types）} 由 Wadler、Blott、Jones 等提出与系统化，提供了对「重载与约束多态」的统一抽象，使得「字典传递」成为行之有效的编译期（compile-time）繁饰（elaboration）设计策略。
+\subparagraph{类型类（typeclass）与限定类型（qualified types）} 由 Wadler、Blott、Jones 等提出与系统化，提供了对重载与约束多态的统一抽象，使得字典传递成为行之有效的编译期（compile-time）繁饰（elaboration）设计策略。
 \subparagraph{高阶多态（higher-rank polymorphism）的推断} 由 Peyton Jones 等提出，Dunfield–Krishnaswami 等人则提供了“完备且易实现的双向类型检查”解决方案，在实践中往往以“显式标注 + 局部推断 + 刚性检查”的折中方式落地。
-\subparagraph{局部类型推断（local type inference）与双向类型检查} 则在取强表达力与用户心智负担的中间地带：
+\subparagraph{局部类型推断（local type inference）与双向类型检查} 由 Pierce 提出并发展，则取强表达力与用户心智负担的中间地带：
 仅在需要时（例如函数声明，或2-阶及以上时）通过少量标注引导推断，兼顾可读性与可推断性。
 
 在本文的“编程子系统”中，我们借鉴上述成果，采用“扩展HM + 谓词（predicates） + 类型类 + 严格一阶类型（strict first-class） + 头等泛型（first-class polymorphism）”的设计，并配以“内嵌一阶模式（Scheme）方案 + Skolem 刚性检查 + 承担字典投影（dictionary projection）的System F繁饰”的实现策略，使其既与 Haskell 传统保持一致性，又便于在原型编译器框架下实现与调试。
 
 \paragraph{语法与解析（parsing）} 函数式语言（仅指 Milner 等人开创的 ML 系语言）通常具有相仿
-的语法结构。其中著名者包括 Haskell、OCaml、Standard ML；在定理证明器部分则又包括 Coq （现称 Rocq）、Lean、Agda 和 F*. 函数式语言语法的特点是灵活与统一，
+的语法结构。其中著名者包括 Haskell、OCaml、Standard ML；在定理证明器部分则又包括 Coq （现称 Rocq）、Lean、Agda、Isabelle/HOL 与 F*. 函数式语言语法的特点是灵活与统一，
 既允许多种多样的用户自定义运算符（例如使用 LR(1) ocamlyacc 实现的 OCaml），更甚者
-则支持强大的元编程（metaprogramming）功能，例如 GHC 的 TemplateHaskell，OCaml 的 Pre-Processor Extension （PPX）和 Lean 的 \texttt{syntax}、\texttt{macro}、\texttt{macro\_rules} 等语法构造：
-这一特性在定理证明器中尤为明显，因其对数学证明的需求。统一性则体现在函数式语言对语法糖（syntactic sugar）的缺失，得益于这些语言
+还支持强大的元编程（metaprogramming）功能，例如 GHC 的 TemplateHaskell，OCaml 的 Pre-Processor Extension （PPX）和 Lean 的 \texttt{syntax}、\texttt{macro}、\texttt{macro\_rules} 等语法构造：
+这一特性在定理证明器中尤为明显，因其对数学证明的需求；统一性则体现在函数式语言对语法糖（syntactic sugar）的缺失，得益于这些语言
 的面向表达式的特性（expression-oriented），其表层语法（surface syntax）具有强通用性，
 且统一使用含类型（typed）\lambdacalc（或其变体，例如定理证明器则使用依赖类型的版本）作为它们的核心代数（core calculus）。从这个角度，也可以说函数式语言\emph{几乎只有}语法糖，因为其表层语法全部被解糖（desugar）到前述的核心代数中，但为了和工业语言特殊对待的“语法糖”区分，我们不称其为语法糖。
 
 这些特性，除元编程之外，都由 Tigris 继承。我们设计的表层语法综合了 Lean、OCaml、Haskell 的长处，
-并通过受范畴论启发的单子式\footnote{属于函数式编程的设计模式}
-的语法分析组合子（Monadic Parser Combinator）
+并通过受范畴论启发的单子式\footnote{属于函数式编程的设计模式的一部分。}
+的语法分析组合子（monadic parser combinator）
 保证解析器的模块化和可维护性，同时利用 Pratt 解析技术实现“用户可定义运算符 + 优先级/结合性”的高可扩展解析能力。
 Pratt 自顶向下运算符优先级解析法以其“实现简洁、扩展性强”而被广泛采用，
 适合教学与原型构建。结合“分派/分组式 let 语法糖”、
 模式匹配（pattern matching）与记录（record/struct）/归纳（代数）数据类型（inductive types/algebraic datatypes）等语言构件，
 可覆盖函数式编程的主流设计模式。
 
-\paragraph{类型类的繁饰与实例解析（instance resolution）} 基于 Wadler\&Blott 的类型类思想，
+\paragraph{类型类的繁饰与实例解析（instance resolution）} 基于 Wadler-Blott 的类型类思想，
 将临时（ad-hoc）多态（例如 C、Java 的函数重载）以“字典”抽象归结为参数化（parametric）多态的系统化繁饰；
-Jones的合格类型与“构造子类”进一步将类型构造子（如Functor、Applicative、Monad等经典纯函数式设计模式）纳入框架。
-在实际实现中，GHC 的 OutsideIn(X) 体系及其后续演化提出了以约束为中心的求解与实例选择流程，并辅以 Skolem 刚性变量（rigids）、泛化（generalization）/实例化策略来控制推断过程的完备性与可预测性。
+Peyton Jones 的合格类型与“构造子类”进一步将类型构造子（如 Functor、Applicative、Monad 等经典纯函数式设计模式）纳入框架。
+在实际实现中，Haskell 主流实现之一的 GHC 的 OutsideIn(X) 体系及其后续演化提出了以约束为中心的求解与实例选择流程，
+并辅以 Skolem 刚性变量（rigids）、泛化（generalization）/实例化策略来控制推断过程的完备性与可预测性。
 
 本文采用与之相容的思路，但简化了 OutsideIn(X) 体系：
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item System F 的繁饰以字典参数（项层）+ 类型抽象（类型项层）联合刻画；
   \item 刚性检查通过在注解与应用位点进行 Skolem 化检查，防止不当的跨层次统一；
   \item 实例解析采用“基于头部匹配 + 递归解析上下文谓词”的策略（参照 OutsideIn 风格），并结合模式匹配决策树优化编译。
@@ -130,14 +131,18 @@ Jones的合格类型与“构造子类”进一步将类型构造子（如Functo
 研究社区已就“System F 繁饰 $\to$ Administrative-Normal Form（ANF）$\to$ 闭包转换（closure conversion）$\to$ CPS 化”
 的路径形成较为成熟的共识与方法论。这其中，
 Girard提出的System F作为多态\lambdacalc 的标准中间表示，适合承载类型抽象与字典化后的多态程序；
-Flanagan、Appel 等人在 ANF 与 CPS 化的经典工作明确了将控制流与求值顺序外显（explicit）化的工程路径，利于优化与目标后端对接。我们在此基础上，进一步设计了“Lambda IR（ANF 变体）$\to$ CPS IR”的两段式IR，并最终落地到 Common Lisp 以获得成熟运行时、交互环境、外部函数接口（foreign function interface，FFI） 的支持
+Flanagan、Appel 等人在 ANF 与 CPS 化的经典工作明确了将控制流与求值顺序外显（explicit）化的工程路径，
+利于优化与目标后端对接。
+
+我们在此基础上，进一步设计了“Lambda IR（ANF 变体）$\to$ CPS IR”的两段式IR，
+并最终落地到 Common Lisp 以获得成熟运行时、交互环境、外部函数接口（foreign function interface，FFI）的支持。
 
 \paragraph{依赖类型内核与双向检查} 在证明子系统方面，
-Lean、Coq、Agda分别代表了现代依赖类型定理证明器的不同取向：
-Lean 与 Coq 的理论基础一致（Calculus of Inductive Construction, CIC），但前者强调工程机制与元编程生态，
+Lean、Coq、Agda 分别代表了现代依赖类型定理证明器的不同取向：
+Lean 与 Coq 的理论基础一致（Calculus of Inductive Constructions, CIC），但前者强调工程机制与元编程生态，
 后者强调严谨公理化\footnote{
-  前者与后者相比，提供了一些现代逻辑认为不可靠的公理，例如集合论的选择公理 Axiom of Choice，以及由之导出的排中律，因而受人诟病；
-  而考虑到编程需要，其在停机检查 termination checking 时也较松，允许 partial 和 unsafe。因而本项目选择用其作为编程语言。
+  前者与后者相比，提供了一些现代逻辑认为不可靠的公理，例如集合论的选择公理（Axiom of Choice），以及由之导出的排中律（Law of Excluded Middle），因而受人诟病；
+  而考虑到编程需要，其在停机检查 termination checking 时也较松，允许 partial 和 unsafe. 因而本项目选择用其作为编程语言。
 }，
 而 Agda 则强调程序化证明与可视化交互，
 且主要用于建模（modeling）类型论研究前沿的同伦类型论（Homotopy Type Theory）与立方类型论（Cubical Type Theory）。
@@ -150,34 +155,38 @@ Lean 与 Coq 的理论基础一致（Calculus of Inductive Construction, CIC）�
 
 \subsection{主要研究内容、预期目标与创新点}
 \paragraph{研究的主要内容与设计思路}
-\begin{itemize}
-  \item 在语言前端与解析上，我们将实现 Lean/OCaml/Haskell 风格交融的函数式语法，采用 Pratt 解析构建可扩展的表达式优先级框架，支持用户自定义操作符（优先级/结合性）与冲突检查。表层语法大体依照 OCaml 风格，但参考 Lean 的习惯写法提供语法糖和 Haskell 的写法提供部分语法结构（language construct）与模式匹配、记录/ADT、头等抽象、类型标注（type annotation/ascription）等语法。
-  \item 在类型系统实现上，构建“扩展 HM + 谓词 + 类型类 + 第一阶 HKT”类型系统；支持 rank-1 方案（TSch）内嵌与字典化繁饰；在语法树（abstract syntax tree, AST）的 \texttt{Ascribe/Var/App} 等关键位点使用 Skolem 刚性检查与rank-1 方案实例（instantiation）；提供局部双向检查与必要的显式标注通道。在类型求解上：采用一阶合一（unification）的方式求解类型、参照“字典变量在作用域内匹配/查找”的 OutsideIn 式思路，维护“已访问实例”集合避免出现环导致系统崩溃（diverge）；在类型制导（type-directed）语法上，我们令类型检查器（typechecker）在需要时（譬如实例解析、解糖时的易歧义处）要求显式类型注解，提升错误定位与歧义时的可预期性。
-  \item 在IR降级上，我们繁饰表层语法到 System F：新增 Proj（字典投影）等节点便于优化与降级；将类型抽象与字典参数显式化，提供\texttt{TyLam/TyApp/Proj}等 System F IR 结点，并配套$\beta/\eta$-化、减少生成的 IR 噪声并向后续步骤暴露更多的优化机会，同时保证后续变换的可维护性；
-  \item 在后端 IR 与编译上，我们的管线是 Lambda IR $\to$ Closure Conversion $\to$ CPS Transformation $\to$ Common Lisp；在IR层实现常量折叠（constant folding）、拷贝传播（copy propagation）、无用代码消除（dead code elimination）、尾调用（tailcall/tail-recursive）化、投影/选择消去的源优化，最后在CPS层显式表达控制转移并直接下降到目标 Common Lisp 代码。
-  \item 模式匹配检查与编译上：在类型全数推断出来后，我们参照 Maranget 的模式匹配冗余/欠缺检查算法，针对缺少的/多余的模式分支向用户发出警告，并针对具体情况向用户提出一种缺失的分支/立即删除多余分支；在System F 繁饰之后，我们根据其基于决策树的编译算法，生成良好分支。
-  \item 在证明内核部分，我们采用单一宇宙、蕴含式的依赖类型\lambdacalc，并采用双向类型检查，降低判定复杂度与术语成本；
-    参考标准的等式重写与项代换理论（Baader\&Nipkow）提供项重写式（term-rewriting）解释器以支持基本等式推理与程序化证明脚本；利用 Haskell 在学术上的丰富生态，通过 Unbound 等库实现对于\lambdaterm 的操作，变换，以及变量约束的判断；
-    引入 Peyton Jones 提出的 Weak Head 范式（Weak Head Normal Form, WHNF）用于控制消去（reduction），将其与定义性等号（definitional equality）的实现结合，避免在判断两个项是否相等时的无用计算、消去、展开（unfolding），提升定理证明性能。
-  \item 最后，在实验与评测上，我们以 Functor/Applicative/Monad 等典型代数结构暨函数式编程设计模式为样例，验证实例解析、字典化与投影优化的正确性；以典型函数式程序映射（map）、折叠（fold）考察编译后端的性能与优化效果；以基本代数定理/列表性质作为证明例子，验证证明内核的可用性与重写效率。
-\end{itemize}
+
+在语言前端与解析上，我们将实现 Lean/OCaml/Haskell 风格交融的函数式语法，采用 Pratt 解析构建可扩展的表达式优先级框架，支持用户自定义操作符（优先级/结合性）与冲突检查。表层语法大体依照 OCaml 风格，但参考 Lean 的习惯写法提供语法糖和 Haskell 的写法提供部分语法结构（language construct）与模式匹配、记录/ADT、头等抽象、类型标注（type annotation/ascription）等语法。
+
+在类型系统实现上，构建“扩展 HM + 谓词 + 类型类 + 第一阶 HKT”类型系统；支持 rank-1 方案（TSch）内嵌与字典化繁饰；在语法树（abstract syntax tree, AST）的 \texttt{Ascribe/Var/App} 等关键位点使用 Skolem 刚性检查与rank-1 方案实例（instantiation）；提供局部双向检查与必要的显式标注通道。在类型求解上：采用一阶合一（unification）的方式求解类型、参照“字典变量在作用域内匹配/查找”的 OutsideIn 式思路，维护“已访问实例”集合避免出现环导致系统崩溃（diverge）；在类型制导（type-directed）语法上，我们令类型检查器（typechecker）在需要时（譬如实例解析、解糖时的易歧义处）要求显式类型注解，提升错误定位与歧义时的可预期性。
+在IR降级上，我们繁饰表层语法到 System F：新增 Proj（字典投影）等节点便于优化与降级；将类型抽象与字典参数显式化，提供\texttt{TyLam/TyApp/Proj}等 System F IR 结点，并配套$\beta/\eta$-化、减少生成的 IR 噪声并向后续步骤暴露更多的优化机会，同时保证后续变换的可维护性；
+
+在后端 IR 与编译上，我们的管线是 Lambda IR $\to$ Closure Conversion $\to$ CPS Transformation $\to$ Common Lisp；在IR层实现常量折叠（constant folding）、拷贝传播（copy propagation）、无用代码消除（dead code elimination）、尾调用（tailcall/tail-recursive）化、投影/选择消去的源优化，最后在CPS层显式表达控制转移并直接下降到目标 Common Lisp 代码。
+模式匹配检查与编译上：在类型全数推断出来后，我们参照 Maranget 的模式匹配冗余/欠缺检查算法，针对缺少的/多余的模式分支向用户发出警告，并针对具体情况向用户提出一种缺失的分支/立即删除多余分支；在System F 繁饰之后，我们根据其基于决策树的编译算法，生成良好分支。
+
+在证明内核部分，我们采用单一宇宙、蕴含式的依赖类型\lambdacalc，并采用双向类型检查，降低判定复杂度与术语成本；
+参考标准的等式重写与项代换理论（Baader\&Nipkow）提供项重写式（term-rewriting）解释器以支持基本等式推理与程序化证明脚本；利用 Haskell 在学术上的丰富生态，通过 Unbound 等库实现对于\lambdaterm 的操作，变换，以及变量约束的判断；
+引入 Peyton Jones 提出的 Weak Head 范式（Weak Head Normal Form, WHNF）用于控制消去（reduction），将其与定义性等号（definitional equality）的实现结合，避免在判断两个项是否相等时的无用计算、消去、展开（unfolding），提升定理证明性能。
+
+最后，在实验与评测上，我们以 Functor/Applicative/Monad 等典型代数结构暨函数式编程设计模式为样例，验证实例解析、字典化与投影优化的正确性；以典型函数式程序映射（map）、折叠（fold）考察编译后端的性能与优化效果；以基本代数定理/列表性质作为证明例子，验证证明内核的可用性与重写效率。
 
 课题整体采用“自顶向下的最小可用（MVP）+ 逐步精炼”的策略。首先保证语言前端、类型系统核心路径、编译与运行链路闭环（从 Tigris 源到 Common Lisp 目标可运行），再迭代增强类型系统细节、实例解析策略与 IR 优化规则。编程与证明两子系统以统一仓库并行推进，但保持边界清晰、依赖方向单纯：编程侧产物可独立使用，
 证明侧可以通过两系统相似的表层语法无痛迁移。
 
 \paragraph{研究的预期目标}
 本课题包含三个目标（要注意，这是最低限度的目标，实际上我们实现的功能并不止与此，见正文）：
-\begin{enumerate}
+\begin{enumerate}\itemsep0em
   \item 一个可运行的原型编译器与解释器：可编译到 Common Lisp（SBCL）或直接在 REPL 交互下运行；可对带类型类与 HKT 的示例进行正确繁饰求值。
   \item 整的IR管线与可视化输出（基于 Wadler 的 Pretty Printing 算法）：便于教学与调试；可展示从System F到Lambda IR、CPS IR的逐步变换。
   \item 证明侧最小可用内核：支持基本\lambdaterm、依值积/和（dependent product/coproduct, $\Pi/\Sigma$）与等式重写的简单证明脚本；在实际例子（如代数结构的基本定理）中可用。
 \end{enumerate}
 
 \subsection{论述结构安排}
-本文主要对课题 TinyTheorem 的两个子系统（Tigris、Tigrisd）做出描述和形式化说明，用于规范语言行为，同时向读者介绍两系统的使用方式。
-同时论述语言设计与实现上的考量、优势，以及回首复查时发现的设计失误。此外，本文不仅提倡函数式编程和依赖类型编程
-范式的使用，同时也是其实践者。
-我们还将提供一个运用于本项目的依赖类型编程的实例作为范例，并向读者介绍其思考方式、安全性与优点。具体来说，本文的正文部分可以分为六大部分：
+本文主要对课题 TinyTheorem 的两个子系统（Tigris、Tigrisd）做出描述和形式化说明，以规范语言行为；
+同时论述语言设计与实现上的考量、优势，以及回首复查时发现的设计失误并向读者介绍两系统的使用方式。
+此外，本文不仅提倡函数式编程和依赖类型编程范式的使用，同时也是其实践者。
+我们还将提供一个运用于本项目的依赖类型编程的实例作为范例，并向读者介绍其思考方式、安全性与优点。
+具体来说，本文的正文部分可以分为六大部分：
 
 \paragraph{第一部分}以语言明细/报告的（参照 OCaml Manual 或 Haskell Language Report）口吻用自然语言
 向读者全面叙述 Tigris 语言的设计以及其各部分行为，
@@ -192,7 +201,7 @@ Lean 与 Coq 的理论基础一致（Calculus of Inductive Construction, CIC）�
 在本部分，代码实现上的论述主要包含词法、句法分析，同时简单涉及类型检查器，即编译器的前端。这是因为类型系统和后续的编译部分和后端实现起来较为复杂，所以由它们将在后文各自独立的部分进行叙述。
 同时，我们认为学术语言，特别是函数式语言和工业语言，特别是常见的面向对象语言在设计、使用、实现上都有诸多不同
 （例如函数式语言通常是值导向的，并且具有统一的计算模型，这在工业语言中仍然较少见）
-为了避免犯\emph{全知视角}的写作错误，我们仍然从最基本词法惯例开始叙述。
+为了避免犯\emph{全知视角}的写作错误，我们仍然从最基本的词法惯例开始叙述。
 此外，这一部分亦作为读者了解函数式编程语言的窗口，因为 Tigris 语言是纯函数式的。
 
 \paragraph{第二部分}专门用于给出正式的 Tigris 语言的类型系统的形式化表述。
@@ -207,24 +216,26 @@ Lean 与 Coq 的理论基础一致（Calculus of Inductive Construction, CIC）�
 包括 IR 设计、优化与生成、闭包转换、CPS 转换、后端代码生成、运行时系统及 FFI。
 同时，还将涉及周边工具，如编译器命令行前端的设计使用，以及基于 IR 的解析器/REPL 的实现。
 此外，在描述 CPS 转换时，我们给出正式的指称语义（denotational semantics），这些数学公式规定了 CPS 转换的对象
-与结果，此处需要受充分的 PL 训练的读者。
+与结果，但需要读者受充分的 PL 训练。
 这一部分应当是外行人在接触编译原理时首先想到的，其重要性不言而喻，且体现了\emph{编译}的字面义：
-没有了这些管线，使用 Tigris 编写的程序终究无法工作。
+没有了这些管线，使用 Tigris 编写的程序终究无法工作（或者说，只能通过最直接的求值器工作）。
 
-\paragraph{第四部分}撷取 Tigris 实现过程中使用的一个依赖类型编程范例，以身作则向读者倡导、帮助读者理解这一编程范式的思考过程和优势。可以看作是对依赖类型编程的一个简单描述，或一份教程。同时这一部分还起到承上启下的作用：
-为读者提供即将叙述的 Tigrisd 一些先验知识，使读者能够更确切的理解 Tigrisd 的一些设计。
+\paragraph{第四部分}撷取 Tigris 实现过程中出现的一个依赖类型编程范例，
+以身作则向读者倡导、帮助读者理解这一编程范式的思考过程和优势。
+可以看作是对依赖类型编程的一个简单描述，或一份教程。同时这一部分还起到承上启下的作用：
+为读者提供即将叙述的 Tigrisd 一些先验知识，使读者能够更确切地理解后者的一些设计。
 
 \paragraph{第五部分}主要给出 Tigrisd 定理证明器的自然语言介绍以及正式的形式化描述。由于 Tigrisd 在表层语法上与 Tigris 相仿，而且采用相似的
 parser combinator 的句法分析实现方式，我们主要对两者的不同之处、与定理证明器特有的部分进行描述，主要包括
-枚举族（indexed family）定义、函数、模式匹配与依赖积的消去（elimination）、证明/类型无关性、
+索引族（indexed family）定义、函数、模式匹配与依赖积的消去（elimination）、证明/类型无关性、
 模块设计、内置命令以及类型宇宙（universe）。而最重要的 Tigrisd 内核
 （kernel, 包含 typechecker 和类型论，依惯例称定理证明器的类型系统为类型论）、与实现相关的 WHNF 和定义性相等则通过
 与第二部分非常相近的格式通过 OTT 给出形式化描述。对内核的形式化描述规定了定理证明器的行为与计算法则（computational rule）。阅读这一部分需要读者接受过充分的PL/类型论的训练。
 
 \paragraph{第六部分}总结本课题并作展望，指出本项目以后可能的研究和发展方向，并提出一些改进与语言功能、配套编辑器插件上的增加。
 
-最后，读者需要注意到，由于本课题自身属于编程语言设计与实现，正文中不可避免的会出现 Tigris 和 Tigrisd 的代码。我们希望读者不要
-默认其枯燥无味，因为这些代码是\emph{样例}，而并非用于凑字数的具体实现的源代码；
+\paragraph{读者须知} 最后，读者需要注意到，由于本课题自身属于编程语言设计与实现，正文中不可避免的会出现 Tigris 和 Tigrisd 的代码。
+我们希望读者不要默认其枯燥无味，因为这些代码是\emph{样例}，而并非用于凑字数的具体实现的源代码；
 它们用于形象地演示当前正在描述的问题。对于任何接触过编程的读者来说，我们认为相比于用自然语言描述问题，
 使用样例代码可以更清晰的展现问题。同时，为了方便读者分辨样例代码与实现的源代码，在排版上
 \underline{对前者我们开启语法高亮，对后者我们在引用代码的左侧加上代码行数}。
@@ -288,8 +299,8 @@ parser combinator 的句法分析实现方式，我们主要对两者的不同�
 解释器，都支持可变精度数字，亦即大数运算，因而不存在相对底层语言的\texttt{u32}、\texttt{i64}等等数据类型。
 \paragraph*{字符串} 是字符的无穷序列。其长度限制取决于后端。在我们的实现中，SBCL 后端支持长达 $2^{45}$ 的字符串。
 \paragraph*{元组} \(n\)-元组（tuple）通常写作 \((v_1,\dots,v_n)\).\footnote{元组在实现中是特殊对待，并非由常规的 \textsf{Prod} 编码。}
-\paragraph*{结构体} 亦称\emph{记录}（record）是归纳类型/代数数据类型（inductive/algebraic datatype, ADT）的语法糖，字面量写作
-\(\{field_1 = v_1,\dots,field_n=v_n\}\).\footnote{而类型类的实例又是结构体的语法糖。}
+\paragraph*{结构体} 亦称\emph{记录}（record）。是归纳类型/代数数据类型（inductive/algebraic datatype, ADT）的语法糖，字面量写作
+\(\{\textit{field}_1 = v_1,\dots,\textit{field}_n=v_n\}\).\footnote{而类型类的实例又是结构体的语法糖。}
 考虑到潜在的大重构问题，当前版本的 Tigris 只实现了\emph{伪类型制导}句法分析。因而对具有相同栏位（field）的
 结构体来说，无论其类型如何，都会抛出一个句法分析歧义警告（ambiguous parsing warning），但该警告可被
 类型标注（包括后述的模式亦是如此）消除：\footnote{
@@ -303,9 +314,8 @@ parser combinator 的句法分析实现方式，我们主要对两者的不同�
 \end{minted}
 对于栏位有重叠的部分，我们用最长匹配规则来区分：
 \begin{minted}{Haskell}
-  type Point = {x : Int, y : Int} ;; type Point3D = {x : Int, y : Int, z : Int}
-  let (x, y) = ( {x = 1, y = 2}          -- x : Point
-               , {x = 1, y = 2, z = 3})  -- y : Point3D
+  type Point3D = {x : Int, y : Int, z : Int}
+  let (x, y) = ({x = 1, y = 2}, {x = 1, y = 2, z = 3})  -- x : Point; y : Point3D
 \end{minted}
 \paragraph*{构造值} 指的是通过某一归纳类型的\emph{值构造子}（value constructor，简称\emph{构造子}，constructor）
 构造出的值，英文亦作\emph{variant}。构造子类似函数，但他们也可以不接收任何参数：对某构造子 $C_i$，其构造值
@@ -318,7 +328,7 @@ parser combinator 的句法分析实现方式，我们主要对两者的不同�
     \texttt{()}           & \mathsf{Unit}
   \end{matrix}
 \]
-\paragraph*{Functions} 指从值到值的映射，细节后述。
+\paragraph*{函数} 指从值到值的映射，细节后述。
 
 \subsection{标识符}
 标识符用于指代某一\emph{语言对象}：\autoref{tab:ident-case}
@@ -371,13 +381,13 @@ parser combinator 的句法分析实现方式，我们主要对两者的不同�
 需要注意，对于并列式\footnote{
   并列式指语法上不需要括号的函数\emph{应用}/调用。例如 \texttt{f 1 2} 表示将 \texttt{1, 2}两参数传给 \texttt{f} 并调用之。
   这一语法差异看似简单，实际上有重大差异：函数式语言具有的柯里化（后述）特性使得 \texttt{f 1 2} 比 \texttt{f(1, 2)} 更
-  符合语义，因为后者等于向 \texttt{f} 传一个元组 \texttt{(1, 2)}。这是 ML 系函数式语言的共性，但在 Ruby、Perl/Roku 等语言中
-  也有出现。读者可以把其类比为 Shell 命令的调用。而从句法分析的角度考虑，并列式语法的实现
+  符合语义，因为后者等于向 \texttt{f} 传一个元组 \texttt{(1, 2)}. 这是 ML 系函数式语言的共性，但在 Ruby、Perl/Roku 等语言中
+  也有出现，读者可以把其类比为 Shell 命令的调用。而从句法分析的角度考虑，并列式语法的实现
   与中缀运算符一致，但其“算符”是空白字符，因而有下方的优先级表。
 }的类型应用（juxtapositional type application）\footnote{
   在实现上，类似 Haskell 2010 Report 中的 a/b-type.
 }、
-积类型和箭头类型，我们有以下优先级（越高者越先）与结合性表，见\autoref{tab:tyoperator-prec}。
+积类型和箭头类型，我们有以下优先级（越高者越先）与结合性表，见\autoref{tab:tyoperator-prec}.
 \paragraph*{类型变量}\label{fn:HKT} 亦称 TV（type variables），是小写字母开头的标识符。类型变量的\emph{类型}，
 即\emph{类型的类型}（kind）是由用户显式提供的，因为目前我们并未实现 TV 的类型推断（kind inference）。
 一个记作 \((\alpha : n)\) 的 TV 有类型 \(\mathbf{Type}\to \mathbf{Type}\)，否则默认为 $\mathbf{Type}$.
@@ -424,20 +434,20 @@ Skolems 所具有的特殊性质称为\emph{刚性}（rigid），在后文我们
 正如同 TV，类型构造子同样具有元数，而元数为 0 的类型构造子其自身即是类型，构成一个类型表达式。
 但与构造子不同，类型构造子必须完全应用（fully applied），这一特性与工业语言中的函数相似。
 \paragraph*{不定递归类型}\label{para:equirecursive} 会被类型检查器拒绝，因此
-类型检查器无法推断程序 \mintinline{ocaml}|fun x -> x x| 的类型，且一个特殊的错误信息会被抛出。
+类型检查器无法推断诸如程序 \mintinline{ocaml}|fun x -> x x| 的类型，且一个特殊的错误信息会被抛出。
 这是为了提高类型系统的合理性，因为不定递归类型的方程式无解，或者说其解是一个无限增长的树形结构。
 允许这种类型的存在，就可以构造不动点组合子（fixpoint combinator），其中又以 \texttt{Y} 组合子最为著名（以下是其中一种实现）：
 \[
   \mathsf{Y}\ f = f\ (\mathsf{Y}\ f) : \forall \alpha.\;(\alpha\to\alpha)\to\alpha,
 \]
 将其应用到恒等函数（identity）函数上 $\mathsf{Y}\ \mathrm{id}_\alpha$ 得到类型 $\forall \alpha. \alpha$.
-出现这一类型的\emph{值}是非常危险的，因为该类型可以被实例化到任意一个类型上，即，该值具有任意类型，可以是
-整数，也可以是字符串。更危险的问题来源于后文 Tigrisd 定理证明器的理论基础 Church-Howard 同构（isomorphism），
+出现这一类型的\emph{值}是非常危险的，因为该类型可以被实例化到任意一个类型上，即该值具有任意类型，可以是
+整数，也可以是字符串等等。更危险的问题来源于后文 Tigrisd 定理证明器的理论基础 Church-Howard 同构（isomorphism），
 在逻辑上，存在这样的类型（这样的命题成立）可以导出任意命题成立，这显然是大错特错的。而即便我们只禁止这种情况，
 诸如 $\alpha\sim\tau$ 其中 $\alpha\in\tau$ 的合一化也是不合理的，因而我们不允许这种类型的存在。
 
 \subsection{模式}
-模式匹配的模式是一个指令模板，用于解构（destructure）某种\emph{形状}的数据结构。如果
+模式匹配的模式是一个\emph{指令模板}，用于解构（destructure）某种\emph{形状}的数据结构。如果
 用户自定义运算符（后述）被绑定到构造子上，则该运算符亦自动作为新的模式（语法糖）出现，提高代码可读性。
 无论何种模式，在句法分析期其都将被解糖至以下集中\emph{基本}模式中：
 \begin{minted}{bnf}
@@ -458,7 +468,7 @@ Skolems 所具有的特殊性质称为\emph{刚性}（rigid），在后文我们
 \end{minted}
 注意某一构造子模式的元数必须与其子模式（sub-pattern）的数目相等，即在这个上下文的构造子
 必须是完全应用。
-Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高者越先）：\autoref{tab:patoperator-prec}。
+\autoref{tab:patoperator-prec} 展示了 Mixfix（即前缀、中缀、后缀）运算符具有的优先级（越高者越先）。
 \begin{table}[]
   \centering
   \begin{tabular}{@{}ll@{}}
@@ -494,13 +504,12 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
 \end{minted}
 \paragraph*{括号括住的模式} 在混有运算符的模式中起作用：
 \begin{minted}{haskell}
-  type List a = Nil | Cons a (List a)
-  infixr 90 "::" => Cons
-  let f1 (x :: y :: _) = (x, y)
+  type List a = Nil | Cons a (List a) ;; infixr 90 "::" => Cons
+  let f1 (x :: y :: _)   = (x, y)
   let f2 ((x :: y) :: _) = (x, y)
 \end{minted}
 注意 \texttt{f1} 与 \texttt{f2} 相差甚远（因为用户自定义的 \texttt{(::)} 算符是右结合），
-这在编译器自动生成的 \Tigris' System F IR 很显然:
+这在编译器自动生成的 \Tigris System F IR 很显然:
 \begin{minted}[ignorelexererrors=true]{ocaml}
   let (::) : ∀ α, α → List α → List α = (Λ α. Cons@α)
   let f1 : ∀ α, List α → α × α =
@@ -515,13 +524,7 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
 \paragraph*{元组模式} 有格式 $(p_1,\dots, p_m)$，因为元组可以看成是由\emph{二元逗号构造子}$(-,-)$构成的构造模式，
 而该二元构造子又可看作是右结合的中缀运算符，因而元组、元组模式都是右结合的。
 \paragraph*{结构体模式} 与结构体字面量相似，遇到具有相同栏位的模式时会产生句法分析歧义并报警。
-\begin{minted}{haskell}
-  type Point  = {x : Int, y : Int} -- Point' 定义和 Point 相同
-  let sum {x, y} = x + y -- [WARN] ambiguous record pattern (using default 'Point'),
-                         -- candidates are [(Point, #[x, y]), (Point', #[x, y])]
-  let sum' ({x, y} : Point') = x + y
-\end{minted}
-结构体是归纳类型的语法糖，结构体模式亦同，因而，可以用常规的构造模式去解构之：
+结构体是归纳类型的语法糖，结构体模式则是构造模式的语法糖。因而，可以用常规的构造模式去解构之：
 \begin{minted}[ignorelexererrors=true]{lean4}
   class Functor (m : 1) = {map : forall a b, (a → b) → m a → m b}
   let getMap (Functor f) = f
@@ -539,7 +542,7 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
   \item \(\sem{}\)\quad 是黑板风格字体，在元语言（metalanguage）中普通分界符（delimiter）用光时用作分界符；
   \item 希腊字母\quad 基本表示类型. 若字符上方有一横杠 \(\bar{\alpha}\) 则表示一列这样的字母，并有隐式编号 \(1,\dots,i\).
 \end{itemize}
-任一 \Tigris 表达式，总是将经过足够多的变换操作而被翻译到其核心代数 \mintinline{haskell}|Expr| 中。
+任一 \Tigris 表达式，总是将经过足够多的变换操作而被翻译到其核心代数 \texttt{Expr} 中。
 以下给出表达式的 BNF 语法规格。
 \begin{minted}{bnf}
   <expr>        ::= <expr-infix>
@@ -580,13 +583,13 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
 这是因为后者的增加主要是为了提供一定程度上的 ML 系向后兼容性。
 
 \paragraph*{基本表达式} 指的是在 \texttt{<expr-atom>} 中列出的所有语法，加上函数简写的语法糖。
-\subparagraph*{函数简写语法} 指的是受 Lean 启发的括号语法糖，在括号内，所有的下划线（\texttt{\_}）或
+\subparagraph*{函数简写语法} 指的是受 Lean 启发的括号语法糖。在括号内，所有的下划线（\texttt{\_}）或
 中点（$\cdot$）会按语法树的前序遍历（preorder，即 DFS）被翻译到函数的绑定位置（function binder）。这类似 Haskell 的
 运算符分割（operator sectioning）语法糖。我们的语法糖仍遵守运算符的先后顺序，如 \autoref{code:func-shorthand}.
 \begin{figure}[H]
   \centering
   \begin{subfigure}{0.5\textwidth}\centering
-\begin{minted}{ocaml}
+\begin{minted}{lean4}
   (_ + 1)
   (_ + 1 * 2 / _)
   (id _)
@@ -594,10 +597,10 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
     \caption{函数简写语法糖}
   \end{subfigure}%
   \begin{subfigure}{0.5\textwidth}\centering
-\begin{minted}{ocaml}
-  fun x => x + 1
+\begin{minted}{lean4}
+  fun x   => x + 1
   fun x y => x + 1 * 2 / y
-  fun x => (id : forall a, a -> a) x
+  fun x   => (id : forall a, a -> a) x
 \end{minted}
     \caption{解糖结果}
   \end{subfigure}
@@ -608,8 +611,8 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
 \paragraph{柯里化的函数应用与定义}
 函数形式的值（functional value）是柯里化的\footnote{构造子与函数构成所有函数形式的值集合的划分。}，也就是说，
 函数的部分应用（partial application）是允许且在函数式编程实践中经常被使用的。请读者回想前面我们提到的并列式函数应用语法，体会这一语法之于
-柯里化的必要性：常规语法 \texttt{f(1,2)} 其实隐含地告诉用户该函数必须完全应用，而 \texttt{f 1 2} 则淡化了这一信息，用户使用部分应用 \texttt{f 1}
-也不会感觉违和。而实际上，\Tigris 函数定义可以看作是普通工业语言的超集，函数 \texttt{f (x, y)} 表示一个接收2-元组的一元函数，在语义上等价于需要
+柯里化的必要性：常规语法 \texttt{f(1,2)} 隐含地告诉用户该函数必须完全应用，而 \texttt{f 1 2} 则淡化了这一信息，用户使用部分应用 \texttt{f 1}
+也不会感觉违和。而实际上，\Tigris 的函数定义可以看作是普通工业语言的超集，函数 \texttt{f (x, y)} 表示一接收2-元组的一元函数，在语义上等价于需要
 完全应用，可用于模拟工业语言的函数定义与应用，虽然这种模式并不常用。
 \subparagraph{函数应用} 靠左结合，使用多个表达式并列的语法。此外，\Tigris 是按值调用（call-by-value，CBV），
 因而要求表达式 \(e\ e'\) ，首先求 \(e\) 并确保其是一函数形式的值，其次求 \(e'\).
@@ -663,7 +666,7 @@ Mixfix（即前缀、中缀、后缀）运算符具有以下优先级（越高�
   let add20 = (_ + 20) and minus30 = fun x => x - 30
   in compose add20 minus30 50
 \end{minted}
-第三个例子（\texttt{0 = 1}）会触发类型检查器的报警：
+第三个例子（\texttt{true = false}）会触发类型检查器的报警：
 \begin{Verbatim}
   [WARN] Partial pattern matching, possible cases such as [false] are ignored
 \end{Verbatim}
@@ -731,7 +734,7 @@ Letrec 与 Let 在语义上的区别是微小但复杂的。我们基本上按�
   let rec x = (1, x) and y = (2, x)
   let rec x = (1, y) and y = 1
 \end{minted}
-范例一在 CBV 求值语义中是不合法的，因为其构造了互相无限循环的两个元组；而范例二则是合法，
+范例一在 CBV 求值语义中是不合法的，因为其构造了互相无限循环的两个元组；而范例二合法，
 但因为上述限制，在 \Tigris 中属于不合法。但我们认为这些限制无足轻重，虽然范例二是
 强行设计出来的，从编程实践的角度看这一代码风格并不实用且可读性差；此外，笔者也无法
 在找到/想到更实用的，且必须要用上述写法的例子，因而我们认为这些不足为道的小例子难以
@@ -751,14 +754,13 @@ Letrec 与 Let 在语义上的区别是微小但复杂的。我们基本上按�
 任何一个不需要类型标注的动态语言迁移过来的用户都能保持他们不写类型标注的习惯（只是语法上），
 但同时又能享受到静态类型带来的程序安全保障。
 
-泛化的对象是模式（scheme）且发生在 Let-绑定处。泛化与类型推论是一起工作的，与其他语言需要利用特殊语法构造
+泛化的对象是类型模式（scheme）且发生在 Let-绑定处。泛化与类型推论是一起工作的，与其他语言需要利用特殊语法构造
 实现多态不同，\Tigris 充分利用自动泛化机制，保证“能泛化的程序\emph{一定}会被自动泛化且无需类型标注”这一性质。
 
 搭配这两个不同于一般语言的特性，在进行函数式编程实践时，与常见的工业语言相比，用户能获得异常好的可读性。
-我们不妨同 Typescript（使用渐进类型系统，gradual typing）\footnote{
+\autoref{code:ts-tig} 将 \Tigris 同 Typescript（使用渐进类型系统，gradual typing）\footnote{
   依笔者意见，是语法设计不当，噪音比较大，可读性较差的代表性语言之一。
-}
-作一比较：
+}做了语法上的简单比较。
 
 \begin{figure}\centering
   \begin{subfigure}{0.6\textwidth}\centering
@@ -825,12 +827,11 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 模式匹配在语义和实现上可以看作是命令式语言中的 \texttt{switch} 语法结构的超集，它允许用户
 使用声明式（declarative）的写法来优雅的解构某数据结构，是函数式编程的核心功能之一。
 
-对“声明式”一词的理解，读者不妨联想大量使用这一思考方式的数学。考虑概率的公理化定义，
-这就是典型的声明式表述：它仅告诉读者应当满足何种条件，才能算作“概率”，
-而不是从如何计算“概率”本身定义“概率”。同理，当我们利用模式匹配处理数据结构时，并未
-显式地写出各种投影（例如数组访问）操作，而仅仅是告诉编译器：“满足这一模式的数据结构才能通过”\footnote{
-  简单地说，声明式只表述程序\emph{应该做什么}（what）；命令式只表述程序\emph{该怎么做}（how）。
-}
+对“声明式”一词的理解，我们不妨联想大量使用这一思考方式的数学。考虑概率的公理化定义，
+这就是典型的声明式表述：它仅告诉我们\underline{应当满足何种条件，才能算作“概率”}，
+而不是从如何计算“概率”这一问题出发，定义“概率”。同理，当我们利用模式匹配处理数据结构时，并未
+显式地写出各种投影（例如数组访问）操作，而仅仅是告诉编译器：“满足这一模式的数据结构才能通过”。
+简单地说，声明式只表述程序\emph{应该做什么}（what）；命令式只表述程序\emph{该怎么做}（how）。
 
 \paragraph{运算符} 是特殊的，被绑定到某个表达式（实现）上的字符串。运算符可以被句法分析器识别，在代码中串连使用。
 
@@ -885,24 +886,23 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 这其中，\texttt{\$} 与 \texttt{@@} 的使用是两个经常在函数式编程实践中出现的小技巧，通过
 巧妙地运用优先级/结合性自定义机制——在最低优先级下，我们可以利用这些算符来避免右结合的括号组，也就是说，
 下面三种写法等价，但后两种显然可读性更强：
-\begin{minted}{Haskell}
+\begin{minted}{lean4}
   f (g (h (x + y))) ;; f $ g $ h $ x + y ;; f @@ g @@ h @@ x + y
 \end{minted}
-对于某些函数体较大的函数来说，用户可以使用该技巧来避免在函数体两侧加括号，提升代码编写的流畅性；同时，
-这一技巧也被广泛的运用在本项目的实现当中。
+对于某些函数体较大的函数来说，用户可以使用该技巧来避免在函数体两侧加括号，提升代码编写的流畅性。
+这一技巧也被广泛地运用在本项目的实现当中。
 
 不仅如此，对于前缀/后缀算符而言，我们可以把一个字符串同时声明为这两种类型的运算符，例如
 （其中 \texttt{fact} 是阶乘，而 \texttt{not} 是取反）：
 \begin{minted}{lean4}
-  postfix 65 "!" => fact ;; prefix 65 "!" => not
-  let main = (50!, !true)
+  postfix 65 "!" => fact ;; prefix 65 "!" => not ;; (50!, !true)
 \end{minted}
 但读者需要注意，目前无法将同一字符串同时声明为前缀/中缀或后缀/中缀。常见的用法是将列表（广义表、内存中是链表）
 的 \texttt{Cons} 构造子
 绑定到 \texttt{(::)}，使得其可以同时在表达式和模式中
 使用\footnote{\texttt{car} 与 \texttt{cdr} 是两个十分著名的列表访问函数，起源于 LISP.}：
 \begin{minted}{haskell}
-  type List a = Nil | Cons a (List a) ;; infixr 67 " :: " => Cons
+  infixr 67 " :: " => Cons
   let car (x :: _) = x ;; let cdr (_ :: xs) = xs
 \end{minted}
 顶层运算符声明可以有选择的用 \texttt{;;} 作分隔，提高可读性。
@@ -918,7 +918,7 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 其类型为 \texttt{<scheme>}，被绑定到外部函数（以名字引用的） \texttt{<extern-symb>} 上。
 虽然 \Tigris 是一个纯函数式语言，但与 Haskell 或 Lean 不同，其并不强求用户——若要直接引入
 具有副作用的函数，就可以利用 FFI. 我们认为这是一个高级功能，
-对此感兴趣的读者参见后文更细致的描述：\autoref{sect:ffi}.
+对此感兴趣的读者参见后文 \autoref{sect:ffi} 中更细致的描述。
 
 \subsection{类型、类型类与实例定义}
 \paragraph{数据类型定义} 用于引入新类型。其将声明的类型构造子绑定到两种类型定义之一：
@@ -939,17 +939,18 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 后者只是为增加 Haskell 的兼容性。
 
 \paragraph{归纳类型} 在工程上亦称代数数据类型，是函数式编程特征之一的发达的类型系统带来的独特机制。
-——和上文所说的模式匹配一样，对 C 熟悉的读者可以将其看作 \texttt{union} 和 \texttt{enum} 关键字的一个超集。
+和上文所说的模式匹配一样，对 C 熟悉的读者可以将其看作 \texttt{union} 和 \texttt{enum} 关键字的一个超集。
 
 从理论的角度讲，结构体类型与元组类型无异，且后者可由前者编码（实现），前者无非是带名字的后者——
 它们表示的是“且”（严谨地说，积）关系；而表示“或”（严谨地说，和）关系的类型
 就称为不交并类型（disjoint union）、带标签并类型（tagged union）——这一类型具有多个分支，
-每一个分支由一个构造子（即标签）标识。要想构造这一类型的数据，必须要从数个分支（构造子中）选取
-\emph{一个}进行构造，也就是说，任一构造值不可能同时由多个构造子产生，因而称之不交并。
+每一个分支由一个构造子（即标签）标识。要想构造这一类型的数据，
+必须要从数个分支（构造子中）选取\emph{一个}进行构造，
+也就是说，任一构造值不可能同时由多个构造子产生，因而称之不交并。
 前面说过，构造子是函数形式的值，因为构造子可携带多个不同类型的数据（可以定义多个匿名栏位），
 这亦可以看作一种元组类型，所以在每个“或”类型分支的内部也大量存在着“且”类型。
 
-“或”类型与“且”类型统称归纳类型。之所以称其“归纳”，是因为“或”类型的每个分支从证明论的角度而言
+“或”类型与“且”类型统称\emph{归纳类型}。之所以称其“归纳”，是因为“或”类型的每个分支从证明论的角度而言
 可以看作是引入该类型（命题）的值（命题的证明）的\emph{一种}情况，而所有分支则构成该类型构造方式的穷举
 （能够证明该命题的所有情况，即数学证明中的分情况讨论），
 因而称之归纳\footnote{
@@ -958,7 +959,7 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 而称其为代数数据类型，是因为这一概念的理论基础来源于范畴论的自函子\footnote{
   从类型论作为范畴论逻辑（categorical logic）的范畴论语义（categorical semantic）解读看来，
   编程语言中的任一高阶类型都是单一类型宇宙（范畴 $\mathbf{Type}$）上的自函子；
-  但在 Lean 这样具有非累加（与 Coq 不同）的（cumulative）
+  但在 Lean 这样具有非累加（与 Coq 不同）的（noncumulative）
   无穷有序的类型宇宙中则不一定，因为存在泛类型宇宙（universe polymorphic）的函子定义。
 }
 代数（algebra for an endofunctor, F-algebra），而其中
@@ -971,13 +972,14 @@ let f | (1, 2) => 1 + 2  -- [WARN] Found redundant alternatives at 3)  #[(_, y)]
 的一种，其代表如 \texttt{fold}/\texttt{foldr}.
 实际上，各大定理证明器亦确实会为所有归纳类型（在证明器的上下文中是 inductive family/indexed family）
 导出消去子，作为最基础的计算规则。具体地说，任意消去子的参数都应该包含
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item \textit{动机}（motive），即消去子的目标类型（想要证明的命题）。从操作语义的角度考虑，这是一个续点（continuation），
     会被定理证明器的内核应用;
-  \item \emph{小前提}（minor premise），每一分支（构造子）都是一个小前提（除去空类型\footnote{
+  \item \emph{小前提}（minor premise），每一分支（构造子）都是一个小前提（除空类型\footnote{
       即 empty type. 许多编程语言的 \texttt{void}、\texttt{nothing} 类型实际上都是空类型。这在类型论的角度看来，
       是存在逻辑问题的：空类型即没有分支、不能被证明（构造出来）的类型。在一个合理的逻辑系统中，如果出现空类型的\emph{值}，
-      说明系统存在矛盾；在编程实践中，通常用其表示无法停机的程序、抛出错误而崩溃的程序的类型。现代语言通常使用 \texttt{Unit}（幺类型）
+      说明系统存在矛盾（显然，不能证明一个无法证明的命题）；
+      在编程实践中，通常用其表示无法停机的程序、抛出错误而崩溃的程序的类型。现代语言通常使用 \texttt{Unit}（幺类型）
       替代 \texttt{void}，表示任何可以\emph{忽略}的值，
       指任何基底集（当把类型作为代数结构来看待时）都是单元素集合（singleton）的类型，即这一类型只有一个值。
     }，因为其没有分支）；
@@ -1009,16 +1011,16 @@ Rust、Swift 亦已支持这一特性，且广泛运用于编程实践中。
 }
 
 归纳类型的工程意义在于其用严谨的理论编码工业语言中出现的一些现象：例如 JVM 语言（例如 Java）的对象
-可以是 NULL. 这从函数式语言的角度看来并不严谨，因为具有类型 $\tau$ 的值\emph{就应该是}
+可以是 \texttt{NULL}，这从函数式语言的角度看来并不严谨，因为具有类型 $\tau$ 的值\emph{就应该是}
 这一类型的值，而不是空指针。而空对象通常被某些出错的函数返回，为此，在函数式编程实践中通常用
-\texttt{Option} 编码可空对象：\mintinline{haskell}{type Option a = None | Some a}，而许多语言
+\texttt{Option} 编码可空对象：\mintinline{haskell}{type Option a = None | Some a}；而许多语言
 具有的错误处理，无非表示“某一函数能够返回一个错误\emph{或}正确值”这件事，因而也可以被编码为：
 \mintinline{haskell}{type Except e a = Error e | Ok a}；搭配前述的模式匹配，就能以
 类型安全的手段在编译期处理所有例外情况（\texttt{Error} 或 \texttt{None}）；而搭配纯函数式的
-函子/单子编程设计思想，就可以实现工业语言的遇错短路等控制流语义。虽然本项目完全使用
+函子/单子编程设计思想，就可以实现工业语言的遇空/遇错短路等控制流语义。虽然本项目完全使用
 纯函数式设计模式，但本文并非函数式编程教程，因而我们略过具体的叙述。
 
-前面强调多次，结构体类型是归纳类型的语法糖，这一解糖的指称语义是
+\paragraph{结构体类型} 前面强调多次，结构体类型是归纳类型的语法糖，这一解糖的指称语义是
 \[
   \sem{\textbf{type}\ T\ args* = \{(fid : \sigma)*\}} :=
   \sem{\textbf{type}\ T\ args* = T\ \sigma*}
@@ -1038,7 +1040,7 @@ Rust、Swift 亦已支持这一特性，且广泛运用于编程实践中。
     \item 其不是除归纳类型的之外的类型构造子的参数（在 \Tigris 中已经满足）。
   \end{enumerate}
 \end{definition}
-因为 \Tigris 是编程语言，从设计角度看来我们也不准备加入这一限制因为其过强，将部分
+因为 \Tigris 是编程语言，从设计角度看来我们也不准备加入这一限制——其太过强，将部分
 合法的类型定义算作不合法。
 \paragraph{类型类定义} 类型类是存在于函数式编程中与面向对象编程的\emph{接口}相呼应的概念，但前者
 是良定义且更高效、强大的，体现于其允许临时/参数多态（ad-hoc/parametric polymorphism）在函数式编程中以
@@ -1091,8 +1093,7 @@ Rust、Swift 亦已支持这一特性，且广泛运用于编程实践中。
 }同时还称被这样的约束限制的量化为\emph{有界量化}（bounded quantification）。\footnote{
   相较而言，支持泛型的面向对象语言所具有的有界量化即为子类型（subtype），或者用
   绝大多数程序员都知道的概念说明：继承（inheritance）。
-}
-读者需要注意，默认方法（default method）与超类（superclass）目前不被类型类支持。
+}默认方法（default method）与超类（superclass）目前不被类型类支持。
 
 \paragraph{实例定义}
 正如面向对象编程中接口总是与其实现分不开一样，类型类亦如此。我们称一个类型类的实现为\emph{实例}。
@@ -1111,21 +1112,21 @@ Let 定义的语法。
 \end{minted}
 实例定义可以量化 TV，与谓词搭配，就可以表示逻辑上的\emph{蕴含}（implication）关系（如例二、三）。
 这里，我们量化 $a, b$ 与一个实例 \(\mathsf{HEq}\ a\ b\)，并用之作为 $\mathsf{HEq}\ b\ a$ 的实现来
-表达异性等号（heterogenous equality）的交换律（commutativity），也用来表达二元关系同性等号是异性等号的
-子集这一事实。
+表达异性等号（heterogenous equality）的交换律（commutativity），
+也用来表达\underline{二元关系的同性等号是异性等号的子集}这一事实。
 
 关于编译器是如何在程序中寻找实例这一问题，
 我们将在后文介绍实例解析（查找）算法，目前只需明确以下若干规律：
-\begin{enumerate}
+\begin{enumerate}\itemsep0em
   \item 某一类型不能多次作为同一个类的实例；
   \item 重叠实例会抛出编译期歧义错误；
   \item 由于方法应用产生的歧义类型会阻断类型类繁饰并抛出编译期歧义错误。
 \end{enumerate}
 \begin{minted}{haskell}
-  class HAdd a b c = {hadd : a -> b -> c} ;; instance HAdd Int Int Int = {hadd = add}
-  -- HEq ?m6 Int: typeclass elaboration is stuck because of
-  -- metavariable(s) [?m6] induced by a call to heq.
-  let f' = heq (hadd 2 3) 5
+class HAdd a b c = {hadd : a -> b -> c} ;; instance HAdd Int Int Int = {hadd = add}
+-- HEq ?m6 Int: typeclass elaboration is stuck because of
+-- metavariable(s) [?m6] induced by a call to heq.
+let f' = heq (hadd 2 3) 5
 \end{minted}
 在上面的例子中，\texttt{hadd 2 3} 被类型检查器推断为含有 MV，导致 \texttt{HEq} 的实例查找失败。
 这是显然的，因为异性加法的结果类型是独立的，仅仅给定其参数并不能推出具体的结果类型。我们需要
@@ -1143,7 +1144,7 @@ Let 定义的语法。
 在实践中，组合句法分析类似递归下降分析器（recursive descent parser），或者说类似手写的分析器。组合子对应的文法与
 解析表达文法（parsing expression grammar，PEG）相似：两者遇到歧义语句时总是选择第一条匹配的生成规则（production rule）。
 但目前而言，不同于 Lean 的实现，\Tigris 的句法分析模块还不是 Packrat 分析器（PEG 的其中一种），后者能够在线性时间内完成分析。
-此外，因为使用单子设计模式，我们的实现仍然存在大量的回溯（backtracking）操作。我们定义，一个句法分析单子（parser monad）类型为
+此外，因为使用单子设计模式，我们的实现仍然存在大量的回溯（backtracking）操作。定义，一个句法分析单子（parser monad）类型为
 
 \begin{Verbatim}[numbers=left]
   abbrev TParser σ := SimpleParserT Substring Char $ StateRefT (PEnv × String) (ST σ)
@@ -1158,7 +1159,7 @@ Let 定义的语法。
 在同一字符串上做计算（句法分析）而不产生任何中间字符串数据，保证内存使用的高效性。
 
 关于组合子本身是如何实现的，我们首先考虑任意两个句法分析器 $P, P'$，则可以定义组合子
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item \emph{alternative} 组合子 \(p\oplus q\ (j)=\mathsf{P}\ j\cup \mathsf{Q}\ j\)
   \item \emph{sequence} 组合子 \((p\circledast q)\ (j)=\bigcup \{Q\ k|k\in P\ j\}\)
 \end{itemize}
@@ -1201,7 +1202,7 @@ Let 定义的语法。
 允许项依赖于类型，支持 Arbitaray-rank Polymorphism 和 Impredicative types，所以亦称二阶\lambdacalc。
 关于不同类型论的表达力，我们可以在 Barendregt 提出的 Lambda Cube 中清晰比较。
 从左下角到右上角，这一立方体代表的类型论的表达力逐渐增强，更具体的说，
-x 轴的箭头 $\to$ 表示那些类型可以依赖值的类型论，属于依值类型；\footnote{即依赖类型，此处为和下文区分做调整。}；
+x 轴的箭头 $\to$ 表示那些类型可以依赖值的类型论，属于依值类型\footnote{即依赖类型，此处为和下文区分做调整。}；
 y 轴的箭头 $\uparrow$ 表示项可以依赖类型，即具备多态；
 z 轴的箭头 $\nearrow$ 则表示类型可以依赖类型，即具备类型构造子。
 
@@ -1213,7 +1214,7 @@ z 轴的箭头 $\nearrow$ 则表示类型可以依赖类型，即具备类型构
 在这一立方体中，$\lambda_\to$ 表示简单类型\lambdacalc（simply typed $\lambda$-calculus）、
 $\lambda_2$ 表示 System F、$\lambda_\omega$ 表示 System $\mathsf{F}_\omega$\footnote{
   Haskell（GHC）使用这一系统，同时加上 ADT 和 Typal Equality.
-}，而位居表达力顶端的类型论则是 Coquand 提出的 Calculus of (inductive) Construction（$\lambda_\mathsf{C}$），被广泛的运用于
+}，而位居表达力顶端的类型论则是 Coquand 提出的 Calculus of (inductive) Constructions（$\lambda_\mathsf{C}$），被广泛的运用于
 各个定理证明器中，包括 Coq 和 Lean.
 
 而 \Tigris 使用的扩展 HM 系统则处于 $\lambda_\to$ 和 $\mathsf{F}_\omega$ 之间，这是因为我们虽然支持
@@ -1227,7 +1228,7 @@ Impredicative types 还是 Higher-Kinded Types，都还停留在 PL 学术界阶
 
 然而，类型论表达力的增强并非没有代价。Hindley-Milner 类型系统之所以经典，不仅仅是因为其开创性，
 更因为它小心的设计。事实上，System $\mathsf{F}$ 及以上表达力的系统其
-类型推论为不可判定（undecidable）且必须依赖用户的类型标注，对这些系统的推论/检查工作必须在本地通过
+类型推论为不可判定（undecidable）且必须依赖用户的类型标注。对这些系统的推论/检查工作必须在本地通过
 双向算法进行（local bidirectional type inference/checking）——即便是类型系统发达的
 Haskell，也必须在使用上述高级特性时切换到另一个类型检查器——更不消说依赖类型论。
 所以，即便 \Tigris 失去了很大程度的（逻辑上）的表达力，但考虑到本课题的编程子系统并不负责数学证明，
@@ -1241,15 +1242,16 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
 同样的打印算法也用于输出本文之后所描述的所有 IR 和 SBCL 目标代码。
 
 类型系统、类型检查是 \Tigris \emph{极为重要}的组成部分。在下文我们会有更细节的论述。
+\subsection{本章小结}（..略..）
 \section{Type System of the \Tigris language}
 
-\paragraph{命名方式} 在本节内，词语“约束”有广泛运用。因为我们实现的是基于约束求解的类型检查器，广义上的“约束”可以指
-\begin{itemize}
+\paragraph{命名方法} 在本节内，词语“约束”有广泛运用。因为我们实现的是基于约束求解的类型检查器，广义上的“约束”可以指
+\begin{itemize}\itemsep0em
   \item 相等约束（equality constraint），具有自反性、交换性（虽然我们只用到其一侧方向）和传递性；
   \item 谓词约束（predicate constraint），具有累积性，主要体现在这种类型的约束是可以在类型模式中累积起来的。
 \end{itemize}
 虽然一些时候我们狭义地使用“约束”来特指含义二，
-读者应当有能力根据上下文解读其具体含义，本文更多地使用广义上的“约束”一词。
+读者应当有能力根据上下文解读其具体含义。本文更多地使用广义上的“约束”一词。
 
 简单的说，本类型系统实现称为约束变量求解实现，检查器称为约束变量求解器，在类型推断过程产生约束，
 之后通过合一化进行求解。
@@ -1284,7 +1286,7 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
 \end{center}
 是正确的，这一论断由 HM 系统的主类型特性所保证。
 
-\subsection{Formal Grammar}
+\subsection{形式文法}
 
 类型系统是建构在核心代数上的：\Tigris 的核心代数是修改版的\lambdacalc。在描述这一类型系统的
 行为规范（typing discipline）之前，我们首先给出核心代数、类型项的形式文法（formal grammar）。
@@ -1314,14 +1316,14 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
 都附带一段关于实现的解说。
 
 \paragraph{合一化} 用于计算相等约束的一个最泛因子（most general unifier，MGU）合一化引擎在类型检查阶段会
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item 检查 TV 出现次数（occurrence）来防止无穷递归类型的产生，见 \autoref{para:equirecursive}；
   \item 要求类型构造子应当完全匹配；
   \item 在两者元数相同的情况下将 \texttt{KApp} 与实际类型应用 \texttt{TApp} 合一化；
   \item 在结构性合一化类型模式前以$\alpha$-重命名之。
 \end{itemize}
 \drules[U]{\(\theta  \rpsym{=} \, \mathsf{unify} \, \rpsym{(}  \rpnt{ty_{{\mathrm{1}}}}  \rpsym{,}  \rpnt{ty_{{\mathrm{2}}}}  \rpsym{)}\)}{Unification of types}{Refl, VarL, VarR, Arrow, Prod}
-\paragraph{约束求解} 是按从左到右的顺序进行的，这一过程会不断的累积替换法则；谓词约束也在这一阶段被收集并作为残余约束用与实例解析。
+\paragraph{约束求解} 是按从左到右的顺序进行的，这一过程会不断的累积替换法则；谓词约束也在这一阶段被收集并作为残余约束用于实例解析。
 \drules[Slv]{\(\rpsym{(}  \theta  \rpsym{,}  \bar{\pi}  \rpsym{)}  \rpsym{=} \, \mathsf{solve} \, \rpsym{(}  \rpnt{C}  \rpsym{)}\)}{Constraint solving}{Empty, Eq, Pred}
 \paragraph{实例化} 将绑定的 TV 替换为崭新（fresh）的 TV，同时返回必须满足的谓词约束。
 \drules[Inst]{\(\rpsym{(}  \rpnt{ty}  \rpsym{,}  \bar{\pi}  \rpsym{)}  \rpsym{=} \, \mathsf{inst} \, \rpsym{(}  \rpnt{sch}  \rpsym{)}\)}{Scheme instantiation}{Forall}
@@ -1337,40 +1339,40 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   }
 \end{center}
 根据核心代数，类型推断适用于：
-\subparagraph*{变量} 在 $\Gamma$ 中寻找并结果实例化类型模式，
-\subparagraph*{常量} 原本即有具体类型，
-\subparagraph*{Lambda 抽象} 其参数可获得崭新的 TV，
-\subparagraph*{函数应用} 生成能够让函数的参数类型与参数的类型相等的约束,
-\subparagraph*{元组} 生成能够让两个元组相同部分的类型相等的约束，
-\subparagraph*{条件表达式} 要求 then/else 分支类型相同，且要求条件为 \texttt{Bool}，
-\subparagraph*{Let 表达式} 推断/求解/泛化右手侧\emph{之后}再推断程序体
+\subparagraph*{变量} 在 $\Gamma$ 中寻找并结果实例化类型模式；
+\subparagraph*{常量} 原本即有具体类型；
+\subparagraph*{Lambda 抽象} 其参数可获得崭新的 TV；
+\subparagraph*{函数应用} 生成能够让函数的参数类型与参数的类型相等的约束；
+\subparagraph*{元组} 生成能够让两个元组相同部分的类型相等的约束；
+\subparagraph*{条件表达式} 要求 then/else 分支类型相同，且要求条件为 \texttt{Bool}；
+\subparagraph*{Let 表达式} 推断/求解/泛化右手侧\emph{之后}再推断程序体；
 \subparagraph*{Letrec 表达式} \emph{首先}将与绑定 TV 数量相同的新 TV 推入 $\Gamma$ 内，
-再推断每一个右手侧，并产生与推断的类型相等的约束。
-\subparagraph*{不动点组合子应用（Fix）} 即 \(\mathbf{fix}\ \lambda\ f.\ e\) 具有 \(\rpnt{e}\) 的类型,\footnote{
+再推断每一个右手侧，并产生与推断的类型相等的约束；
+\subparagraph*{不动点组合子应用（Fix）} 即 \(\mathbf{fix}\ \lambda\ f.\ e\) 具有 \(\rpnt{e}\) 的类型；\footnote{
   虽然前文并未提到，但不动点组合子是 \Tigris 早期加入但不再维护的一项功能。其初衷是用于教学，
   但最后考虑实际效用便放弃维护。不动点组合子的语法是 \mintinline{ocaml}|rec expr|.
 }
 \subparagraph*{类型标注（Ascription）} 检查推断类型\emph{至少}与标注的类型具有相同的泛化程度，但根据
 类型的 rank 使用不同的方法：
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item 对 rank-1 类型标注而言，我们直接合一化；
-  \item 对 rank-n 且 $n\ge 2$ 即 \texttt{TSch} 含嵌套全称量化时，我们在类型推断与检查的四大步骤中做特殊对待：
-    \begin{enumerate}
+  \item 对 rank-n 且 $n\ge 2$ 即类型模式含嵌套全称量化时，我们在类型推断与检查的四大步骤中做特殊对待：
+  \begin{enumerate}\itemsep0em
       \item \textbf{实例化}\quad 将模式 \(\sigma = \forall \bar{\alpha}.\, \bar{\pi} \Rightarrow \tau\) 用
-        崭新的 TV \(\bar{\beta}\) 实例化，得到 \(\tau_{\mathsf{inst}}\).
+        崭新的 TV \(\bar{\beta}\) 实例化，得到 \(\tau_{\mathsf{inst}}\)；
       \item \textbf{约束求解}\quad 根据合一关系 $\tau_e \sim \tau_{\mathsf{inst}}$ 求解目前所有的约束，并得到
-        一条替换法则 $\theta'$.\footnote{
+        一条替换法则 $\theta'$；\footnote{
           可以把这一步操作看作是一个\emph{过早的}求解（premature solving）。我们立即将之求解只是因为
           需要在之后的刚性检查中使用它们。
         }
       \item \textbf{刚性检查}\quad 对替换法则 $\theta'$ 中的每一个绑定 $\alpha \mapsto \tau'$，
         如果 $\alpha \in \rigid$，则 $\tau'$ 必须同 $\alpha$ 相等（注意：根据刚性变量的特征，即指其\emph{一定不能}被特殊化）。
-        若这一检测不通过，则拒绝该类型标注并抛出合一化错误。
+        若这一检测不通过，则拒绝该类型标注并抛出合一化错误；
       \item \textbf{Skolemization}\quad 在前文与后文多次强调，用于保证标注的类型在泛性上与推断类型一致。
     \end{enumerate}
 \end{itemize}
 \subparagraph*{模式匹配} 对于某模式矩阵中的
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item 每一分支 \(i\)：模式行向量 \(p_{i,1}, \ldots, p_{i,m}\) 会同
     被匹配对象（discriminant）的类型作比较；而 $\Gamma$ 则会由模式产生的绑定充盈，
     此外，模式产生的 TV 则会在其自身分支内被标记为刚性。通过这些机制，我们能够保证 TV 不会逸出到其他分支。\footnote{
@@ -1481,7 +1483,7 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   \underline{\(\mathsf{sk}_\alpha \sim \tau\) 正确，当且仅当 \(\tau = \mathsf{sk}_\alpha\).}
 \end{remark}
 
-\begin{remark}[刚性变量集合/栈（rigid set/stack）]
+\begin{remark}[刚性变量集合/栈 rigid set/stack]
   \Tigris 的类型系统维护一个栈，其元素为一个个刚性变量集合
   （注意：这些集合是 $\rigid$ 的组成部分）。
   我们通过栈作为数据结构的特性
@@ -1523,8 +1525,9 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   即从矛盾能推任意命题。这一原理是类型论实现假命题（和空类型，不严谨的说，两者同构）的最简编码，其消去子：
   \begin{mathpar}
     \inferrule*[right=False-Elim]
-    {\Gamma\vdash p : \mathsf{False}\\ \Gamma, x : \mathsf{False}\vdash C(x) : \mathsf{Sort}\ u}
-    {\mathsf{False.rec}(p; C) : C(x)}
+    {\Gamma\vdash p : \mathsf{False}\\ \Gamma, x : \mathsf{False}\vdash C(x) : \mathbf{Sort}\ u}
+    {\mathsf{False.rec}(p; C) : C(p)}
+
     \text{（无计算法则）}
   \end{mathpar}
   空类型的消去子是空完备（vacuously total）的：不需要分情况讨论，因为\emph{此处不存在任何情况}，
@@ -1550,7 +1553,7 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   \subparagraph*{洁净（Hygienic）泛化} 只有 $\Gamma$ 中绑定的 TV 才会被泛化。
   谓词则根据前文描述的条件进行保留，以避免空约束。
   \subparagraph*{语法限制} 细心的读者如果详细地阅读了第一部分的类型表达式的 BNF 文法就会发现，
-  目前的文法并不允许诸如 \((\forall a. a\to a) -> \mathsf{Int}\times \mathsf{Bool}\) 这样的 rank-2 type，
+  目前的文法并不允许诸如 \((\forall a. a\to a)\to\mathsf{Int}\times \mathsf{Bool}\) 这样的 rank-2 type，
   即便类型表达式的 AST 定义中允许内嵌模式。的确，唯一能够引入内嵌模式的方法就是通过数据类型定义的多态栏位，
   而这一方式并不有害（在 Haskell98 中得到验证）。我们认为，这一条机制/限制是最强的，能够有效保证类型系统的合理性。
 \end{remark}
@@ -1559,7 +1562,7 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   到目前为止，“刚性”一词出现过许多次，我们亦提到过为什么需要这样的机制，但仅局限于抽象的理论表述。
   下面提供若干反例，用具体例子展示刚性变量的必要性。
   \begin{itemize}
-    \item (\textbf{不正确实例化（Specialization）}) 考虑
+    \item \textbf{不正确实例化（Specialization）} 考虑
       \begin{minted}{lean4}
         let id = (fun x => x : ∀a, a -> a) 1
         let id' : ∀a, a -> a = fun x => (x : Int) -- [ERROR] Can't unify type Int with ?sk.a.
@@ -1575,7 +1578,7 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
       这是因为，\texttt{id'} 由用户声明为多态函数，但其右手侧的定义则是单态函数，泛性不匹配；
       例子三同理。
 
-    \item (\textbf{泛性恢复（Polymorphism recovery）})
+    \item \textbf{泛性恢复（Polymorphism recovery）}
       一般来说，类型类的方法（其本身就很有可能是多态函数）在程序中是直接调用的，因而，我们
       参照 Haskell98 的特殊对待实现，在所有的方法调用处重新将之泛化。
       但考虑边界情况，如果用户希望直接使用（但不推荐）某个字典（实例）内的方法实现
@@ -1588,8 +1591,8 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
       \end{minted}
       这同样也是被 Tigris 所支持的，但允许这种写法需要归功于刚性变量机制：$a$ 与 $b$ 在
       每次方法调用时都为刚性。这允许我们\emph{独立地}，在不同位置实例化之，比如上述例子中
-      $f$ 在 $x$ 处有实例化 (\(a\mapsto \mathsf{Int}, b\mapsto\mathsf{Int}\))；
-      在 $y$ 有实例化 (\(a\mapsto \mathsf{String}, b\mapsto\mathsf{Unit}\))：两个
+      $f$ 在 $x$ 处有实例化 \([a\mapsto \mathsf{Int}, b\mapsto\mathsf{Int}]\)；
+      在 $y$ 有实例化 \([a\mapsto \mathsf{String}, b\mapsto\mathsf{Unit}]\)：两个
       用例互不干扰。
   \end{itemize}
 \end{remark}
@@ -1618,7 +1621,7 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   I = \inmark{\texttt{i\_Eq\_1}, \texttt{Eq}, [\texttt{List}\;\alpha], [\texttt{Eq}\;\alpha]}
 \]
 
-\paragraph{实例头部合一化（Head Unification} 指的是检查某一目标（goal）\(C\;\bar{\tau}\) 是否可以被一个实例头部
+\paragraph{实例头部合一化（Head Unification）} 指的是检查某一目标（goal）\(C\;\bar{\tau}\) 是否可以被一个实例头部
 匹配 \(C\;\bar\alpha\)。这一工作在进一步的实例解析前开展。
 
 \begin{algorithm}[H]
@@ -1708,10 +1711,10 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
 
 \begin{remark}[实例解析的性质]
   下面，我们给出实例解析算法的一些性质。
-  \subparagraph{停机性} 还没有被证明，从源代码定义中的 \texttt{partial} 关键字亦可看出。
-  直观的讲，实例解析停机当且仅当某一实例链是良基的，即不存在环。集合 $\Visited$（第\ref{line:cycle}行）虽然可以
+  \subparagraph{停机性（Termination）} 还没有被证明，从源代码定义中的 \texttt{partial} 关键字亦可看出。
+  直观的讲，实例解析停机当且仅当某一实例链是良基的，即不存在环。集合 $\Visited$（第 \ref{line:cycle} 行）虽然可以
   检测直接的环（自环），但并不一定能够保证停机，尤其是针对一些边界情况。
-  \subparagraph{语义一致性} 是通过\emph{单一匹配}原则保证的：如果有多个实例匹配一个目标（第\ref{line:ambig}行），
+  \subparagraph{语义一致性（Semantic Consistencies）} 是通过\emph{单一匹配}原则保证的：如果有多个实例匹配一个目标（第 \ref{line:ambig} 行），
   解析算法将抛出歧义错误。这告诉我们一个重要性质：程序的意义不会受到\emph{随机选择的实例影响，因为解析过程不随机选择实例}。
   然而与常规实现不同，这一原则适用所有实例，与实例本身的泛性无关：也就是说，若存在多个匹配的实例，且存在其中之一最“具体”的实例
   也不会导致其被优先选择，而是出现歧义错误，尽管优先选择它在工程意义上看起来更合理。若允许多个匹配实例的存在，
@@ -1720,11 +1723,11 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   \[
     e = (\iname : C\;\bar{\tau})
   \]
-  其之后在 System F IR 翻译阶段将被繁饰到字典传递风格的实现，并用字典投影结点 $\mathsf{Proj}\;src\;mname\;i\;ty$ 编码。
-  \subparagraph{上下文传播} 指对具有上下文谓词（依赖其他实例的实例）的实例 $\bar{\pi}_{\ctx}$
-  使用合一化产生的替换法则实例化所有的上下文谓词（第\ref{line:apply-ctx}行），并
-  递归地解析它们（第\ref{line:recurse}行）。例如
-  \mintinline{lean4}|instance : ∀α [Eq α], Eq (List α) = ..| 中的 \texttt{Eq a} 就是
+  其之后在 System F IR 翻译阶段将被繁饰到字典传递风格的实现，并用字典投影结点 \texttt{Proj} 编码。
+  \subparagraph{上下文传播（Context Propagation）} 指对具有上下文谓词（依赖其他实例的实例）的实例 $\bar{\pi}_{\ctx}$
+  使用合一化产生的替换法则实例化所有的上下文谓词（第 \ref{line:apply-ctx} 行），并
+  递归地解析它们（第 \ref{line:recurse} 行）。例如
+  \mintinline{lean4}|instance ∀α [Eq α], Eq (List α) = ..| 中的 \texttt{Eq a} 就是
   一个上下文谓词（显然，很多时候上下文谓词不止一个）。
 \end{remark}
 
@@ -1734,13 +1737,13 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   I_1 = \inmark{\texttt{i\_Eq\_1}, \mathsf{Eq}, [\mathsf{List}\;\alpha], [\mathsf{Eq}\;\alpha]}.
 \end{align*}
 
-\begin{enumerate}
+\begin{enumerate}\itemsep0em
   \item 目标: $\mathsf{Eq}\;(\mathsf{List}\;\mathsf{Int})$
   \item 尝试 $I_0$：$\unify(\mathsf{List}\;\mathsf{Int}, \mathsf{Int})$，失败
   \item 尝试 $I_1$：$\unify(\mathsf{List}\;\mathsf{Int}, \mathsf{List}\;\alpha)$，由 $\theta = [\alpha \mapsto \mathsf{Int}]$ 成功
   \item 上下文: $\apply(\theta, [\mathsf{Eq}\;\alpha]) = [\mathsf{Eq}\;\mathsf{Int}]$
   \item 递归地解析 $\mathsf{Eq}\;\mathsf{Int}$:
-    \begin{enumerate}
+  \begin{enumerate}\itemsep0em
       \item 尝试 $I_0$: $\unify(\mathsf{Int}, \mathsf{Int})$，由 $\theta = \varnothing$ 成功
       \item Return $(\texttt{i\_Eq\_0} : \mathsf{Eq}\;\mathsf{Int})$
       \item 上下文: $\varnothing$，为空则不再需要递归
@@ -1752,14 +1755,14 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
   类型类由 P. Wadler 提出，并最先应用于 Haskell 语言。作为其最流行的实现，
   GHC 实现了一个健壮性（robust）更强，更加复杂，且具备语言标准中未提及的许多扩展的类型类机制。虽然 \Tigris 类型类的实现从
   GHC 学习、汲取了诸多灵感，但必须承认相比于后者，前者的实例解析策略要简单得多：
-  \begin{itemize}
+\begin{itemize}\itemsep0em
     \item \Tigris 不允许重叠实例，无论这些实例在源代码中出现的先后顺序；GHC 则提供一套实例优先级机制，
       允许用户针对实例解析做高细粒度的控制。
     \item 此外，\Tigris 不允许针对实例设置后备（fallback）实例。
   \end{itemize}
-  但是，若和 Haskell '98 或 2010 做比较，
+  但是，若和 Haskell98 或 2010 做比较，
   \Tigris 的实例声明在一些地方反而更具表达性：譬如我们部分实现了 GHC 语言扩展 \texttt{FlexibleContext}\footnote{
-    这一扩展解除了 Haskell 98 的限制，不再要求谓词约束必须具有 \texttt{class type-variable} 或
+    这一扩展解除了 Haskell98 的限制，不再要求谓词约束必须具有 \texttt{class type-variable} 或
     \texttt{class (type-variable type1 type2 .. typen)} 的形式。
   }，因而可以定义诸如 \mintinline{lean4}|instance ∀a [Eq a], Eq (a * a) = ..| 的实例。此外，多类型参数
   的类型类也是支持的，比如前文曾出现过的 \texttt{HAdd} 和 \texttt{HEq} 的例子。
@@ -1788,14 +1791,14 @@ Haskell，也必须在使用上述高级特性时切换到另一个类型检查�
 会繁饰为
 \begin{align*}
   &\Tyapp\ \cdots\ (\Tyapp\ (\FVar\ x\ ty_\mathsf{mono})\ \alpha_1)\ \cdots\ \alpha_n\\
-  &\mathsf{App} (\cdots) d_1\\
+  &\mathsf{App}\ \cdots\ d_1\\
   &\vdots\\
-  &\mathsf{App} (\cdots) d_k
+  &\mathsf{App}\ \cdots\ d_k
 \end{align*}
 
 字典参数\footnote{标识符为 $\mathsf{d}\_\mathsf{P.cls}\_\mathsf{i}$，其中 $P$ 是谓词, $i$ 是
 该类型类的实例计数器；若这一字典参数是持久化的，则在其之前加字符 \texttt{r}.}是以下两种情况之一
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item 存在于作用域内，也就是说，与某一由上述字典 lambda 产生的谓词模板相匹配；或，
   \item 由实例解析过程合成（synthesized），产生一个不带类型的表达式（\texttt{Expr}）。
     我们在该表达式上重新做类型推断与字典繁饰，以转变为 \texttt{FExpr}. 这一过程显然是递归的。
@@ -1858,7 +1861,7 @@ let seqOp : ∀ α, (Unit → Option α) → Option α =
 
   因为这些考量，我们其实并不需要上文的 System F IR，因为没有它类型类繁饰也能实现，但最终仍然保留了这一 IR.
   笔者需要承认，这里既有一些设计上的前瞻性，也有设计失误、考虑不够充分的问题：
-  \begin{itemize}
+\begin{itemize}\itemsep0em
     \item 前者表现在若我们之后需要实现 arbitrary rank polymorphism 和 inductive families 时很自然：可以由当前的 IR 编码。
     \item 后者表现在下文的 Lambda IR 中。在设计 Lambda IR 时我们没有考虑将 System F IR 的类型信息携带到下一层级，因而
       Lambda IR 不带类型信息，直接导致后端代码生成时的附加困难，更使得后端实现的健壮性成疑。目前的后端会通过收集
@@ -1905,14 +1908,14 @@ ANF 的精髓在于\emph{变量}。在 ANF 中，某一语言对象，或（非�
 有利于后期更方便地做常量折叠优化。
 
 此外，\texttt{MATCHFAIL} 是一特殊常量，用于表示不完全模式匹配的后备分支。如前文所述，若进入这个分支，则程序立即抛出错误并终止。
-在具体实现中，MATCHFAIL 能够接收一个被匹配对象变量名的参数，后者会传递到并用于后端代码生成，以产生更好定位的错误信息。
+在具体实现中，其能够接收一个被匹配对象变量名的参数，后者会传递到并用于后端代码生成，以产生更好定位的错误信息。
 
 \subparagraph{\texttt{LExpr} 与 \texttt{LFun}} 前者是 \Lambdair 程序的主体，包含序列操作、
 立即数 Let-绑定（记 $\mathbf{let}\iota$）、右手侧 Let-绑定（记 $\mathbf{let}$）、LetRec-绑定（记 $\mathbf{let}\omega$）：三种 Let 因其右手侧不同而不同，
 分别是 \texttt{Value}、\texttt{Rhs} 和递归定义。
 
 \texttt{LFun} 则表示 IR 中的一个顶层函数，
-是一个3-元组 \texttt{fid, param, body}，
+是一个3-元组 \texttt{(fid, param, body)}，
 分别代表函数名、参数名和函数体（\texttt{LExpr}）。
 在具体实现中，LetRec-绑定携带一列顶层函数（\texttt{LFun}），而非 \mintinline{lean4}|Name × Name × LExpr|，即便
 LetRec 绑定的是本地函数。原因完全是性能上的，因为两者具有相容的表示，直接使用前者替代后者能够省去两种类型之间多余的转换。
@@ -2019,7 +2022,7 @@ IR 降级的过程中有一些很可注意的细节值得探讨。下面我们�
   \end{cases}
 \]
 
-作者必须承认，事后考虑起来，这一 layout 存在一些设计问题。虽然它是元组，但编码上其与 \texttt{List} 相仿，比如单元素时
+笔者必须承认，事后考虑起来，这一 layout 存在一些设计问题。虽然它是元组，但编码上其与 \texttt{List} 相仿，比如单元素时
 在元组尾端加入了一个哨兵幺元（sentinel），但在 $n\ge 2$ 时又将之去掉。如果——且恰巧——没有类型信息的辅助，
 要判断这一元组的形状较难，为后端代码生成徒增了不必要的麻烦。此外，我们还应当在编译器前端就将语法元数收集起来，
 而不是在这一阶段按需收集，导致代码的可维护性下降。
@@ -2085,7 +2088,7 @@ IR 降级的过程中有一些很可注意的细节值得探讨。下面我们�
 
 此外，有一些读者可能要问，既然我们以本就是函数式语言的 Common Lisp 作为编译目标，为何还要花费心思去
 做这一件事——原因主要是工作量上的，我们希望重新发明轮子以展示本项目的工作量，同时亦作为一种对函数式语言
-设计实现的实践训练，还为本课题的目标对象——开展编程语言实践训练的本科生们作为学习样例。
+设计实现的实践训练，还为本课题的目标对象——开展编程语言实践训练的学生们作为学习样例。
 
 \subparagraph{“中间派”实现思路} 指我们将 \Tigris 程序中出现的所有 Lambda 都进行闭包转换，并
 为之添加一个显式的\emph{环境参数}用于存储捕捉的自由变量的步骤。这一环境参数同函数指针\footnote{
@@ -2151,7 +2154,7 @@ def fuseTail (envName x fid : Name) : LExpr -> LExpr
 
 \subsection{\Lambdair 的优化}
 
-\paragraph{代码优化} 是在闭包转换前后所作的。闭包转换之后可能暴露出更多优化机会、产生更多语法噪音，
+\paragraph{代码优化} 是在闭包转换前后所做的。闭包转换之后可能暴露出更多优化机会、产生更多语法噪音，
 因此需要重新过一遍优化。\Tigris 编译器目前主要有三种优化：常量折叠/传播、复制传播及死代码消去（dead code elimination，DCE）和
 最为重要的尾调用优化（tailcall-ify）。
 
@@ -2194,7 +2197,7 @@ def fuseTail (envName x fid : Name) : LExpr -> LExpr
 显然，最需要调用栈资源的语言对象就是递归调用了。我们称一个函数是\emph{尾递归}的，当其以
 调用自身（或同一互递归函数组的函数）结尾。在这种情况下，一个经过尾递归优化的函数会不停的
 在尾递归调用之间压栈、出栈调用栈。\emph{尾调用优化}要求像这样的函数（包括非递归函数）的空间复杂度为 $\mathcal{O}(1)$
-而非 $\mathcal{O}(n)$. \autoref{code:tail-comparison}展示了两组互递归函数，一组具备尾递归优化的先决条件，一组则不具备。
+而非 $\mathcal{O}(n)$. \autoref{code:tail-comparison} 展示了两组互递归函数，一组具备尾递归优化的\emph{先决条件}，一组则不具备。
 \begin{figure}
   \centering
   \begin{subfigure}{0.5\textwidth}\centering
@@ -2249,7 +2252,7 @@ def fuseTail (envName x fid : Name) : LExpr -> LExpr
     \arrow["{\text{lowering}}"', from=1-4, to=3-4]
 \end{tikzcd}\]
 
-挖出的“空” $(\bullet)$ 可能（但应该，如果不是没有意义的话）在 $e$ 中有绑定。我们称之“挖空”，是因为如同
+挖出的“空” $(\bullet)$ 可能（但应该，如果不是没有意义的话）在 $e$ 中有引用。我们称之“挖空”，是因为如同
 “填空题”一般，将这一续点应用（把空填上）到某个语言对象（这里只能是变量，即字符串）上，比如变量 $m$，则会使得 $m$ 在 $e$ 中有绑定，
 \underline{并返回\emph{剩下的}表达式，即这一点往后的程序}。
 从这个意义上讲，续点可以看作是一个程序的\emph{模板}。从实现的角度考虑，这一操作不过是在显式的 CPS 栈中运行单子 $\mu$ 下的操作而已——
@@ -2263,11 +2266,11 @@ $\mu$ 则是 \texttt{M} 单子，专门用于降级过程，有定义
 
 \paragraph{增量式 API 与 \emph{Tigrisi} IR 解释器} 是本项目编程子系统的一个试验性扩展。
 虽然 \Tigris 的编译器 \texttt{tigrisl} 能一遍直接完成从源代码到可执行程序的产生，这样的编译管线却
-不适用于 REPL，因为两者在编译过程上有着不同的使用逻辑和性能要求：用户使用交互式的 REPL 时通常
-\emph{一步步地}输入程序，但又希望在每一次输入后能立马得到当前的结果。一个最直接的 REPL 可能只是
+不适用于 REPL，因为两者在编译过程上有着不同的使用逻辑和性能要求：用户使用交互式的 REPL 时通常\emph{一步步地}输入程序，
+但又希望在每一次输入后能立马得到当前的结果。一个最直接的 REPL 可能只是
 缓存用户到目前为止输入的所有程序，并在每一次输入之后重新编译\emph{整个程序}——对于具有多阶段的
-语言实现来说效率及其低下，尤其是当程序较大时，越往后的输入就需越多无用的重新编译。因而，我们编写了
-一套试验性质的增量 API，用于\emph{增量编译}：用户输入一部分程序，我们编译一部分；从不重新编译已经
+语言实现来说效率极其低下，尤其是当程序较大时，越往后的输入就需越多无用的重新编译。因而，我们编写了
+一套试验性质的增量 API，用于\emph{增量编译}：用户输入一部分程序，我们就编译一部分；从不重新编译已经
 编译过的部分。
 
 实现增量编译，重点在于记录编译器每个阶段出现的状态——将用户上一次输入时的\emph{所有状态}，
@@ -2347,7 +2350,7 @@ REPL 前端与解释器协作实现用户输入、编译器前端处理与降级
 \subsection{CPS 化}
 \paragraph{CPS 变换} 亦称 CPS 化，指将 \Lambdair 转变为 CPS 风格 IR 的变换过程。以我们的实现为例，
 CPS 变换后的 IR 具备以下特征：
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item 所有函数接受一显式续点参数 $k$；
   \item 函数调用返回的结果应当传给续点，而非直接返回；
   \item 续点\emph{并非}头等公民，必须通过本地绑定产生，或上述的续点参数 $k$. 任一函数
@@ -2561,7 +2564,7 @@ $\mathcal{E}$ 接受一 sum/coproduct type $\mathsf{CExpr}\oplus\mathsf{CTail}$�
 受过训练的读者可以立马反应出上述 CPS IR 的一些特征，我们列在下面。
 
 \begin{remark}[二等公民续点] 指在本 IR 中续点只能出现在下列语法位置
-  \begin{enumerate}
+\begin{enumerate}\itemsep0em
     \item 在函数调用的第二个参数上 $f(p, k)$；
     \item 在续点应用中 $\kappa(v)$；
     \item 由 $\letK$: $\letK\, \kappa(p) = e\, \mathbf{in}\, \ldots$ 绑定
@@ -2646,7 +2649,7 @@ $\mathcal{E}$ 接受一 sum/coproduct type $\mathsf{CExpr}\oplus\mathsf{CTail}$�
 \end{align*}
 
 \paragraph{SBCL 后端} 直接将 CPS IR 翻译为 Common Lisp 目标代码。由于 SBCL 是动态类型的函数式语言，
-且 LISP 家族的语言可以直接看作无类型\lambdacalc（untyped ~, UTLC），
+且 LISP 家族的语言可以直接看作无类型\lambdacalc（untyped \textasciitilde, UTLC），
 多态特殊化或大部分的类型信息都不必要且续点直接由 lambda 编码，不存在任何形式的\emph{去函数化}（defunctionalization）。
 
 选择 Common Lisp 而不是其他语言（譬如 JS）的原因纯粹是笔者的个人偏好，因为其喜欢使用宏。下面直接以
@@ -2657,7 +2660,7 @@ Kont 绑定指续点绑定，形如 \texttt{letKont k v = ..}，对应 \mintinli
 kontapp 指续点应用，形如 \texttt{APPLY k v}，对应 \mintinline{lisp}|(funcall (the function k) v)|.
 \subparagraph*{闭包与函数调用} 闭包形如 $\mathbf{C}\sem{ptr, \Gamma}$，对应 \mintinline{lisp}|#'ptr| 若 $ptr$ 为顶层或 LISP \texttt{label} 语句绑定，
 否则按构造值直接存储；闭包环境 $\Gamma$ 即 $\mathbf{E}\sem{\bar{f}}$，对每一栏位 $f$，
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item 直接存储之，若其为闭包（即上述构造值），
     \item 以 \mintinline{lisp}|#'f| 引用之，若 $f$ 为顶层或 LISP \texttt{label} 语句绑定，
   \item 否则直接存储之。
@@ -2668,7 +2671,7 @@ kontapp 指续点应用，形如 \texttt{APPLY k v}，对应 \mintinline{lisp}|(
 \subparagraph*{条件表达式与 switch 语句} 条件表达式形如 $\ite(c,t,e)$，对应 \mintinline{lisp}|(if c t e)|；
 构造子匹配，形如 $\isctor(x, tag, \dot)$，对应 \mintinline{lisp}|(eq (car x) tag)|；
 switch 语句，按构造子/常量，分为
-\begin{itemize}
+\begin{itemize}\itemsep0em
   \item $\switch^{\Const}(x, \overline{k_i \to e_i}, e_?)$ 对应
     \mintinline{lisp}|(cond (((equal x k_i) e_i) .. (t e_?)) ..)|
   \item $\switch^{\ctor}(x, \overline{(t_i, n_i) \to e_i}, e_?)$ 对应
@@ -2682,7 +2685,7 @@ switch 语句，按构造子/常量，分为
 按此翻译。
 
 此外，出现在 CPS IR 中的所有符号，根据 LISP 的语法用 \texttt{||} 保持大小写区别。前文（\autoref{sbcl:cav}）曾提到过
-因为类型信息已经擦除，我们只能通过按需收集\emph{形状}来\underline{缓解}歧义问题。形状有定义
+因为类型信息已经擦除，我们只能通过按需收集\emph{形状}来缓解歧义问题。形状有定义
 \begin{minted}{lean4}
   inductive Shape | unknown | pair | ctor (tag : Name) (arity : Nat) | fn -- function object
   deriving Inhabited, BEq, Repr
@@ -2692,10 +2695,10 @@ switch 语句，按构造子/常量，分为
 在经过这些阶段后能传递到后端。
 
 \paragraph{运行时系统} 指原生操作的实现、入口代码和底层异常定义，譬如字符串等号 \texttt{\%string=}
-和 \texttt{MATCH-FAILURE} 条件。\footnote{
+和 \texttt{MATCH-FAILURE} 条件\footnote{
   Common Lisp 有\emph{条件系统}，较之其他语言的异常系统更加强大且泛化，因为
   可以用这一系统编码各种控制流，甚至还可以用之实现一套续点机制。
-}
+}，
 在底层有定义
 \begin{minted}[numbers=left]{lisp}
   (defun %string= (s1 s2)
@@ -2800,7 +2803,6 @@ let main =
     (.. 略 ..)
     fact 4 = 120
 \end{Verbatim}
-
 其中 \texttt{defforeign} 是一自定义宏，用于简化 FFI 函数的定义，有语法\footnote{
   这里我们使用与 X3J13/CLtL2 相同的语法。读者只需要理解为：宏 \mintinline{lisp}|(defforeign function-name (x y) forms)|
   声明并返回一闭包对象，其中 \texttt{(x y)} 是 \texttt{ffi-lambda-list}，表示
@@ -2820,7 +2822,6 @@ let main =
          (with-args payload ,arg-list ,@body))
        (defparameter ,cell ,clos)))
 \end{minted}
-
 通过宏的帮助，在 LISP 侧定义 \Tigris 的 FFI 函数就和定义普通 LISP 函数一般简单。
 
 最后，我们介绍编译器 CLI 前端，\texttt{tigrisl}. 其用简单的手写递归下降句法分析器来处理
@@ -2832,10 +2833,10 @@ let main =
   \texttt{tigrisl}\ [\textit{flags}]\ \textit{ifiles}\ [\textsf{-o}\ \textit{ofiles}]
 \]
 关于其余的参数，见 \texttt{tigrisl} 的命令行帮助。
-\subsubsection{本章小结}（..略..）
+\subsection{本章小结}（..略..）
 \section{PP：\emph{依赖类型}的表格打印器}
 本文倡导依赖类型编程实践，而最好的倡导方式就是讲解实例。各种实例中，又以
-那些具有工程价值，被实际运用于项目中的为贵。因而，我们专门用一部分来介绍 \Tigris 实践中使用的
+那些具有工程价值，被实际运用于项目中的为贵。因而，我们专门用一章来介绍 \Tigris 实践中使用的
 依赖类型编程，以此作为范例，并承上启下，令读者熟悉何为依赖类型，为下一部分的定理证明子系统 \Tigrisd 叙述奠基。
 
 实际上，\Tigris 使用的依赖类型完全不止本节的标题，还包括一些（互）递归函数的停机证明，但下文
@@ -2868,7 +2869,8 @@ abbrev Row := ToProd header id
   \begin{subfigure}[c]{0.5\textwidth}
     \begin{align*}
       &\mathsf{ToProd}\ (as : \mathsf{List}\ \alpha)\ (m : \mathbf{Type}\to\mathbf{Type}) =\\
-      &\quad\begin{cases}
+      &\quad
+      \begin{cases}
         \mathsf{PUnit} &as = [];\\
         m\ \alpha &as = [x];\\
         m\ \alpha \times \mathsf{ToProd}\ (x :: xs)\ m &as = \cdot :: x :: xs.
@@ -2880,7 +2882,8 @@ abbrev Row := ToProd header id
 
 上述定义可以理解为，$\mathsf{ToProd}\ (as : \mathsf{List}\ \alpha)\ f$ 可\emph{消去到} 1) $\mathsf{PUnit}$
 泛类型宇宙的幺元 2) $f\ \alpha$ 或 3) $f\ \alpha \times \mathsf{ToProd}\ (\mathsf{cdr}\ as)\ f$，
-根据 $as$ 的形状 1) 为空；2) 为单个类型；3) 包含两个及以上的类型。
+根据 $as$ 的形状 1) 为空；2) 为单个类型；3) 包含两个及以上的类型。定理证明器术语中，称像这样
+在\underline{项上做模式匹配并消去到\emph{不定}类型}的操作为 large elimination.
 
 也就是说，\texttt{ToProd} 类型构造子（在此可看作类型上的函数）可以根据
 $as$ 的\emph{值}（长度）\footnote{
@@ -2899,15 +2902,15 @@ $as$ 的\emph{值}（长度）\footnote{
 类型检查器将报错。在此基础上，我们又可定义表格类型 \mintinline{lean4}{abbrev TableOf := Array (Row header)}.
 
 读者注意，上述定义的类型 \texttt{Row}、\texttt{TableOf} 实际上是类型构造子，需要表头（\texttt{header}）作为参数传入。
-之所以使用连续数组 \texttt{Array} 而非列表（链表）\texttt{List}，是因为前者性能更加。此外，虽然表格的列数由
+之所以使用连续数组 \texttt{Array} 而非列表（链表）\texttt{List}，是因为前者性能更好。此外，虽然表格的列数由
 表头固定，但表格的行数（条目数）显然是可以自由增长的，因而此处用动态数组编码是恰当的。
 
 作为用户，表格打印器最重要的需求是\emph{美观}，最少也应当\emph{看起来像一个表格}。因而我们定义
 \begin{minted}{lean4}
-  inductive Alignment | left | center | right
-  inductive PadsBy | perCell | perCol
-  abbrev Align := ToProd header λ _ => Alignment
-  abbrev OverrideWidth := ToProd header λ _ => Option Nat
+inductive Alignment | left | center | right
+inductive PadsBy | perCell | perCol
+abbrev Align := ToProd header λ _ => Alignment
+abbrev OverrideWidth := ToProd header λ _ => Option Nat
 \end{minted}
 其中
 \begin{itemize}\itemsep0em
@@ -2919,7 +2922,7 @@ $as$ 的\emph{值}（长度）\footnote{
 \end{itemize}
 
 除此之外，我们还定义了格子两侧的留白（margin）长度、截断开关，后者用于在输出时跳过零长度的格子。听起来很简单，
-但使用恰当时能产生意想不到的作用，比如\autoref{pp:comp}通过结合两者实现缩进功能，用于打印编译器前端的帮助信息。
+但使用恰当时能产生意想不到的作用，比如 \autoref{pp:comp} 通过结合两者实现缩进功能，用于打印编译器前端的帮助信息。
 \begin{figure}\centering
 \begin{subfigure}{0.5\textwidth}\centering
 \includegraphics[width=\textwidth]{assets/term2}
@@ -2936,7 +2939,10 @@ $as$ 的\emph{值}（长度）\footnote{
 \end{figure}
 
 基于这些类型定义，\autoref{code:pp-col} 实现了一些辅助函数。我们以这些函数为引子，引入一个在后续的 \Tigrisd，或任何
-依赖类型论语言中都十分重要的机制：\emph{被匹配对象的精练}（discriminant refinement）。\texttt{ToProd}，
+依赖类型论语言中都十分重要的机制：\emph{被匹配对象的精练}（discriminant refinement）\footnote{
+  精练（refine）一词是类型论术语，指通过（用户提供的）类型环境内的信息，将一个\emph{较泛}的类型
+  中的一部分，或整体，变为更加具体的项的过程。
+}。\texttt{ToProd}，
 某种意义上可以看作一个“多态”的类型（长度不同，依赖表头形状）——但无论如何，其在同一时刻只能具有一个值（类型），
 因为 Lean 是静态类型语言。那么，如何告诉编译器 \texttt{ToProd} 在\underline{何时具有何种类型}呢——我们就需要通过精练
 被匹配对象来实现这点了。
@@ -3031,7 +3037,7 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 \vspace{1cm}
 
 \begin{center}
-\underline{\Tigris 子系统的论述到此结束}。
+\underline{\bf\Tigris 子系统的论述到此结束}。
 \end{center}
 \pagebreak
 
@@ -3039,16 +3045,16 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 \renewottcommands[dd]
 
 \Tigrisd 是一个试验性质、以依赖类型作为理论基础的定理证明器。\Tigris 与 \Tigrisd 一同，
-构成了一套 PL(DI)/定理证明教育解决方案。\Tigrisd 在设计与实现上，受到了 \texttt{Lean}、\texttt{pi-forall}、\texttt{LambdaPi}、
-\texttt{elaboration-zoo} 项目的深刻影响。
+构成了一套 PL(DI)/定理证明教育解决方案。\Tigrisd 在设计与实现上，
+受到了 Lean、\texttt{pi-forall}、LambdaPi、\texttt{elaboration-zoo} 项目的深刻影响。
 
 目前而言，\Tigrisd 使用 Haskell 实现，因其强壮、活跃的生态环境，拥有诸如 \texttt{Unbound} 等用于
 操作\lambdacalc、AST 的库使得我们不必重新造轮子\footnote{
-  相较而言，\Tigris 就是一个（几乎）全数独立实现的子系统。
-  其中用到的许多函数、实现都是针对这一语言特化的，因而较难将之迁移到此处为 \Tigrisd 所用。
-  }
-虽然未来展望中，我们希望有一天能将之用 Lean 重写，并配套一个定理证明过（verified）的实现——重点是
-当下我们已经拥有一个可以工作的原型。
+相较而言，\Tigris 就是一个（几乎）全数独立实现的子系统。
+其中用到的许多函数、实现都是针对这一语言特化的，因而较难将之迁移到此处为 \Tigrisd 所用。
+}。
+虽然我们未来展望有一天能将之用 Lean 重写，并配套一个定理证明过（verified）的实现——重点是
+当下已经拥有一个可以工作的原型。
 
 \paragraph{命名规范} “项（term）”一词，当单独使用时，包含常规语言（非依赖类型）中的\emph{类型}。
 当“项”与“类型”一起使用时，大部分情况下前者不包括后者。“类型”永远指代类型，无论依赖与否。
@@ -3073,18 +3079,17 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
   <dtype-univ>    ::= Type
 \end{minted}
 
-例如一个将长度\emph{嵌入}类型的列表（换句话说，类型依赖长度）定义：
+例如一个将长度\emph{嵌入}类型的列表（换句话说，类型依赖长度）可定义为：
 
 \begin{minted}{lean4}
-  inductive Vector (α : Type) (n : Nat) : Type where
-    | Nil  : Vector α 0
-    | Cons : {m : Nat} -> α -> Vector α (Succ m)
+inductive Vector (α : Type) (n : Nat) : Type where
+  | Nil                                      where n = Zero
+  | Cons {m : Nat} (x : α) (xs : Vector α m) where n = Succ m
 \end{minted}
-
 其中我们使用花括号 \texttt{\{\}} 表示类型无关（不参与编程计算）的绑定子。
 构造子的结果类型将与定义类型做比较，确保两者的\emph{头}一致，在此处即 \texttt{Vector}.
-这一声明隐式地产生了两条约束，按分支分别为 $n = 0$ 与 $n = Succ m$. 通过 \texttt{example} 关键字，
-我们能引入匿名的定义用于测试这个类型定义的可用性：
+这一声明显式地规定了两条约束，按分支分别为 $n = 0$ 与 $n = \mathsf{Succ}\ m$. 通过 \texttt{example} 关键字，
+我们能引入匿名的定义用于测试这个类型的可用性：
 
 \begin{minted}{lean4}
   example: {α : Type} -> Vector α 0 = Nil
@@ -3093,18 +3098,17 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 
 \paragraph{函数} 定义现在有形式
 \begin{minted}{bnf}
-  <tm-lam> ::= fun <dtype-binder>+ => <tm>
-  <tm-let> ::= let <ident> <dtype-binder>* : <tm> => <tm>
+  <tm-lam>      ::= fun <dtype-binder>+ => <tm>
+  <tm-toplevel> ::= def <ident> <dtype-binder>* : <tm> => <tm>
 \end{minted}
-
 注意：\Tigris 中介绍的 pattern matching let 语法糖并不适用于此处。若想使用模式匹配，
 必须通过以下最基本形式使用：
 
 \begin{minted}{lean4}
-  let map {α : Type} {β : Type} {n : Nat} (f : α -> β) (as : Vector α n) : Vector β n =
-    match as with
-    | Nil         => Nil
-    | Cons m x xs => Cons m (f x) (map {α} {β} {n} f xs)
+def map {α : Type} {β : Type} {n : Nat} (f : α -> β) (as : Vector α n) : Vector β n =
+  match as with
+  | Nil         => Nil
+  | Cons m x xs => Cons m (f x) (map {α} {β} {n} f xs)
 \end{minted}
 
 \Tigrisd 目前并不具备隐式变量推断（implicit inference）或隐式项合成（implicit synthesis），因而我们
@@ -3113,18 +3117,18 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 
 读者应当铭记下述 \Tigris 与 \Tigrisd 在函数定义上的差距，暨依赖类型论最显然的特征，
 \begin{center}
-\underline{函数能接收\emph{类型}作为参数，就像其能接收值一样，因为\emph{值也是项}}。
+\underline{函数能接收\emph{类型}作为参数，就像其能接收值一样，因为\emph{类型也是项}}。
 \end{center}
 这一特性产生了一些在 \Tigris 中需要拓展类型系统（例如 skolems）才能实现的规则。考虑将第二个分支的右手侧递归应用 \texttt{map xs ..} 替换成
 \texttt{xs}，使得整个式子成为 \texttt{Cons m (f x) xs}——检查器将立马报错，因为其需要证明 $\mathsf{Vector}\ \alpha\ n$、$\mathsf{Vector}\ \beta\ n$
 相等，即证 $h : \alpha=\beta$.\footnote{
-  依赖类型论的\emph{相等性}是一个极为重要的概念，我们将在下一章给出具体介绍。
+依赖类型论的\emph{相等性}是一个极为重要的概念，我们将在下一节给出具体介绍。
 }显然根据现有信息，我们没法、也不可能证出上述等式，因为等号两侧是随机选取的类型。
 
 \paragraph{模式匹配与（依赖类型）元组消去} 已经被减少到以下两种语法形式：
 \begin{itemize}
 \item \mintinline{lean4}|match e with ..| 只接受构造值模式；
-\item \mintinline{ocaml}|let (x, y) = a in b| 并非上述结构的语法糖，而是专门用于实现
+\item \mintinline{ocaml}|let (x, y) = a in b| 并非上述结构的语法糖，而是用于实现
 （依赖类型）元组消去的语法构造。
 \end{itemize}
 
@@ -3135,9 +3139,9 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 \emph{无关性}（irrelevance）一词指上述现象，但并非只有证明和类型是无关的，在下文我们还能看到其他的无关项。
 
 \paragraph{模块} 与 \Tigris 一致。任一 \Tigrisd 源文件自动构成一模块，由源文件名作为模块名。此外，
-我们也实现了类 Haskell 文件顶端的声明：通过 \mintinline{haskell}|module ... where| 定义一个模块。
-引入模块 $M_1,\dots,M_i$ 可将其中的所有声明引入当前模块，
-通过顶端声明 \mintinline{lean4}|import M_1,..,M_i| 实现。
+我们也实现了类 Haskell 文件顶端的声明：通过 \mintinline{haskell}|module X where| 定义一个模块 $X$,
+引用模块 $M_1,\dots,M_i$ 可将其中的所有声明引入当前模块，
+通过顶端声明 \mintinline{lean4}|import M1,..,M2| 实现。
 
 \paragraph{内置命令} 是\emph{证明}，或用于 REPL 的命令，包含
 \begin{itemize}\itemsep0em
@@ -3152,18 +3156,22 @@ instance : Zero     $ OverrideWidth header := ⟨zeroOverride header⟩
 \item \texttt{exfalso tm}（证明）：即爆炸原理。\texttt{exfalso} 接收一个证伪的项，
 以此证明任意命题，或“构造”任意类型的一个值。在没有假设的前提下，若独立证出证伪的项，说明
 系统不合理（unsound）。
+\item \texttt{nomatch tm}（证明）：表示模式匹配 $tm$ 不存在任何分支，可以看作是另一种形态的爆炸原理。
+给定空类型 \mintinline{lean4}|inductive Empty|，若 \Tigrisd 能证明其不含任何 introduction rule（构造子），
+则模式匹配其值 $tm$ 时可用 \texttt{nomatch} 证明任意命题，如
+\mint{lean4}|example (h : Empty) (C : Type) : C = nomatch h|
+\end{itemize}
 \paragraph{类型宇宙} 亦称 level，在 \Tigrisd 中只有一个，且是\emph{非直谓的}，即 \mintinline{lean4}|Type : Type|，而非 \mintinline{lean4}{Type 1}，读作类型宇宙 \mintinline{lean4}{Type}，存在于自身中，或
 \mintinline{lean4}{Type} 的类型还是 \mintinline{lean4}|Type|. 虽然单一宇宙的直觉类型论
 （Martin-Löf/Intuitionistic Type Theory，MLTT. 依赖类型论的一种，但也可作为其别称）已由
 Girard 证明不合理\footnote{
-  我们并不细究其为何不合理，因为那是数学家的工作。读者只需知道其原因类似为什么 ZF 集合论中需要
-  正则公理；否则会产生罗素式（Russell-style）的悖论。
+我们并不细究其为何不合理，因为那是数学家的工作。读者只需知道其原因类似为什么 ZF 集合论中需要
+正则公理；否则会产生罗素式（Russell-style）的悖论。
 }，我们仍然以之作为理论基础，因其简单性。此外，有界递归、停机/完备性检查在 \Tigrisd 中都不存在。
-\end{itemize}
 
 \subsection{\Tigrisd 内核的形式化描述}
-类似第二部分，下面我们给出 \Tigrisd 内核的形式化描述。由于类型亦属于项，所以我们不再区分
-类型系统和值，统归于核心代数下。
+类似第二部分，下面我们给出 \Tigrisd 内核的形式化描述，但同时在每一要点中附带实现介绍。
+由于类型亦属于项，所以我们不再区分类型系统和值，统归于核心代数下。
 
 \paragraph{核心代数与类型环境} 给出于
 
@@ -3207,11 +3215,20 @@ Product，如其形式，与箭头类型 $(\cdot\to\cdot)$ 极为相似，可以
 
 \drules[t]{$\Gamma\vdash a : A$}{Irrelevant Typing}{evar, elambda, eapp, epi}
 
-\Tigrisd 的双向类型算法存在两个类型判断（judgement）：推断与检查。这两个判断在实现中对应两个
+\Tigrisd 的双向类型算法存在两个类型判断（judgement）：检查与推断。这两个判断在实现中对应两个
 （互）递归的函数 \texttt{infer}、\texttt{check}. 显然，两者是互相依赖对方的。此外，对于
 类型检查器来说，上述两个判断其实是两个\emph{模式}，对于不同的语法结构，我们采用不同的模式：
 例如当其遇到 \rref{C-lambda} 时，是检查模式；遇到 \rref{I-app-nonwhnf} 时，是推断模式。
-\drules[c]{$\Gamma\vdash a\Leftarrow B$}{type checking}
+
+这两个模式分别用类型判断 $\Gamma\vdash a\Leftarrow A$、$\Gamma\vdash a\Rightarrow A$ 表示。显然，
+如果这个系统是\emph{正确}的，则应当满足
+\begin{align*}
+\Gamma\vdash a : A&\ \text{if}\ \Gamma\vdash a\Leftarrow (A : \mathbf{Type})\text{, and}\\
+\Gamma\vdash a : A&\ \text{if}\ \Gamma\vdash a\Rightarrow A
+\end{align*}
+
+汇总起来，我们针对两个模式给出对应的类型规则。
+\drules[c]{$\Gamma\vdash a\Leftarrow A$}{type checking}
 { lambda
 , switch-mode
 , WHNF
@@ -3235,14 +3252,94 @@ Product，如其形式，与箭头类型 $(\cdot\to\cdot)$ 极为相似，可以
 , eq
 , subst}
 
-Readers paying attention will notice that some inference rules
-use definitional (also judgemental in MLTT, and typal in 1-level TT) equality,
-such as \rref{C-switch-mode, I-App, C-WHNF}. Note that these rules only specifies
-\emph{what it means to be ``equal''},
-They are not computational rules nor used for implementation purposes.
-We define the equality as follows:
+\paragraph{相等性}
 
-\drules[e]{$\Gamma\vdash A = B$}{Defintional/Judgemental/Typal equality}
+一些读者可能注意到上述推断规则中出现了定义性相等\footnote{
+在 MLTT 中也是判断性（类型规则见下文）相等；在单一宇宙 TT 中是类型上的相等。
+}，例如 \rref{C-switch-mode, I-App, C-WHNF}. 这是因为，类型作为项之后，在类型检查中，
+我们若要确认两个类型（变量）相等，就有可能需要展开其定义，并做一些计算才能确定——我们不妨先解决\emph{什么是相等}这一问题。
+
+在各种类型论中，有诸多不同但又相关（甚至交叉）的
+相等性（equalities），例如元相等（meta\textasciitilde）、定义性相等（definitional\textasciitilde）、判断性相等（judgemental\textasciitilde）、命题性相等（propositional\textasciitilde）、类型上的相等（typal\textasciitilde）。
+这些相等性的区别与交叉体现了不同类型论建模“相等”这一概念的不同思路。下文，我们主要介绍 \Tigrisd 的类型论涉及的前三个概念。
+
+\subparagraph{元相等}指那些非内化于类型论的相等性。之所以称其“元”，是表示其存在于类型论之上（不是在
+类型论中定义的），定义在\emph{元理论}（可理解为实现）中的特点。最明显的例子是，若两个项具有相同
+\emph{形状}——AST 相等（syntactic equality，语法上相等）——则它们\emph{一定相等}，
+\underline{无论类型论如何}——语法相等就是元相等的一种，所有类型论都具备这一相等性。
+
+绝大多数类型论都以\lambdacalc 作为核心代数，因此元相等性也包括 $\alpha$-等价。
+\begin{remark}[$\alpha$-equivalence]
+$\alpha$-等价指出，形式语言中的两个式子（例如类型、项、命题、环境等）等价，若它们仅存在
+\underline{约束（绑定）变量名字上的不同}。
+\end{remark}
+在 \Tigrisd 中，
+元相等恰为此二种，其中后者通过 \texttt{Unbound} 库实现。该库提供了用于替换、计算自由变量、生成崭新变量
+等一系列\lambdacalc 上的操作，避免重新造轮子带来的不便，也使我们的实现经得起考验。
+例如上述包含 $\alpha$-等价的元相等、自由变量的计算，在 \texttt{Unbound} 库中即为函数
+\begin{minted}{haskell}
+aeq :: Alpha a => a -> a -> Bool -- 中缀算符 '==='
+fv :: (Alpha a, Typeable b, Contravariant f, Applicative f) => (Name b -> f (Name b)) -> a -> f a
+
+id x = Lam $ Unbound.bind x $ Var x -- 在源代码中构建一个 Tigrisd 中的恒等函数的 AST
+id 'x' === id 'y' -- alpha-equivalence (\x -> x) === (\y -> y): >>> True.
+\end{minted}
+
+\subparagraph{定义性相等}可以看作元相等的“升级版”。准确地说，定义性相等是定义在\emph{式子}上的\emph{等价关系}（注意：并非\emph{等于}关系！），它指出两个式子是等价的，若其具有相同的\emph{含义}——
+显然，它蕴含元相等。
+
+定义性相等是\emph{内涵的}（intensional），与另一逻辑概念\emph{外延}相对。
+前者关注的重点在于某一对象的具体\emph{定义}，后者在于该对象的\emph{外在表现}，或\emph{行为}。以集合为例，
+“小于 3 的正整数集”是一集合的\emph{内涵定义}，而 $\{1,2\}$ 是其唯一的\emph{外延表述}。
+在类型论上，具有相同意义的式子是\emph{内涵相等}的。
+
+之所以称其为“升级版”，是因为绝大多数类型论都会在其\emph{理论内}再定义\emph{显式定义性相等}，后者与元相等统称\emph{定义性相等}。
+重点在于，\underline{这些理论是\emph{如何}在其内部定义上述等号的}——由此引伸出三种类型论上的等号：判断性相等、命题性相等、类型上的相等。需要注意的是，三种等号并不一定互斥，例如 \Tigrisd 就满足其中不止一种的等号。
+读者不妨与 \Tigris 的类型系统作比较：为什么我们不谈它的相等性呢？显然，
+这是因为传统语言的类型系统允许的类型过于简单，
+或者说，任何非依赖类型论中存在的项（类型）都过于简单，仅靠元相等，即类型 AST 上的比较便可实现。
+
+此外，\emph{元相等}是所有类型论具有的共性。为做区分，定义性相等一词有时特指显式定义性相等。
+
+\subparagraph{判断性相等}是类型论中最基础的等号。正如其意，判断性相等是在类型论中直接作为
+一条判断规则引入的，比如后文将介绍的 $\Gamma\vdash A = B$——\Tigrisd 类型论的等号就是判断性相等。
+通常（也包括 \Tigrisd）这一等号就是常规意义上的等于，满足自反性、交换性、传递性——将满足这些性质的
+判断性相等称为\emph{判断性等价}。
+
+判断性相等虽然基本，但不代表其使用广泛。主流定理证明器，特别是以 CIC 作为理论基础的，例如 Lean，使用
+命题相等性。
+
+\subparagraph{命题相等}适用于两层（即区分类型和命题的）类型论。这一表述与 Curry-Howard 同构的“命题即类型”
+表述不冲突：以 Lean 为例，所有的命题存在于类型宇宙（此处称命题宇宙）$\mathbf{Prop}$ 中，所有的类型存在于 $\mathbf{Type}\ u/\mathbf{Sort}\ (u+1)$（其中 $u$ 是宇宙层级）\footnote{
+满足 $\mathbf{Type}\ u\equiv\mathbf{Sort}\ (u+1)$，$\mathbf{Sort}\ 0 = \mathbf{Prop}$，
+$\mathbf{Sort}\ 1 = \mathbf{Type}$.
+}
+中。命题仍然是类型，但其基底集为 Subsingleton，即含有\emph{最多 1 个}
+元素的集合。在这一情况下，等式 $1 = 0$ 实际上是（命题）类型 $\mathsf{Eq}\ 1\ 0$，故而
+称其命题相等：由命题编码的等号。之所以这样处理，原因是多方面的，但最显著的原因之一即是方便命题无关性的实现。
+
+\subparagraph{类型上的相等}与命题相等类似：由类型编码的等号，例如是 Cubical TT 的路径等号。一般把这个
+类型称为恒等类型（identity type）或相等类型（equality\textasciitilde），记作 $\mathsf{Id}_A(x, x')$，对
+某 $(x, x' : A\times A)$. 由于恒等类型自身在不同类型论中具有不同表述，且其性质涉及到同伦理论、范畴和拓扑
+理论的知识，如 \autoref{fig:id-intro}，超出本文范围，我们在此不表。
+\begin{figure}\centering
+\includegraphics[scale=.9]{assets/MetaLogicOfIdentifications-1-220927.png}
+\caption{恒等类型的引入规则（introduction rule）在范畴论上的意义 credit: nLab}\label{fig:id-intro}
+\end{figure}
+
+类型上的相等在单一层级类型论中亦常见，根据 \rref{T-EQ} 可知，在 \Tigrisd 中，等号也是类型；同时，我们
+摒弃恒等类型的记号，仍用等号，以强调其“相等”性。之所以要让相等成为类型，
+是因为一个定理证明器最基本的需求，就是证明\emph{等式}命题：允许用户构造等式（类型）的证明（对象）。
+然而，和 Lean 这样直接将等号作为命题构造出来的实现不同，我们直接将其内置在类型论中，故而，需要
+以同样的方式引入类型上相等的规则——\rref{T-refl, T-eq, T-subst, T-exfalso} 分别给出了
+等号的自反性、等号的组成规则（formation rule，可理解为类型层面上的 introduction rule）、
+等号的重写规则（例如 $a = b$ 且 $b = 1$ 则 $a = 1$）和爆炸原理（从反面说就是反证法）。
+此外，称同时具有判断性相等与类型上相等的类型论称为\emph{内涵类型论}。
+
+上面说过，\Tigrisd 具有判断性相等。下面，我们引入其判断规则，并
+搭配以类型规则，回答“何谓\emph{相等}”这一核心问题。
+
+\drules[e]{$\Gamma\vdash A = B$}{Defintional/Judgemental equality}
 { refl
 , sym
 , trans
@@ -3266,94 +3363,63 @@ We define the equality as follows:
 , elam-congr
 , epi-congr}
 
-\paragraph{Weak Head Normal Form}
-or the judgement $\Gamma\vdash\mathbf{WHNF}\ tm\leadsto nf$ appeared above
-reads: under context $\Gamma$, $tm$ reduces to $nf$, which is
-in \emph{weak head normal form}\footnote{
-this term supposedly came from Peyton Jones (SPJ), for its relations to reduction/evaluation strategies.
-}. Before introducing WHNF, let us recall the definition of a \emph{value}. As mentioned in \Tigris,
-a value $v$ is in normal form if $\langle v, \sigma\rangle\Downarrow\langle v\rangle$ where $\sigma$ denotes a state (if any).
-In \Tigrisd, $v$ is defined as
+我们曾经说过，\underline{类型规则指导具体实现}——这一论断在此处仍然正确。然而，像上面这样的类型规则仅仅规范
+具体行为，没有指出应当\emph{如何实现}。在 \Tigris 中，针对类型系统我们给出了\emph{具体实现}上的
+类型规则；现在仿照前文，给出等号的具体实现规则，又称算法相等性（algorithmic\textasciitilde）。
+
+在此之前，我们先介绍上面出现过的、等号实现所用到的重要概念：Weak Head 范式（WHNF）.
+
+\paragraph{Weak Head Normal Form} 或前文出现的判断 $\Gamma\vdash\mathbf{WHNF}\ tm\leadsto nf$
+读作：在环境 $\Gamma$ 下，$tm$ 化简为 WH 范式 $nf$.\footnote{
+这一概念因其与纯函数式语言的消去/求值策略相关，应当由 Peyton Jones（SPJ）提出。
+}
+首先，我们不妨回顾一下\emph{值}的定义。某一值为范式，当 $\langle v, \sigma\rangle\Downarrow\langle v\rangle$ 其中
+$\sigma$ 表示一状态（若有）。在 \Tigrisd 中，值定义为
 
 \nonterms{v}
 
-WHNF has similar form to $v$ and contains $v$, but is generalized to quantify more forms.
-Readers should pay attention to the phrase \underline{``cannot be reduced further''} as this
-is precisely what WHNF quantifies.
-This additional part that WHNF quantifies, is called \emph{neutral form}. A neutral term mainly
-contains a sequence of applications, with its head being a variable.
-Although we knew that the arguments to this variable
-may be redexes\footnote{reducible expressions} themselves, this application itself
-cannot be reduced further. Therefore, it belongs in WHNF. In this calculus, the neutral
-terms are given by
+WHNF 包括 $v$，且在其之上包含了更多的形式。其标准可以用一个词概括：\underline{不能再消去}的项。
+除去\emph{值}，我们称 WHNF 包含的额外部分为\emph{中性项}（neutral term）。中性项主要包含
+一系列嵌套的应用（application），且要求其头部为一\emph{变量}。虽然我们知道作为此变量的参数的
+表达式可能是可消去的（redexes），但这一整体（应用）是不能的。因此，其属于 WHNF. 在 \Tigrisd 的核心代数中，
+中性项包含
 
 \nonterms{neutral}
 
-For example, the term
-$(x : \mathbf{Type})\times (\lambda x.\,\mathsf{Nat})\ \mathsf{Unit}$ is in WHNF,
-because, though its RHS is $\beta$-reducible, this term itself is not: It is
-a coproduct; Or the neutral term $\mathsf{add}\ 1\ 3$, which,
-judging from its apperance, should reduce to $4$ but
-we are unsure of that
-yet as we did not \emph{unfold} the definition of $\mathsf{add}$,
-therefore, this term is also irreducible in WHNF.
-We introduce this concept because
-it concerns
-with \underline{reduction strategies}, or normalization of forms (as mentioned in the footnote), which
-in turn, \underline{matters a \emph{lot} when implementing equality} as
-we want equality check to not only cover terms
-that \emph{look exact}\footnote{
-as in syntactic equality (w/o $\alpha$-renaming)
-}, but also several basic equivalence in the lambda calculus, which
-though possible by a naive evaluator that performs \emph{full reduction}, is not good enough and
-can potentially be harmful.
-Therefore, we want to set \emph{standards}
-for terms (i.e. terms that should \underline{not} be eagerly reduced) in order to
-\emph{control reduction strategies} of properly constructed evaluators
-that respect these standards. WHNF is exactly the standard we are looking for.
+例如，项 $(x : \mathbf{Type})\times (\lambda x.\,\mathsf{Nat})\ \mathsf{Unit}$ 是 WHNF.
+虽然该类型的右手侧是 $\beta$-可消去的，式子整体则不行，因为其是一 coproduct type. 或者，考虑
+中性项 $\mathsf{add}\ 1\ 3$：猜测应当消去到 $4$，但我们\emph{不能确定}这一猜测，因为没有看到/展开
+$\mathsf{add}$ 的\emph{定义}，因而其也是 WHNF.
 
-Specifically,
+之所以引入 WHNF，是因为其关注\emph{消去策略}，亦称式子正规化——在实现等号时\emph{极为重要}，因为
+我们希望相等性检查不只能处理最简单的情况（即形式一致的项），还应当支持一些\lambdacalc 的基本等价规则。
+虽然一个简单的解释器能够通过完全消去（full reduction）支持那些等价规则，即一般意义上的求值，
+但这还不够好，且存在潜在问题。因此，我们为项设置\emph{标准}，挑选那些不必立即消去的项来\emph{控制}消去策略——这一标准就是 WHNF.
+
+WHNF，具体的说，能够
 \begin{itemize}
-\item WHNF allow us to \emph{defer}\footnote{
-do note the difference between \emph{deferred} evaluation and \emph{lazy} evaluation.
-Usually the latter encapsulate the former.
-} the unfolding of definitions until needed, similar to a
-call-by-need evaluation strategy. This, intuitively, mimics the
-\emph{symbolic} computational thought process of a normal human; Consider the equation
-$f\ 3 = f\ (1 + 2)$ where $f$ represents a \emph{lengthy computation}.
-Both sides are in WHNF, where a naive evaluator may spend time reducing all the application of $f$,
-A WHNF-respecting evaluator can instead compare $3, (1+2)$ because both sides share the same
-\emph{head} $f$. \emph{Deciding} this equality is
-simple enough that we do not need to unfold $f$ at all. In fact, this is just a
-special case of the \emph{congruence} relation of functions.
+\item 允许我们推迟\footnote{
+注意\emph{推迟}求值与\emph{惰性}求值之间的区别，一般来说后者包含前者。
+}定义的展开，直到需要为止，即按需展开。这种消去策略在直觉上体现了符号计算
+的思想；考虑等式 $f\ 3 = f\ (1 + 2)$ 其中 $f$ 表示某一冗长的计算。
+等号两侧都是 WHNF，对于一个简单求值器来说，其会花费不必要的时间计算 $f$ 的应用，
+但一个懂得 WHNF 的求值器可以直接比较 $3$ 和 $1 + 2$，因为两者具有相同\emph{头} $f$.
+\emph{判定}这一等号也应当如此简单，因为我们完全不必展开 $f$.
+而实际上，这不过是\emph{函数上的同余关系}（congruence relation）的特例。
 
-\item However, the equality relation in \Tigrisd is \emph{semidecidable}, as in sometimes it is
-possible for a computation to diverge because totality is not guaranteed. WHNF
-\emph{alleviates} this problem by -- as mentioned above -- deferring unfolding as
-even if $f$ diverges, the equality still holds, proven by \Tigrisd.
-Though it does \emph{not} entail that no unfolding is taken place -- As to prove
-$\mathsf{1 + 1 = 2}$, we must unfold $+$, and in the case $+$ diverges, the
-reduction loops no matter what, leading to the eventual crash of the system
-when it runs out of stack/heap spaces; Though, the REPL implementation has
-similar feature to that of \Tigris, allowing users to interrupt with \texttt{<C-c>}.
+\item 然而，应当强调 \Tigrisd 的等号是半可判定的（semidecidable），因为等号的判定不一定停机——
+我们没有保证定义的完备性。WHNF 能够\emph{缓解}这一问题，通过——如上所述——推迟定义展开：即便 $f$
+不停机，上述等号仍然成立，且由证明器自动证出。当然，推迟不代表能避免，例如证明 $1 + 1 = 2$，
+我们必须展开 $+$，且当 $+$ 不停机时，消去过程亦不停机，最终因为栈/堆空间耗尽而导致整个系统的崩溃。
+
 \end{itemize}
 
-Furthermore, readers with relatively little prover knowledge may draw intuition from
-Lean's \texttt{rfl} tactic/term and Coq's \texttt{reflexivity} tactic, both of
-which instructs the typechecker to perform normalization to decide equality, which
-is arguably much more stronger than \Tigrisd's, implemented in similar way,
-if not more complex, of
-\underline{making rules to avoid eager reductions}. Moreover, they have some form of \emph{normalization by evaluation} (NBE) which compiles expressions
-to forms suitable for running, such as (OCaml) bytecode, if using Coq.
-It is about
-the granularity of these rules and the performance of normalization that set us apart.
+不仅如此，我们还可以联系 Lean 的 \texttt{rfl} 或 Coq 的 \texttt{reflexivity} tactic：两者都要求
+类型检查器开展正规化工作来判定相等性，且较之 \Tigrisd 更加强大，但实现类似，且目标都是尽量避免
+立即求值。此外，作为编程语言来说，他们能够通过求值正规化（normalization-by-evaluation，NBE）直接
+编译表达式到适合运行的形式，如 Coq 的 OCaml bytecode，达到接近普通程序运行的速度，加快证明器性能。
 
-We now define the \emph{reduction}\footnote{
-we emphasize \emph{reduction} because this transformation does not change
-the ``meaning'' of a term.
-}
-rules to WHNF and finally,
-the implementation of equality in \Tigrisd :
+现在，我们给出 WHNF 的消去规则，以及 \Tigrisd 的等号实现规则。
 
 \drules[WHNF]{$\Gamma\vdash\mathbf{WHNF}\ a\leadsto nf$}{WHNF normalization}
 { var
@@ -3377,26 +3443,222 @@ the implementation of equality in \Tigrisd :
 , pi-congr
 , WHNF-ext}
 
-Which, reveals an important property of WHNF:
+这告诉我们 WHNF 的一个重要性质，即 \underline{WHNF 化不改变两个式子的相等性}，或者说，
+两个式子相等，当且仅当其 WHNF 相等。
+\begin{proof}
+从左到右，由消去过程的不变性得证；从右到左，由 \rref{impleq-WHNF-ext} 规定。
+\end{proof}
 
-\begin{theorem}[WHNF equality invariant]
-Two terms are equal if and only if their WHNF reductions are equal.
+这样，我们完成了 \Tigrisd 内核的形式化描述。
+下文叙述进阶功能，包括上一部分重点提到的 discriminant refinement 和 indexed family 定义。
 
-From left to right, this property is guaranteed by the invariant of reduction;
-From right to left, this property is shown by \rref{impleq-WHNF-ext}.
-\end{theorem}
+\subsection{Discriminant Refinement}
+上一部分说过，Discriminant Refinement 实现了证明中的\emph{分情况讨论}思考方式。
+现在对此做一全面的叙述。我们假设读者已经阅读了上一部分，并对之有基本了解。
 
-\section{Summary}
-Regarding \Tigris, the work is somewhat completed.
-Regarding \Tigrisd, while the working prototype is available,
-it's implementation notes and rules of dependent pattern matching and usage examples
-are omitted in this report, but I'm working on delivering it in the final thesis.
+在许多定理证明器，例如 Lean 和 \Tigrisd 中，用户可以通过条件表达式或模式匹配使用
+Discriminant Refinement. 我们根据语法结构的不同分开进行说明。
 
-此外, 格式部分并不符合要求\footnote{
-之后会将本文内容誊抄到 GitHub 上师兄师姐制作的学校本科生论文模板中.
-}
-, 语言部分也较为粗糙, 不够精炼, 甚至可能有打错的部分. 但作为中期报告以及
-论文初稿的核心内容 (除去上面 \Tigrisd 中的部分) 来说应当是充分的.
+\paragraph{条件表达式中的 Discriminant Refinement}
+条件表达式可做 Discriminant Refinement 的充要条件是其自身依赖类型（支持 dependent elimination）。
+那么，什么是依赖类型的 \texttt{if-then-else}（简称 \texttt{ite}）呢？
+不妨先回忆一下 \Tigris 的普通版本，我们要求条件为 $\mathsf{Bool}$，then/else
+分支具有相同类型，仅此而已。模仿这一条规则，只需\underline{允许 then/else 中的分支的类型依赖条件值}，
+依赖类型的条件表达式就诞生了，其类型规则由 \RefTirName{T-cond} 给出。
+
+\begin{mathpar}
+\inferrule[T-cond]
+{\Gamma\vdash c = \{\mathsf{True}, \mathsf{False}\} : \mathsf{Bool} \\ \Gamma, x : \mathsf{Bool}\vdash A : \mathbf{Type}
+\\\\ \Gamma\vdash t : A[x\mapsto\mathsf{True}] \\ \Gamma\vdash e : A[x\mapsto\mathsf{False}]}
+{\Gamma\vdash\mathsf{ite}(c;t;e) : A[x\mapsto c]}
+
+\inferrule[Bool-elim]
+{\Gamma\vdash b_1 : C(\mathsf{True}) \\ \Gamma\vdash b_2 : C(\mathsf{False}) \\\\
+\Gamma, x : \mathsf{Bool}\vdash C(x) : \mathbf{Type} \\ \Gamma\vdash t : \mathsf{Bool}}
+{\mathsf{Bool.rec}(t,b_1,b_2,C) : C(t)}\label{Bool-elim}
+\end{mathpar}
+
+对定理证明器稍有了解的人可以发现，前者的类型规则就是 $\mathsf{Bool}$ 的消去子所拥有的类型规则 \RefTirName{Bool-elim}.
+这告诉我们一个启示：在基于消去子的定理证明器实现中（Lean，Coq 等），\texttt{ite} 不过是
+上述消去子应用的\emph{语法糖}而已——实际上也是通过后者实现的。依赖类型的 \texttt{ite} 允许
+函数拥有“动态”的类型，
+
+\begin{minted}{lean4}
+example (b : Bool) : if b then Nat else Bool = if b then Zero else True
+\end{minted}
+
+然而读者需要注意到“动态”是一种假象——正如前面所说，依赖类型的定理证明器都是静态类型的，之所以
+我们允许函数返回 \texttt{Nat} \emph{或} \texttt{Bool}，正是因为我们照抄类型项的形式，在
+定义中也通过 \texttt{ite} 将 then/else 分支的类型分情况为 \texttt{Nat}/\texttt{Bool} 实现的。
+
+\paragraph{过强的依赖类型 \texttt{ite}}
+由于我们并不使用基于消去子的实现，而是将依赖类型的 \texttt{if} 内置于类型论中，类型检查就成了问题。
+在 \RefTirName{T-cond} 中，元变量 $A, x$ 都是随机引入的，但它们在规则内是固定的。
+那么，不依靠额外的语法（即来自用户的标注），我们目前没有办法通过现有的双向类型检查器确定 $A, x$
+到底应该对应实际程序中的哪些项。因而我们加一语法限制：
+仅当 $x$ \underline{具有变量形状}时才允许上述规则，否则，\texttt{ite} 与普通编程语言中的无异。
+
+接着，我们来考察模式匹配的 Discriminant Refinement. 和 \Tigris 不同，\Tigrisd 的模式匹配
+只支持两种模式：coproduct（元组）模式和构造子模式（+变量模式），且这两种模式是分开处理的。
+不妨先来看 coproduct 的 dependent elimination.
+\paragraph{模式匹配其一：Coproduct}
+Coproduct 在 \Tigrisd 中写作 \mintinline{lean4}|(a : A) × B a|，允许右手侧依赖于左手侧。
+其模式匹配只能通过形式 \mintinline{lean4}|let (p, q) = pq in b| 开展。
+实现这一式子的检查，想法很简单，我们只需要把 $(b : B)$，其中 $B$ 依赖于 $pq$，将后者替换成 $(p, q)$
+并以此作为目标类型检查即可。同理，我们依然需要语法限制 $pq$ 为变量，参照 \rref{T-letpair, C-letpair-lr, C-letpair-rl}，其中 \rref{C-letpair-lr} 利用了 Let-绑定的相等性，并将等式加入环境中。
+利用这些规则，我们可以实现 coproduct 的两个投影，
+
+\begin{minted}{lean4}
+def fst (α : Type) (β : α -> Type) (pq : (a : α) × β a) : α              = let (p, q) = pq in p
+def snd (α : Type) (β : α -> Type) (pq : (a : α) × β a) : β (fst α β pq) = let (p, q) = pq in q
+\end{minted}
+
+关于构造子模式，我们将同索引族一起介绍。
+
+\subsection{索引族}
+索引族可以看作 \Tigris 的归纳类型的“完整版”，是任何依赖类型定理证明器中都最为核心的一个机制，且这一机制是
+原生的（公理化的）。
+
+传统的 ADT 只能在同一定义中只能定义类型，而索引族之所以称为\emph{族}，是因为其可以定义\emph{一族}（簇）类型。
+例如上述 $\mathsf{Vector}\ \alpha\ n$——严格说来 $\mathsf{Vector}\ \alpha\ 0$ 与 $\mathsf{Vector}\ \alpha\ 4$ 并非同一类型，但它们却同时由定义
+\begin{minted}{lean4}
+inductive Vector (α : Type) (n : Nat) : Type where
+  | Nil                                      where n = Zero
+  | Cons {m : Nat} (x : α) (xs : Vector α m) where n = Succ m
+\end{minted}
+给出。这是很自然的，构造子的目标类型不一定要和正在被定义的类型相同，而相异的情况下，就产生了\emph{一族类型}。
+之所以称其为\emph{索引}，是因为其目标类型依赖于某一\emph{可变}的项，在此处就是自然数 $\mathsf{Nat}$. 因而，
+上面的例子定义了一个\underline{被自然数索引的列表}。
+
+从实现的角度说，上述定义无非是在两个构造子分支内为类型检查器提供了不同的约束。\texttt{Nil} 分支
+产生约束 $n=0$，\texttt{Cons} 分支产生约束 $n = \mathsf{Succ}\ m$，其中 $m$ 由构造子绑定。
+
+\paragraph{索引族的实现}
+规定，$C_i$ 表示 $T : \mathbf{Type}$ 的第 $i$ 个构造子，
+$\overline{c_i}$ 表示\emph{在某一构造子应用中}，$C_i$ 的参数列表，$\Delta_i$ 表示 $C_i$ 在定义时\emph{声明的}参数列表。
+当这些元变量对所有的 $i$ 都有定义/或针对类型构造子 $T$ 而不适用时，我们直接省略下标。
+
+与 ADT 不同，索引族中的构造子、类型构造子的参数列表都是\emph{序列绑定}的，也就是说，
+$\Delta_{i,j}$ 在 $\Delta_{i,j+1}$ 中有定义——实际操作中，我们把当前参数按照对应替换参数列表中剩下的部分
+以实现依赖类型。同时，\Tigris 中的限制仍然生效，类型构造子 $T$ 必须完全应用。上述的元变量同样适用于类型构造子。
+例如，目前内置于类型论中的 coproduct 可以活用序列族序列绑定、依赖类型的特性直接定义在语言内部。
+
+\begin{minted}{lean4}
+  inductive Sigma (A : Type) (B : A -> Type) : Type where
+    | MkProd : (x : A) -> B x -> Sigma A B
+\end{minted}
+上述工作，由规则 \RefTirName{I-tyctor}、\RefTirName{C-ctor}、\RefTirName{C-ctor-param} 给定
+
+\begin{mathpar}
+\inferrule[I-tyctor]
+{\Gamma,x : \Delta\vdash T\ x:\mathbf{Type} \\ \Gamma\vdash\overline{c}\Leftarrow\Delta}
+{\Gamma\vdash T\ \overline{c}\Rightarrow\mathbf{Type}}
+
+\inferrule[C-ctor]
+{\Gamma,x_1 : \Delta^\mathsf{T}, x_2 : \Delta\vdash T\ x_1\ x_2 \\
+\Gamma\vdash\overline{c}\Leftarrow\Delta[\Delta^\mathsf{T}\mapsto\overline{c}^\mathsf{T}]}
+{\Gamma\vdash C\ \overline{c}\Leftarrow T\ \overline{c}^\mathsf{T}}
+
+\inferrule[C-ctor-param]
+{\Gamma\vdash c_{i,j} : A \\
+\Gamma\vdash\overline{c_{i,j+1}}\Leftarrow \Delta[x\mapsto c_{i,j}]}
+{\Gamma\vdash c_{i,j}\ \overline{c_{i,j+1}}\Leftarrow (c_{i,j} : A) = c_{i,j},\,\Delta}
+\end{mathpar}
+其中我们用上标$^\mathsf{T}$表示某一\emph{类型构造子}的（声明的）参数列表。规则 \RefTirName{C-ctor-param}
+表示比对参数列表和声明参数列表时将现有头 $c_{i,j}$ 用于替换参数列表 $\Delta$ 中剩余的部分；
+规则 \RefTirName{C-ctor} 则更加有趣，其检查整个构造子应用，但为了满足依赖类型的特性，我们
+不仅带着构造子声明，更带着类型构造子声明，
+\underline{将前者用后者对应的类型构造子参数替换}，再进行检查。
+
+\paragraph{模式匹配其二：Canonical Pattern Matching}
+形如 \Tigris 的 \mintinline{lean4}|match .. with| 是 \Tigrisd 中最基本的模式匹配。
+在上文条件表达式的描述中，我们提到，因为没有采用基于消去子的实现，所以此处的模式匹配必须内置，而不能
+作为语法糖，并同时对其语言功能做了大幅简化：只能接受单一被匹配对象，且只支持构造子模式和变量模式。
+
+在定理证明器中，不完备的模式矩阵是不合法的，因为其在理论上存在问题（无法保证函数的完备性）。如果
+希望省略矩阵中的某个分支，就必须要证明该分支/情况\underline{不可能存在，即产生矛盾}，
+而证明手段其中之一就是 Discriminant Refinement，且此时 \Tigrisd 可以自动判断是否完备.
+从现在开始，在关于模式匹配的讨论中我们都默认模式矩阵（此处实际上是列向量）完备，
+即一定不会产生所有分支无法匹配的情况。
+
+在叙述类型规则之前，我们先引入一条新的判断规则：$\vdash a\sim b \Rightarrow \Delta$.
+这一条判断规则的用意类似 \Tigris 中通过合一化求解约束那样，通过合一化来生成一系列定义，
+用于模式匹配的检查。下面直接给出规则，并就着规则讲解具体设计与实现。
+
+对某模式匹配的任意一分支，有
+\begin{mathpar}
+p ::= x \mid C\ ps
+
+ps  ::= \varnothing \mid p\ ps
+
+\inferrule[C-match]
+{\Gamma\vdash a\Rightarrow A \\ \mathbf{WHNF}\;\Gamma\vdash A \rightsquigarrow T\ \overline{c} \\\\
+\Gamma\vdash\ p : T\ \overline{c}\Rightarrow \Delta \\ \vdash a\sim p\Rightarrow \Delta'
+\\ \Gamma,\Delta,\Delta'\vdash b \Leftarrow B}
+{\Gamma\vdash\mathsf{match}(a,\,p\to b)\Leftarrow B}
+\end{mathpar}
+
+这一规则清晰地表述了我们的实现。首先，我们推断 $a : A$，
+并将 $A$ WHNF 化后检查是否满足类型构造子应用的形状 $T\ \overline{c}$；其次，我们
+提取出模式 $p$ 中的所有变量模式，由此构造一声明 $\Delta$；接着，将 $a$ 与 $p$ 相匹配产生
+另一 $\Delta'$（用于告诉检查器被匹配对象与模式相等），
+最后在已有环境和两个声明环境的并集中检查分支的右手侧 $b$ 是否具有类型 $B$——若
+一切正确，判断整个模式匹配具有类型 $B$.
+
+现在，我们就可以利用 Discriminant Refinement 来避免一些冗余的分支了，如
+
+\begin{minted}{lean4}
+example {a : Type} (n : Nat) (v : Vector a n) : Option a =
+  match n with
+  | Zero      => None
+  | Succ Zero => match v with Cons {_} x Nil => Some x
+  | _         => None
+\end{minted}
+
+这个程序可以提取单元素列表中的元素，但遇到其他情况则返回空。
+在第二个分支中，我们要求 $n = 1$，因而 $v$ 的长度唯一，直接提取出其元素，\emph{安全地}
+省去了匹配空列表的情况。
+
+\paragraph{附加约束}
+最后，我们来谈一谈索引族的附加约束——读者可能发现，上面出现过的 \texttt{Vector}，其构造子
+分支中可以出现 \mintinline{lean4}|where _ = _| 从句，用于直接附加约束。附加约束的目的正是
+为了实现“索引族”一词中的“序数”两字。在 Lean 中，我们可以直接定义索引族，如布尔值索引的
+列表 \texttt{EvenOddList}，且其长度为奇数时为假；偶数时为真：
+
+\begin{minted}{lean4}
+inductive EvenOddList (α : Type u) : Bool -> Type u where
+  | nil  : EvenOddList α true
+  | cons : α -> EvenOddList α b -> EvenOddList α !b' -- b' 由隐式推断自动得出，显式写法同下
+\end{minted}
+
+在 \Tigrisd 中，我们简化了类型检查器要做的工作，
+转而将一部分工作通过语法限制转嫁到用户身上——例子之一就是要求用户提供显式约束。
+上述例子可以翻译为
+
+\begin{minted}{lean4}
+inductive EvenOddList (α : Type) (b : Bool) : Type where
+  | Nil                                              where b = True
+  | Cons {b' : Bool} (x : a) (xs : EvenOddList α b') where b = not b'
+\end{minted}
+
+可以发现，这些约束总是相等性约束。在实现中，它们的功能就是作为替换法则，为类型检查器使用。
+例如，使用这些构造子时，用户需要想方设法满足约束。通过使用约束替换掉一些变量，
+类型检查器可以\emph{重构}出涉及这些构造子的表达式\emph{应当具有的类型}，
+将这一类型通过上面提到的\emph{定义性相等}与检查器根据表达式推断出/用户给出的类型做比较，
+以验证约束是否确实满足。此外，当我们重写 $\Delta$ 时，
+利用 Discriminant Refinement 的时候也都需要其作为替换规则和相等性约束。前者作为替换规则参与 $\Delta$ 的重写，
+后者在模式匹配时为对应分支增加一条假设，即该相等性约束。这是 Discriminant Refinement 能实现的根本原因之一。
+
+\subsection{本章小结}（..略..）
+
+\vspace{1cm}
+
+\begin{center}
+\underline{\Tigrisd 子系统的论述到此结束}。
+\end{center}
+\pagebreak
+
+\section{总结与展望}（..略..）
 
 %\bibliographystyle{abbrv}
 % \bibliography{references}  % need to put bibtex references in references.bib

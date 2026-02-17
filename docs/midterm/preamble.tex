@@ -66,15 +66,18 @@
 \makeatletter
 \newcommand{\AlignFootnote}[1]{%
   \ifmeasuring@
-    \chardef\@tempfn=\value{footnote}%
-    \footnotemark
-    \setcounter{footnote}{\@tempfn}%
+  \chardef\@tempfn=\value{footnote}%
+  \footnotemark
+  \setcounter{footnote}{\@tempfn}%
   \else
-    \iffirstchoice@
-      \footnote{#1}%
-    \fi
-  \fi}
+  \iffirstchoice@
+  \footnote{#1}%
+  \fi
+\fi}
 \makeatother
 
 \newcommand*\circled[1]{\tikz[baseline=(char.base)]{
-            \node[shape=circle,draw,inner sep=2pt] (char) {#1};}}
+\node[shape=circle,draw,inner sep=2pt] (char) {#1};}}
+
+\renewcommand{\DefTirName}[1]{\hypertarget{#1}{\TirName {#1}}}
+\newcommand{\RefTirName}[1]{\hyperlink{#1}{\TirName {#1}}}
