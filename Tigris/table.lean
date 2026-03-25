@@ -9,7 +9,7 @@ open PrettyPrint Alignment
 def truncate (n : Nat) (s : String) : String :=
   let n := if (n - 2) &&& 1 == 0 then n - 2 else n - 1
   if s.length > n + 2 then
-    s.extract ⟨0⟩ ⟨n >>> 1⟩ ++ ".." ++ s.extract ⟨s.length - n >>> 1⟩ ⟨s.length⟩
+    s.take (n >>> 1) |>.toString
   else s
 
 def EnvHeader : List Text.SString := ["id", "type", "value"].map fun s => ⟨s, {style := [.bold]}⟩

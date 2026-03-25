@@ -251,10 +251,20 @@ def isNotOpInit
   | '{' | '}' | '[' | ']' => false
   | c => not $ c.isDigit || c >= '\t' && c <= '\r'
 
+def isNotOpInit'
+  | '_' | ',' | '(' | ')' | ' ' | '='
+  | '{' | '}' | '[' | ']' => false
+  | c => not $ c.isDigit || c >= '\t' && c <= '\r'
+
 def isNotOpCand
   | '_' | ',' | '(' | ')' | ' '
   | '{' | '}' | '[' | ']' => false
   | c => not $ c >= '\t' && c <= '\r'
+
+def potentialOp' : TParser σ String := do
+  let hd <- tokenFilter isNotOpInit'
+  let tl <- takeMany $ tokenFilter isNotOpCand
+  return tl.foldl String.push hd.toString
 
 def potentialOp : TParser σ String := do
   let hd <- tokenFilter isNotOpInit
@@ -262,13 +272,14 @@ def potentialOp : TParser σ String := do
   return tl.foldl String.push hd.toString
 local infixl:40 " <? " => flip (· <|> ·)
 
-def takeInfixOp? (minPrec : Nat) : TParser σ $ Option BinaryEntry := pure none <? do
+def takeInfixOp? (minPrec : Nat) (inPattern := false) : TParser σ $ Option BinaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({ops,..}, _) <- get
-  match ops.matchPrefix tokSpan 0 with
+  match ops.find? tokSpan with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
+    if inPattern && sym == "=" then throwUnexpected
     if let some revop := reservedOp.matchPrefix tokSpan 0
     then
       if sym.length > revop.length then string sym $> some entry
@@ -278,7 +289,7 @@ def takeInfixOp? (minPrec : Nat) : TParser σ $ Option BinaryEntry := pure none 
 def takePrefixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({pre,..}, _) <- get
-  match pre.matchPrefix tokSpan 0 with
+  match pre.find? tokSpan with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
@@ -292,7 +303,7 @@ def takePrefixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none 
 def takePostfixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({post,..}, _) <- get
-  match post.matchPrefix tokSpan 0 with
+  match post.find? tokSpan with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then throwUnexpectedWithMessage none "prec too low"

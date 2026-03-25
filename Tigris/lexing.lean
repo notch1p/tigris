@@ -22,6 +22,10 @@ def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "alphabetic character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
+def lowercase' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
+  : ParserT ε σ Char m Char :=
+  withErrorMessage "alphabetic lowercase character" do
+    tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_'
 def oneOf [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m] (l : List Char)
   : ParserT ε σ Char m Char := withBacktracking $ withErrorMessage "expected one of {l}" $ tokenFilter (· ∈ l)
 
@@ -52,18 +56,18 @@ partial def vspaces : TParser σ Unit :=
 
 /-- consume **one of** ' ' '\n' consecutively -/
 @[inline] partial
-def indentCol : TParser σ Nat := go 0 where go n := 
+def indentCol : TParser σ Nat := go 0 where go n :=
   try
     oneOf [' ', '\t'] >>= fun
     | ' ' => char ' ' *> go (n + 1)
     | '\t' => char '\t' *> go (n + tabWidth)
     | _ => return n
   catch _ => return n
-  
+
 def indentGuard (cmp : Nat -> Nat -> Bool) (rel : String) (ref : Nat) : TParser σ Unit := withBacktracking do
   let col <- indentCol
   if cmp col ref then return ()
-  else 
+  else
     error s!"indentation mismatch: got {col}, expected indentation {rel} {ref}"
     throwUnexpected
 
@@ -84,7 +88,7 @@ def popCol : TParser σ Unit := modify
 attribute [inline]
   colGt colGe colEq
   colGtCur colGeCur colEqCur
-  pushCol currentCol popCol 
+  pushCol currentCol popCol
 
 /-- After a linebreak,
     measure and consume the indentation on the next line,
@@ -104,11 +108,11 @@ def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
   if strict then
     if base <= cur then
       error s!"expected indentation > {cur} to start a block, got {base}"
-      throwUnexpected 
+      throwUnexpected
   else
     if base < cur then
       error s!"expected indentation >= {cur} to start a block, got {base}"
-      throwUnexpected 
+      throwUnexpected
   pushCol base *> p <* popCol
 
 /--
@@ -149,6 +153,17 @@ open ASCII in private def ID' : TParser σ String :=
       (· ++ ·)
   <$> (Char.toString <$> alpha')
   <*> foldl String.push "" alphanum'
+
+open ASCII in private def IDlower' : TParser σ String :=
+  withErrorMessage "lowercase identifier" do
+      (· ++ ·)
+  <$> (Char.toString <$> lowercase')
+  <*> foldl String.push "" alphanum'
+
+def IDlower : TParser σ Symbol := do
+  let id <- spaces *> IDlower'
+  if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
+  pure id
 
 def ID : TParser σ Symbol := do
   let id <- spaces *> ID'

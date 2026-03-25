@@ -80,28 +80,28 @@ def main : IO Unit := do
         () <$ p.wait
       catch e => println! Logging.error $ toString e
     else if buf.startsWith "#cps" then
-      let sbuf := buf.extract ⟨4⟩ buf.endPos
+      let sbuf := buf.drop 4
       try
-        let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
+        let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace).toString pe |> ofExcept
         let (e, _, l) <- MLType.runInferT1 exp e |> ofExcept
         print l
         e |> IO.println ∘ CPS.fmtCModule ∘ CPS.toCPS ∘ IR.toLamModuleT1 ctorE
       catch e => println! Logging.error $ toString e
     /- compiles to IR₀ -/
     else if buf.startsWith "#lam" then
-      let sbuf := buf.extract ⟨4⟩ buf.endPos
+      let sbuf := buf.drop 4
       let runner :=
         if sbuf.startsWith "+raw" then IR.fmtLExpr ∘ IR.toLamT ctorE
         else if sbuf.startsWith "+cc" then IR.fmtModule ∘ IR.toLamModuleT1 ctorE
         else IR.fmtLExpr ∘ IR.toLamTO ctorE
       try
-        let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
+        let exp <- Parsing.parse (sbuf.dropWhile $ not ∘ Char.isWhitespace).toString pe |> ofExcept
         let (e, _, l) <- MLType.runInferT1 exp e |> ofExcept
         print l
         runner e |> IO.println
       catch e => println! Logging.error $ toString e
     else if buf.startsWith "#comp" then
-      let sbuf := buf.dropWhile $ not ∘ Char.isWhitespace
+      let sbuf := String.Slice.toString $ buf.dropWhile $ not ∘ Char.isWhitespace
       try
         let exp <- Parsing.parse sbuf pe |> ofExcept
         let (e, _, l) <- MLType.runInferT1 exp e |> ofExcept
@@ -119,20 +119,20 @@ def main : IO Unit := do
 
     /- dump typedtree -/
     else if buf.startsWith "#ta" then
-      (Parsing.typeExpr (buf.dropWhile $ not ∘ Char.isWhitespace) pe e |>.toIO') >>= fun
+      (Parsing.typeExpr (buf.dropWhile $ not ∘ Char.isWhitespace).toString pe e |>.toIO') >>= fun
       | .ok b  => println! reprStr b
       | .error e => println! Logging.error $ toString e
     /- typecheck w/o evaluation -/
     else if buf.startsWith "#t" then
       try
-        let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) pe |> ofExcept
+        let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace).toString pe |> ofExcept
         let (s, l) <- MLType.runInfer1 exp e |> ofExcept
         print l
         println! (format s) |>.pretty 160
       catch e => println! Logging.error $ toString e
     /- dump parsetree -/
     else if buf.startsWith "#a" then
-      (parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace) pe |>.toIO') >>= fun
+      (parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace).toString pe |>.toIO') >>= fun
       | .ok (_, b)  => println! reprStr b
       | .error e => println! Logging.error $ toString e
     /- dump REPL environemnt -/
@@ -151,7 +151,7 @@ def main : IO Unit := do
             let fs <- FS.readFile $ path.dropRightWhile fun c => c.isWhitespace || c == ';'
             let t <- asTask (interpret pe e ve fs ctorE) 5
             EVS.set $ some t
-            let (ctorE, PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
+            let (ctorE, PE', E', VE') <- IO.ofExcept =<< (wait t |>.toIO)
             PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
           catch e =>
             println! Logging.error $ toString e
@@ -162,14 +162,14 @@ def main : IO Unit := do
     /- synced evaluation -/
     else if buf.startsWith "#s" then
       try
-        let (ctorE, PE', E', VE') <- interpret pe e ve (buf.dropWhile (not ∘ Char.isWhitespace)) ctorE
+        let (ctorE, PE', E', VE') <- interpret pe e ve (buf.dropWhile (not ∘ Char.isWhitespace)).toString ctorE
         PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
       catch e => println! Logging.error $ toString e
     /- defaults to threaded evaluation -/
     else try
       let t <- asTask (interpret pe e ve buf ctorE) 5
       EVS.set $ some t
-      let (ctorE, PE', E', VE') <- ofExcept =<< (wait t |>.toIO)
+      let (ctorE, PE', E', VE') <- IO.ofExcept =<< (wait t |>.toIO)
       PE.set PE' *> E.set E' *> VE.set VE' *> CE.set ctorE
     catch e => println! Logging.error $ toString e
     finally

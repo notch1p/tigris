@@ -1,0 +1,14 @@
+type List a = Nil | Cons a (List a)
+type Option a = None | Some a
+infixl 70 "<+>"
+
+let rec xs <+> ys =
+  match xs, ys with
+  | Cons x xs, Cons y ys => x + y + xs <+> ys
+  | Nil, Nil             => 0
+  | _, _ => 0
+
+let Some x <*> Some y = Some $ x * y
+
+let main = ( Cons 123 (Cons 456 Nil) <+> Cons 374 (Cons 290 Nil)
+           , Some 2 <*> Some 3 <*> Some 4)

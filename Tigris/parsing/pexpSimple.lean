@@ -53,9 +53,18 @@ in
    , patRecord
    , PConst <$> PInt <$> intLit
    , PConst <$> PStr <$> strLit
-   , PVar <$> ID
+   , ID <&> fun i => if i.isUpperInit then PCtor i #[] else PVar i
    , parenthesized patProd
    , parenthesized parsePattern]
+  simpErrorCombine
+in
+@[inline] def funBinder' : TParser σ Pattern := spaces *> first'
+  #[ patRecordTyped
+   , patRecord
+   , PConst <$> PInt <$> intLit
+   , PConst <$> PStr <$> strLit
+   , parenthesized patProd
+   , parsePattern]
   simpErrorCombine
 
 def reorderRecord (ctor : Symbol) (fs : Array $ String × Expr)

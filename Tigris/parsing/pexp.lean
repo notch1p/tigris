@@ -6,6 +6,25 @@ open Expr Lexing Parser Parser.Char Pattern Associativity
 namespace Parsing
 variable {σ}
 
+def updateIfKnownD (sym : Symbol) (impl : Expr)
+  : TParser σ Unit :=
+  modify fun (s@{ops, ..}, l) =>
+    if let some ⟨_, prec, assoc, _⟩ := ops.find? sym
+    then ({s with ops := ops.insert sym ⟨sym, prec, assoc, η₂ impl⟩}, l)
+    else
+      let l := l ++ Logging.warn "No prior infix declaration found, using prec 50, leftAssoc.\n"
+      ({s with ops := ops.insert sym ⟨sym, 50, leftAssoc, η₂ impl⟩}, l)
+
+def updateInfix (sym : Symbol) (prec : Nat) (assoc : Associativity) (impl : Expr -> Expr -> Expr)
+  : TParser σ Unit :=
+  modify fun (s@{ops, ..}, l) =>
+    let ops := ops.insert sym ⟨sym, prec, assoc, impl⟩
+    ({s with ops}, l)
+
+def unwrapAnn : Option Scheme -> Expr -> Expr
+  | some sch, core => .Ascribe core (.TSch sch)
+  | none, core => core
+
 def infixlDecl : TParser σ Binding := do
   INFIXL; let i <- intExp let s <- strExp
   match s, i with
@@ -13,11 +32,13 @@ def infixlDecl : TParser σ Binding := do
     let op := op.trim
     if reservedOp.find? op matches some _
     then error s!"this operator {op} may not be redefined\n"; throwUnexpected
-    ARROW let e <- parseExpr
-    modify fun (s@{ops,..}, l) =>
-      let ops := ops.insert op ⟨op, i.toNat, .leftAssoc, η₂ e⟩
-      ({s with ops}, l)
-    return (s!"({op})", e)
+    if let some e <- option? $ ARROW *> parseExpr then
+      updateInfix op i.toNat .leftAssoc $ η₂ e
+      return (s!"({op})", e)
+    else
+      updateInfix op i.toNat .leftAssoc $ η₂ CUnit
+      return (s!"({op})", CUnit)
+
   | _, _ => return ("_", CUnit)
 
 def infixrDecl : TParser σ Binding := do
@@ -27,11 +48,12 @@ def infixrDecl : TParser σ Binding := do
     let op := op.trim
     if reservedOp.find? op matches some _
     then error s!"this operator {op} may not be redefined\n"; throwUnexpected
-    ARROW let e <- parseExpr
-    modify fun (s@{ops,..}, l) =>
-      let ops := ops.insert op ⟨op, i.toNat, .rightAssoc, η₂ e⟩
-      ({s with ops}, l)
-    return (s!"({op})", e)
+    if let some e <- option? $ ARROW *> parseExpr then
+      updateInfix op i.toNat .rightAssoc $ η₂ e
+      return (s!"({op})", e)
+    else
+      updateInfix op i.toNat .rightAssoc $ η₂ CUnit
+      return (s!"({op})", CUnit)
   | _, _ => return ("_", CUnit)
 
 def prefixDecl : TParser σ Binding := do
@@ -40,7 +62,7 @@ def prefixDecl : TParser σ Binding := do
   | CS op , CI i =>
     let op := op.trim
     if reservedOp.find? op |>.isSome
-    then error s!"this operator {op} may not be redefined\n"; throwUnexpected
+    then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
     ARROW let e <- parseExpr
     modify fun (s@{pre,..}, l) =>
       let pre := pre.insert op ⟨op, i.toNat, η₁ e⟩
@@ -54,7 +76,7 @@ def postfixDecl : TParser σ Binding := do
   | CS op , CI i =>
     let op := op.trim
     if reservedOp.find? op |>.isSome
-    then error s!"this operator {op} may not be redefined\n"; throwUnexpected
+    then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
     ARROW let e <- parseExpr
     modify fun (s@{post,..}, l) =>
       let post := post.insert op ⟨op, i.toNat, η₁ e⟩
@@ -62,47 +84,74 @@ def postfixDecl : TParser σ Binding := do
     return (s!"({op})ₚ", e)
   | _, _ => return ("_", CUnit)
 
-def let1Decl : TParser σ $ Binding := do
-  let id <- ID; let pre <- takeMany funBinderID
-  let ann? <- option? (COLON *> (PType.tyScheme))
-  match <- test BAR with
-  | true =>
-    let a <- sepBy1 BAR matchDiscr
-    let core := transMatch pre $ pointedExp a
-    let rhs := match ann? with | some sch => Expr.Ascribe core (.TSch sch) | none => core
-    return (id, rhs)
-  | false =>
-    EQ; let a <- parseExpr
-    let core := transMatch pre a
-    let rhs := match ann? with | some sch => Expr.Ascribe core (.TSch sch) | none => core
-    return (id, rhs)
-
-def letrec1Decl : TParser σ $ Binding := do
-  let id <- ID; let pre <- takeMany funBinderID
-  let ann? <- option? (COLON *> PType.tyScheme)
-  match <- test BAR with
-  | true =>
-    let a <- sepBy1 BAR matchDiscr
-    let core := Fix $ Fun id $ transMatch pre $ pointedExp a
-    let rhs := match ann? with | some sch => .Ascribe core (.TSch sch) | none => core
-    return (id, rhs)
-  | false =>
-    EQ let a <- parseExpr
-    if pre.isEmpty && !a matches Fun .. then
+def letBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
+  fun id pre ann? => do
+    match <- test BAR with
+    | true =>
+      let a <- sepBy1 BAR matchDiscr
+      let core := transMatch pre $ pointedExp a
+      return (id, unwrapAnn ann? core)
+    | false =>
+      EQ; let a <- parseExpr
       let core := transMatch pre a
-      let rhs := match ann? with | some sch => .Ascribe core (.TSch sch) | none => core
-      return (id, rhs)
-    else
-      let core := Fix $ Fun id $ transMatch pre a
-      let rhs := match ann? with | some sch => .Ascribe core (.TSch sch) | none => core
-      return (id, rhs)
+      return (id, unwrapAnn ann? core)
+
+def let1Common
+  : (Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding) -> TParser σ Binding :=
+  fun kont => do
+    let id <- funBinder'
+    let ann := option? (COLON *> PType.tyScheme)
+    match id with
+    | pid@(PVar id) =>
+      let pre <- takeMany funBinderID
+      if pre.isEmpty then
+        let pos <- getPosition
+        if let some op <- option? potentialOp then
+          if op ∈ ["=", ":", "|"] then setPosition pos *> ann >>= kont id pre
+          else
+            if reservedOp.find? op |>.isSome
+            then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
+            let pre <- funBinder'
+            let op' := s!"«{op}»"
+            updateIfKnownD op (Var op')
+            let (_, e) <- kont op' #[pid, pre] =<< ann
+            return (op', e)
+        else kont id pre =<< ann
+      else
+        kont id pre =<< ann
+    | _ =>
+      if let some op <- option? potentialOp' then
+        if reservedOp.find? op |>.isSome
+        then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
+        let pre <- funBinder'
+        let op' := s!"«{op}»"
+        updateIfKnownD op (Var op')
+        let (_, e) <- kont op' #[id, pre] =<< ann
+        return (op', e)
+      else throwUnexpected
+
+def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
+  fun id pre ann? => do
+    match <- test BAR with
+    | true =>
+      let a <- sepBy1 BAR matchDiscr
+      let core := Fix $ Fun id $ transMatch pre $ pointedExp a
+      return (id, unwrapAnn ann? core)
+    | false =>
+      EQ let a <- parseExpr
+      if pre.isEmpty && !a matches Fun .. then
+        let core := transMatch pre a
+        return (id, unwrapAnn ann? core)
+      else
+        let core := Fix $ Fun id $ transMatch pre a
+        return (id, unwrapAnn ann? core)
 
 def letDeclDispatch : TParser σ $ Array Binding := do
-  LET;
+  LET
   let bs <-
     match <- test REC with
-    | false => sepBy1 AND let1Decl
-    | true => sepBy1 AND letrec1Decl
+    | false => sepBy1 AND $ let1Common letBody
+    | true => sepBy1 AND $ let1Common letrecBody
   match <- option? (IN *> parseExpr) with
   | some body => return #[("_", Let bs body)]
   | none => return bs
@@ -111,7 +160,7 @@ def letPatDecl : TParser σ (Pattern × Expr) := do
   LET;
   if <- test REC then
     warn "found non-variable pattern on the left hand side,\nThis declaration will be treated as a letdecl\n"
-  let pat <- Parsing.funBinder
+  let pat <- Parsing.funBinder'
   EQ; let exp <- parseExpr
   return (pat, exp)
 

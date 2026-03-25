@@ -111,14 +111,21 @@ partial def patPrimary (minPrec := 0) : TParser σ Pattern := loop =<< patPrefix
 
 partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := loop =<< patApp where
   loop lhs := do
-    let some {assoc, prec, impl, ..} <- takeInfixOp? minPrec
+    let pos <- getPosition
+    let some {assoc, prec, impl, ..} <- takeInfixOp? minPrec true
       | return lhs
     let nextMin := if assoc matches .leftAssoc then prec + 1 else prec
-    let rhs <- parsePattern nextMin
     let expr := η₂' $ impl (Var "·") (Var "·")
     match expr, lhs with
-    | Var "·", PCtor ctor args => loop (PCtor ctor $ args.push rhs)
-    | Var ctor, lhs => loop (PCtor ctor #[lhs, rhs])
+    | Var "·", PCtor ctor args =>
+      let rhs <- parsePattern nextMin
+      loop (PCtor ctor $ args.push rhs)
+    | Var ctor, lhs =>
+      if ctor.isUpperInit then
+        let rhs <- parsePattern nextMin
+        loop (PCtor ctor #[lhs, rhs])
+      else setPosition pos *> return lhs
+    | CUnit, lhs => setPosition pos *> return lhs
     | _, _ =>
       error s!"{repr expr} or {lhs} does not reduce to a (applicable) pattern\n"
       throwUnexpected

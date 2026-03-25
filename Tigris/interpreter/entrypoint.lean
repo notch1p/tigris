@@ -106,6 +106,15 @@ end Parsing
 
 namespace MLType
 
+def parseToplevel (s : String) : IO Unit :=
+  match runST fun _ => (Parsing.toplevelFile <* Parser.endOfInput) s |>.run (initState, "") with
+  | (.error _ e, (_, l)) => do
+    println! l
+    println! e
+  | (.ok _ t, (_, l)) => do
+    println! l
+    println! repr t
+
 def check1 (s : String) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
   | .error e => println! e
@@ -144,4 +153,3 @@ def checkFile (s : String) : IO Unit := do
   println! logger
   println! Std.Format.pretty (width := 80) $ unexpandDeclsF toplevel
 end MLType
-

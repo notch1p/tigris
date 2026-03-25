@@ -69,13 +69,7 @@ concatJsonWriteFile (p : FilePath) pkg : LogIO Unit := do
       readFile path >>= pure ∘ (· ++ acc)
 
   logInfo $ reprStr jsons
-  liftM <| pure s!"[{dropFirstRight cat_json (· == ',')}]" >>= writeFile p
-dropFirstRight (s : String) (p : Char -> Bool) : (r : _ := endPos s) -> String
-  | ⟨0⟩ => s
-  | pos@⟨next + 1⟩ =>
-    if p $ s.get pos then s.set pos ' '
-    else dropFirstRight s p ⟨next⟩
-  termination_by r => r.1
+  liftM <| pure s!"[{dropEndWhile cat_json (· == ',')}]" >>= writeFile p
 
         -- temporarily fixed via fgdorais/lean4-unicode-basic#82
 meta if /- System.Platform.isWindows -/ false then
@@ -105,4 +99,4 @@ lean_exe "tigrisl" where
   root := `Tigrisl
   needs := #[runtime.lean]
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"b50def30c0b666297fdbeeb0dfe229047ebe2860"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"d8428e25efb794c9147bb9beac1dfe2e51447c3e"

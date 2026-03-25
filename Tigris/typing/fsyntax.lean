@@ -4,8 +4,8 @@ import Tigris.typing.constraint
 import Tigris.typing.resolve
 
 def String.isSkolemOf (h : String) (v : TV) : Bool :=
-  let h' := Substring.Raw.mk h ⟨4⟩ h.endPos
-  let v := v.toStr.toSubstring
+  let h' := Substring.Raw.mk h ⟨4⟩ h.rawEndPos
+  let v := v.toStr.toRawSubstring
   h.startsWith "?sk." && h' == v
 
 def MLType.isTApp : MLType -> Bool
@@ -114,7 +114,7 @@ partial def eqSkolem : MLType -> MLType -> Bool
   | .TVar v, .TCon h => h.isSkolemOf v
   | .KApp v asT, .KApp w asG
   | .TApp v asT, .TApp w asG =>
-    v == w 
+    v == w
     && asT.length == asG.length
     && List.all2 eqSkolem asT asG
   | .KApp v asT, .TApp h asG | .TApp h asG, .KApp v asT =>
@@ -371,7 +371,7 @@ partial def FExpr.unexpand : FExpr -> Format
     let (tvs, body) := Helper.peelTyLam [a.elimStr] body
     group $ paren $ "Λ" <> joinSep tvs " " ++ "." ++ indentD (unexpand body)
   | .TyApp f ty => parenL? f ++ "@" ++ parenT ty
-where 
+where
 parenR?
   | p@(.App ..) | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
   | p => unexpand p

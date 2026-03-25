@@ -269,7 +269,7 @@ mutual
 partial def unSkolem : MLType -> MLType
   | .TVar v => .TVar v
   | .TCon h =>
-    if h.startsWith "?sk." then .TVar (.mkTV (h.drop 4)) else .TCon h
+    if h.startsWith "?sk." then .TVar (.mkTV $ h.drop 4 |>.toString) else .TCon h
   | a ->' b => unSkolem a ->' unSkolem b
   | a ×'' b => unSkolem a ×'' unSkolem b
   | .TApp h as => .TApp h (as.map unSkolem)
@@ -319,7 +319,7 @@ def mkCurriedE (e : List (String × Scheme)) : Env :=
   ⟨ .ofList $
       e.foldl (init := []) fun a p@(sym, .Forall c ps ty) =>
         if sym.startsWith "__"
-        then p :: (sym.drop 2, .Forall c ps $ curry ty) :: a
+        then p :: (sym.drop 2 |>.toString, .Forall c ps $ curry ty) :: a
         else p :: a
   , ∅, ∅, ∅⟩ -- TODO: modify clsInfo and instInfo
 
