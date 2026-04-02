@@ -1,0 +1,3 @@
+[submodule "docs/beng-thesis"]
+	path = docs/beng-thesis
+	url = git@github.com:notch1p/beng-thesis.git
