@@ -82,7 +82,7 @@ instance : MonadLift (Except TypingError) F where
 namespace Helper
 
 @[inline] def dictTypeOfPred : Pred -> MLType
-  | {cls, args,..} => TApp cls args
+  | {cls, args,..} => MLType.mkApp (TCon cls) args
 
 @[inline] def monoOfTSch : MLType -> MLType
   | .TSch (.Forall _ _ t) => t
@@ -111,16 +111,12 @@ def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType
 
 partial def eqSkolem : MLType -> MLType -> Bool
   | .TVar v, .TVar w => v == w
-  | .TVar v, .TCon h => h.isSkolemOf v
-  | .KApp v asT, .KApp w asG
-  | .TApp v asT, .TApp w asG =>
-    v == w
-    && asT.length == asG.length
-    && List.all2 eqSkolem asT asG
-  | .KApp v asT, .TApp h asG | .TApp h asG, .KApp v asT =>
-    h.isSkolemOf v || h.isLowerInit && toString v == h
-    && asT.length == asG.length
-    && List.all2 eqSkolem asT asG
+  | .TVar v, .TCon h | .TCon h, .TVar v => h.isSkolemOf v
+  | .TApp h₁ as₁, .TApp h₂ as₂ =>
+    eqSkolem h₁ h₂
+    && as₁.length == as₂.length
+    && List.all2 eqSkolem as₁ as₂
+  | .TyLam x b₁, .TyLam y b₂ => x == y && eqSkolem b₁ b₂
   | t₁ ->' t₂, u₁ ->' u₂ | t₁ ×'' t₂, u₁ ×'' u₂ => eqSkolem t₁ u₁ && eqSkolem t₂ u₂
   | .TCon a, .TCon b => a == b
   | _, _ => false
@@ -379,5 +375,5 @@ parenL?
   | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
   | p => unexpand p
 parenT
-  | t@(TVar _) | t@(TCon _) | t@(TApp _ []) | t@(KApp _ []) => text t.toStr
+  | t@(TVar _) | t@(TCon _) | t@(TApp _ []) => text t.toStr
   | t => paren t.toStr

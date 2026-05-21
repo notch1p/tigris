@@ -11,7 +11,9 @@ def paren b s := bif b then s!"({s})" else s
 def paren? b s := bif b then Std.Format.paren s else s
 def arr? | _ ->' _ => true | _ => false
 def prod? | _ ×'' _ => true | _ => false
-def parenthesize s := paren? (arr? s || prod? s)
+def app? | MLType.TApp .. => true | _ => false
+def lam? | MLType.TyLam .. => true | _ => false
+def parenthesize s := paren? (arr? s || prod? s || app? s || lam? s)
 open Std.Format Std.ToFormat in open Logging (magenta) in
 mutual
 def MLType.toStr : MLType -> String
@@ -20,11 +22,14 @@ def MLType.toStr : MLType -> String
   | a ->' b =>
     paren (arr? a) (MLType.toStr a) ++ " → " ++ MLType.toStr b
   | a ×'' b => paren (prod? a) (MLType.toStr a) ++ " × " ++ MLType.toStr b
-  | .TApp s [] | .KApp (.mkTV s) [] => s
-  | .TApp s (l :: ls) | .KApp s (l :: ls) =>
-    let hd := paren (arr? l || prod? l) $ MLType.toStr l
-    ls.foldl (init := s!"{s} {hd}") fun a s =>
-      a ++ " " ++ paren (arr? l || prod? l) (MLType.toStr s)
+  | .TApp h [] => MLType.toStr h
+  | .TApp h (l :: ls) =>
+    let hd := paren (arr? l || prod? l || app? l || lam? l) $ MLType.toStr l
+    let hStr := paren (arr? h || prod? h || lam? h) (MLType.toStr h)
+    ls.foldl (init := s!"{hStr} {hd}") fun a s =>
+      a ++ " " ++ paren (arr? s || prod? s || app? s || lam? s) (MLType.toStr s)
+  | .TyLam x body =>
+    "Λ" ++ toString x ++ ". " ++ MLType.toStr body
   | .TSch sch => sch.toStr
 
 def MLType.renderFmt : MLType -> Std.Format
@@ -32,9 +37,13 @@ def MLType.renderFmt : MLType -> Std.Format
   | .TCon a => magenta a
   | a ->' b => nestD $ group $ paren? (arr? a) (MLType.renderFmt a) <> "→" <+> MLType.renderFmt b
   | a ×'' b => nestD $ group $ paren? (prod? a) (MLType.renderFmt a) <> "×" <+> MLType.renderFmt b
-  | .TApp s ls | .KApp (.mkTV s) ls =>
+  | .TApp h [] => MLType.renderFmt h
+  | .TApp h ls =>
+    let hFmt := paren? (arr? h || prod? h || lam? h) (MLType.renderFmt h)
     nestD $ group
-    $ joinSep (text (magenta s) :: ls.map fun s => parenthesize s (MLType.renderFmt s)) line
+    $ joinSep (hFmt :: ls.map fun s => parenthesize s (MLType.renderFmt s)) line
+  | .TyLam x body =>
+    nestD $ group $ "Λ" <> format x <> "." <+> MLType.renderFmt body
   | .TSch sch => sch.renderFmt
 
 def Pred.toStr : Pred -> String
@@ -76,10 +85,16 @@ instance : Inhabited Scheme where
   default := .Forall [] [] (MLType.TCon "False")
 namespace MLType open TV Expr
 
+def peel : MLType -> MLType × List MLType
+  | TApp h as => (h, as)
+  | t         => (t, [])
+
+def unary := (TApp · []) ∘ TCon
+
 def ctorScheme (tycon : String) (tparams : List TV) (fields : List (String × MLType)) : Scheme :=
   .Forall tparams []
   $ fields.foldr (TArr ∘ Prod.snd)
-  $ TApp tycon
+  $ TApp (TCon tycon)
   $ tparams.map TVar
 
 inductive TypingError
@@ -156,26 +171,32 @@ instance [Ord α] : SDiff (Std.TreeSet α) := ⟨fun s₁ s₂ => s₂.foldl .er
 instance [BEq α] [Hashable α] : SDiff (Std.HashSet α) := ⟨fun s₁ s₂ => s₂.fold .erase s₁⟩
 
 mutual
+/-- use MLType.mkApp instead -/
+partial def mkAppT : MLType -> List MLType -> MLType
+  | t, [] => t
+  | TApp h as₀, as => mkAppT h (as₀ ++ as)
+  | TyLam x body, arg :: rest => mkAppT (applyT (Std.TreeMap.insert ∅ x arg) body) rest
+  | h, as => TApp h as
+
 partial def applyT : Subst -> MLType -> MLType
   | _, s@(TCon _) => s
   | s, t@(TVar a) => s.getD a t
   | s, t₁ ×'' t₂ => applyT s t₁ ×'' applyT s t₂
   | s, t₁ ->' t₂ => applyT s t₁ ->' applyT s t₂
-  | s, TApp h as => TApp h (as.map (applyT s))
-  | s, KApp v as =>
-    let v' := applyT s $ TVar v
-    let as := as.map (applyT s)
-    match v' with
-    | TVar v => KApp v as
-    | TApp h [] | TCon h => TApp h as
-    | _ => KApp v as
+  | s, TApp h as =>
+    -- Substitution may turn the head into a `TyLam` or another `TApp`;
+    -- route through `mkAppT` to β-reduce / flatten on the spot.
+    mkAppT (applyT s h) (as.map (applyT s))
+  | s, TyLam x body =>
+    -- Capture-avoidance: shadowing erases `x` from the substitution.
+    TyLam x (applyT (s.erase x) body)
   | s, TSch sch => TSch (applyS s sch)
 
 partial def fvT : MLType -> Std.TreeSet TV
   | TCon _ => ∅ | TVar a => {a}
   | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
-  | TApp _ as => as.foldl (· ∪ fvT ·) ∅
-  | KApp v as => {v} ∪ as.foldl (· ∪ fvT ·) ∅
+  | TApp h as => fvT h ∪ as.foldl (· ∪ fvT ·) ∅
+  | TyLam x body => (fvT body).erase x
   | TSch sch => fvS sch
 
 partial def applyP : Subst -> Pred -> Pred := (Pred.mapArgs $ applyT ·)
@@ -195,6 +216,9 @@ end
 instance : Rewritable MLType := ⟨applyT, fvT⟩
 instance : Rewritable Pred := ⟨applyP, fvP⟩
 instance : Rewritable Scheme := ⟨applyS, fvS⟩
+
+/-- Use this instead of MkAppT -/
+@[inline] def _root_.MLType.mkApp := mkAppT
 
 instance [Rewritable α] : Rewritable (List α) where
   apply := List.map ∘ apply
@@ -224,10 +248,13 @@ partial def normalize : Scheme -> Scheme
       | a ->' b => normtype blocked a ->' normtype blocked b
       | a ×'' b => normtype blocked a ×'' normtype blocked b
       | .TVar a => .TVar $ if a ∈ blocked then a else rename a
-      | .TApp h as => .TApp h $ as.map $ normtype blocked
-      | .KApp v as =>
-        let v := if v ∈ blocked then v else rename v
-        .KApp v $ as.map $ normtype blocked
+      | .TApp h as =>
+        -- Claude: Re-normalize through `mkApp` in case renaming uncovered a redex
+        -- (a variable that was renamed to a TyLam under another binder).
+        mkApp (normtype blocked h) $ as.map $ normtype blocked
+      | .TyLam x body =>
+        -- Binder shadows: don't rename `x` inside.
+        .TyLam x $ normtype (blocked.insert x) body
       | .TSch $ .Forall tvs ps ty =>
         let blocked := blocked.insertMany tvs
         let ps := ps.map fun p => p.mapArgs $ normtype blocked
@@ -246,10 +273,8 @@ partial def normalizeWithRen : Scheme -> (Scheme × Subst)
       | a ->' b => normtype blocked a ->' normtype blocked b
       | a ×'' b => normtype blocked a ×'' normtype blocked b
       | .TVar a => .TVar $ if a ∈ blocked then a else rename a
-      | .TApp h as => .TApp h (as.map (normtype blocked))
-      | .KApp v as =>
-        let v := if v ∈ blocked then v else rename v
-        .KApp v (as.map (normtype blocked))
+      | .TApp h as => mkApp (normtype blocked h) (as.map (normtype blocked))
+      | .TyLam x body => .TyLam x (normtype (blocked.insert x) body)
       | .TSch (.Forall tvs ps ty) =>
         let blocked := blocked.insertMany tvs
         let ps := ps.map fun p => p.mapArgs (normtype blocked)
@@ -272,8 +297,8 @@ partial def unSkolem : MLType -> MLType
     if h.startsWith "?sk." then .TVar (.mkTV $ h.drop 4 |>.toString) else .TCon h
   | a ->' b => unSkolem a ->' unSkolem b
   | a ×'' b => unSkolem a ×'' unSkolem b
-  | .TApp h as => .TApp h (as.map unSkolem)
-  | .KApp v as => .KApp v (as.map unSkolem)
+  | .TApp h as => mkApp (unSkolem h) (as.map unSkolem)
+  | .TyLam x body => .TyLam x (unSkolem body)
   | .TSch sch => .TSch (unSkolemS sch)
 partial def unSkolemP (p : Pred) : Pred := p.mapArgs unSkolem
 partial def unSkolemS : Scheme -> Scheme
@@ -330,9 +355,12 @@ abbrev defaultE' : Env := mkCurriedE dE'
 def containsTSch : MLType -> Bool
   | .TSch _ => true
   | a ->' b | a ×'' b => containsTSch a || containsTSch b
-  | .TApp _ as | .KApp _ as => as.attach.any fun a =>
-    have := List.sizeOf_lt_of_mem a.property
-    containsTSch a.val
+  | .TApp h as =>
+    containsTSch h
+    || as.attach.any fun a =>
+        have := List.sizeOf_lt_of_mem a.property
+        containsTSch a.val
+  | .TyLam _ body => containsTSch body
   | _ => false
 
 def validateNoRankN : Scheme -> Except TypingError Unit

@@ -72,36 +72,57 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
     let s₂ <- unify (apply s₁ t₂) (apply s₁ u₂)
     return (s₂ ∪' s₁)
   | TVar a, t | t, TVar a => bindTV a t
-  | KApp h₁ as₁, KApp h₂ as₂ => do
-    if as₁.length != as₂.length then throw (.NoUnify (KApp h₁ as₁) (KApp h₂ as₂)) else
-      let headSub <- unify (TVar h₁) (TVar h₂)
-      List.foldlM2
-        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
-        headSub as₁ as₂
-  | KApp h₁ as₁, TApp h₂ as₂ | TApp h₂ as₂, KApp h₁ as₁ =>
-    if as₁.length != as₂.length then throw (.NoUnify (KApp h₁ as₁) (TApp h₂ as₂))
-    else do
-      let headBind <- bindTV h₁ (TApp h₂ [])
-      List.foldlM2
-        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
-        headBind as₁ as₂
-  | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) =>
-    -- syntactic restriction:
-    -- type declaration must begin with uppercase letter
-    -- bound type ctor must begin with lowercase letter
-    if h₁.isLowerInit then unify (KApp (.mkTV h₁) as₁) t₂
-    else if h₂.isLowerInit then unify t₁ (KApp (.mkTV h₂) as₂)
-    else if h₁ != h₂ || as₁.length != as₂.length then throw (.NoUnify (TApp h₁ as₁) (TApp h₂ as₂))
-    else
-      List.foldlM2
-        (fun acc t₁ t₂ => (· ∪' acc) <$> unify (apply acc t₁) (apply acc t₂))
-        ∅ as₁ as₂
   | TCon a, TCon b =>
     if a == b then return ∅
     else throw (.NoUnify (TCon a) (TCon b))
-  | t@(TApp h []), u@(TCon h')
-  | t@(TCon h), u@(TApp h' []) =>
-    if h == h' then return ∅ else throw (.NoUnify t u)
+  | MLType.TyLam x₁ b₁, MLType.TyLam x₂ b₂ => do
+    -- α-equiv.
+    let renameSub : Subst := (∅ : Subst).insert x₂ (TVar x₁)
+    unify b₁ (apply renameSub b₂)
+  | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) => do
+    -- Claude: Spine unification with peeling. Length-equalize from the right so the
+    -- shorter spine is matched against a prefix of the longer one's head.
+    let n₁ := as₁.length
+    let n₂ := as₂.length
+    if n₁ == n₂ then
+      let headSub <- unify h₁ h₂
+      List.foldlM2
+        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
+        headSub as₁ as₂
+    else if n₁ > n₂ then
+      -- Claude: Length-equalize: fuse the prefix of `as₁` into the head and unify
+      -- the resulting "fused head" against `h₂`, then zip the suffix args
+      -- with `as₂`. Do NOT rebuild the LHS via `mkApp` — that re-flattens
+      -- and recurses on the same input, looping forever.
+      let d := n₁ - n₂
+      let h₁' := MLType.mkApp h₁ (as₁.take d)
+      let as₁' := as₁.drop d
+      (do let headSub <- unify h₁' h₂
+          List.foldlM2
+            (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
+            headSub as₁' as₂)
+        <|> throw (.NoUnify t₁ t₂)
+    else unify t₂ t₁
+  | t₁@(TApp h₁ as₁), t₂ => do
+    -- Claude: Pattern-fragment: head is a TVar and args are skolems/rigids -> bind the
+    -- head to a TyLam abstraction of t₂. Otherwise, if there are zero args,
+    -- unify against the head.
+    if as₁.isEmpty then unify h₁ t₂
+    else
+      match h₁ with
+      | TVar v =>
+        -- requires args to be rigid in t₂.
+        let binders : List TV <-
+          as₁.foldrM (init := ([] : List TV)) fun a acc =>
+            match a with
+            | TVar w => pure (w :: acc)
+            | TCon h => if h.startsWith "?sk." then pure (.mkTV (h.drop 4 |>.toString) :: acc)
+                        else throw (.NoUnify t₁ t₂)
+            | _ => throw (.NoUnify t₁ t₂)
+        let body := binders.foldr (init := t₂) fun b acc => .TyLam b acc
+        bindTV v body
+      | _ => throw (.NoUnify t₁ t₂)
+  | t₁, t₂@(TApp ..) => unify t₂ t₁
   | ts₁@(.TSch (.Forall tvs₁ ps₁ t₁)), ts₂@(.TSch (.Forall tvs₂ ps₂ t₂)) => do
     if ps₁.length != ps₂.length || tvs₁.length != tvs₂.length then
       throw (.NoUnify ts₁ ts₂)
@@ -109,7 +130,7 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
     let ps₂ := apply renameSub ps₂
     if ps₁ != ps₂ then throw $ .NoUnify ts₁ ts₂
     unify t₁ (apply renameSub t₂)
-  | t, u => 
+  | t, u =>
     throw (.NoUnify t u)
 
 def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × Pred)) := do
@@ -125,7 +146,8 @@ def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × 
 partial def sk? : MLType -> Bool
   | .TCon h => h.startsWith "?sk"
   | a ->' b | a ×'' b => sk? a || sk? b
-  | .TApp _ as | .KApp _ as => as.any sk?
+  | .TApp h as => sk? h || as.any sk?
+  | .TyLam _ body => sk? body
   | .TSch (.Forall _ _ t) => sk? t
   | .TVar _ => false
 
@@ -183,18 +205,30 @@ partial def inferPattern (Γ : Env) (expt : MLType) : Pattern -> InferC σ (Env 
     | some sch =>
       let (ctorTy, _) <- instantiate sch
       let rec peel (acc : Array MLType)
-        | a ->' b => peel (acc.push a) b
-        | r => (acc, r)
+        | .TSch (.Forall _ _ t) => peel acc t
+        | a ->' b               => peel (acc.push a) b
+        | r                     => (acc, r)
       let (argTys, resTy) := peel #[] ctorTy
-      if argTys.size == args.size then
-        addEq expt resTy
-        Array.foldlM2 (fun (Γ, bound) ty arg => do
-          let (Γ, bs) <- inferPattern Γ ty arg
-          return (Γ, bound ++ bs))
-          (Γ, #[])
-          argTys args
-      else
-        throw (.InvalidPat s!"{cname} expects {argTys.size} args, instead got {args.size}")
+      -- check against declared arity in `TyDecl`
+      let declaredArity? : Option Nat :=
+        Γ.tyDecl.valuesArray.findSome? fun td =>
+          td.ctors.findSome? fun (n, _, ar) =>
+            if n == cname then some ar else none
+      let expectedArity := declaredArity?.getD argTys.size
+      if expectedArity != args.size then
+        throw $ .InvalidPat
+          s!"constructor {cname} expects {expectedArity} argument(s), \
+             pattern provides {args.size}"
+      if expectedArity != argTys.size then -- should not happen
+        throw $ .Impossible
+          s!"constructor {cname}: declared arity {expectedArity} disagrees \
+             with arrow-peeled arity {argTys.size} from its scheme"
+      addEq expt resTy
+      Array.foldlM2 (fun (Γ, bound) ty arg => do
+        let (Γ, bs) <- inferPattern Γ ty arg
+        return (Γ, bound ++ bs))
+        (Γ, #[])
+        argTys args
 
 mutual
 partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pred)
@@ -330,7 +364,7 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
   | .error err => throw err
   | .ok (sub, wants) =>
     let applyAll {α} [Rewritable α] : α -> α := apply sub
-    let predsFor evStart evEnd := 
+    let predsFor evStart evEnd :=
       wants.foldr (init := []) fun (eid, p) acc =>
         if evStart <= eid && eid < evEnd then (applyAll p) :: acc else acc
     let (Γ, bindsTyped) :=
@@ -408,18 +442,28 @@ namespace Helper
 mutual
 partial def normHK : MLType -> MLType
   | .TApp h args =>
-    let args := args.map normHK
-    if h.isLowerInit then .KApp (.mkTV h) args else .TApp h args
-  | .KApp v args => .KApp v (args.map normHK)
+    let h' :=
+      match h with
+      | .TCon s => if s.isLowerInit then .TVar (.mkTV s) else .TCon s
+      | other => normHK other
+    MLType.mkApp h' (args.map normHK)
+  | .TCon s =>
+    if s.isLowerInit then .TVar (.mkTV s) else .TCon s
+  | .TyLam x body => .TyLam x (normHK body)
   | a ->' b => normHK a ->' normHK b
   | a ×'' b => normHK a ×'' normHK b
   | t => t
 
 partial def normHK' : MLType -> MLType
   | .TApp h args =>
-    let args := args.map normHK'
-    if h.isLowerInit then .KApp (.mkTV h) args else .TApp h args
-  | .KApp v args => .KApp v (args.map normHK')
+    let h' :=
+      match h with
+      | .TCon s => if s.isLowerInit then .TVar (.mkTV s) else .TCon s
+      | other => normHK' other
+    MLType.mkApp h' (args.map normHK')
+  | .TCon s =>
+    if s.isLowerInit then .TVar (.mkTV s) else .TCon s
+  | .TyLam x body => .TyLam x (normHK' body)
   | a ->' b => normHK' a ->' normHK' b
   | a ×'' b => normHK' a ×'' normHK' b
   | .TSch (.Forall vs ps t) => .TSch (.Forall vs (ps.map normHKPred) (normHK' t))
@@ -431,7 +475,7 @@ partial def normHKPred' (p : Pred) : Pred :=
 partial def normHKPred (p : Pred) : Pred :=
   p.mapArgs normHK
 end
-def methodScheme (cls : Symbol) (param : Array $ String × Nat) (mty : MLType) : Scheme :=
+def methodScheme (cls : Symbol) (param : Array $ String × Kind) (mty : MLType) : Scheme :=
   let binders := param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
   let args    := binders.map TVar
   .Forall binders [⟨cls, args⟩] (normHK mty)
@@ -442,7 +486,7 @@ private def instQuantifiers (headArgs : List MLType) (ctx : List Pred) : List TV
 
 private def instanceScheme (ci : ClassInfo) (headArgs : List MLType) (ctx : List Pred) : Scheme :=
   let (headArgs, ctx) := (headArgs.map normHK, ctx.map normHKPred)
-  .Forall (instQuantifiers headArgs ctx) ctx (TApp ci.cname headArgs)
+  .Forall (instQuantifiers headArgs ctx) ctx (MLType.mkApp (TCon ci.cname) headArgs)
 
 private def orderInstanceMethods
   (ci : ClassInfo)
@@ -465,7 +509,7 @@ private def buildInstProvider
   let sub := paramSubst ci headArgs
   let dictCore :=
     orderedMethods.foldl (fun acc (m, e) => .App acc $ .Ascribe e (apply sub m.mty)) (.Var ci.ctorName)
-  .Ascribe dictCore (.TApp ci.cname headArgs)
+  .Ascribe dictCore (MLType.mkApp (TCon ci.cname) headArgs)
 end Helper
 
 open Helper
@@ -482,13 +526,13 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
     let rawBody := buildInstProvider ci ordered argsSk
     let (typedBody, inferredSch, l) <- runInferConstraintT rawBody E
     let (.Forall _ _ infRes) := inferredSch
-    let wantHeadSk := .TApp ci.cname argsSk
+    let wantHeadSk := MLType.mkApp (TCon ci.cname) argsSk
     match unify infRes wantHeadSk with
     | .error _ => throw (.NoUnify infRes wantHeadSk)
     | .ok sub =>
       let detectedSpecialized :=
         args.any fun
-          | MLType.TVar v | .KApp v [] =>
+          | MLType.TVar v | MLType.TApp (MLType.TVar v) [] =>
             match apply sub (MLType.TVar v) with
             | MLType.TVar v' => v' != v
             | _ => true
@@ -498,8 +542,8 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
 
       let declaredCtx := apply sub ctxPreds |>.map normHKPred
       let qs := instQuantifiers args declaredCtx
-      let bodyTy := .TApp ci.cname args
-      let (finalSch) := /- normalizeWithRen -/ .Forall qs declaredCtx (normHK bodyTy)
+      let bodyTy := MLType.mkApp (TCon ci.cname) args
+      let finalSch := /- normalizeWithRen -/ .Forall qs declaredCtx (normHK bodyTy)
       let typedBody := typedBody
         |>.mapTypes (normHK ∘ unSkolem) (unSkolemS)
         |>.alignAscribes
@@ -566,4 +610,3 @@ def inferToplevelC
       return ( acc.push $ .idBind #[(iname, sch, te)]
              , {E with E := E.E.insert iname sch, instInfo}
              , L ++ l)
-

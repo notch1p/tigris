@@ -3,18 +3,19 @@ import Tigris.parsing.types
 import Tigris.lexing
 
 structure ParamInfo where
-  ordered : Array (String × Nat)
-  arity : Std.HashMap String Nat
+  ordered : Array (String × Kind)
+  /-- Local binder kinds (mirrors `ordered`). -/
+  kinds : Std.HashMap String Kind
 deriving Repr
 @[inline] def ParamInfo.empty : ParamInfo := ⟨#[], {}⟩
 
 def ParamInfo.merge : ParamInfo -> ParamInfo -> ParamInfo
-  | ⟨ordered₁, arity₁⟩, ⟨ordered₂, arity₂⟩ =>
+  | ⟨ordered₁, kinds₁⟩, ⟨ordered₂, kinds₂⟩ =>
     { ordered := ordered₂.foldl (init := ordered₁) fun a ord =>
         if let some idx := ordered₁.findIdx? $ (·.1 == ord.1) then
           a.set! idx ord
         else a.push ord
-    , arity := arity₁ ∪ arity₂}
+    , kinds := kinds₁ ∪ kinds₂}
 instance : Union ParamInfo := ⟨.merge⟩
 instance : EmptyCollection ParamInfo := ⟨.empty⟩
 
@@ -22,17 +23,33 @@ namespace Parsing
 namespace PType open Parsing Lexing MLType Parser Parser.Char Lexing
 variable {σ}
 
-def getTyArity (name : String) : TParser σ $ Option (Nat × Bool) := do
+def getTyArity (name : String) : TParser σ $ Option (Kind × Bool) := do
   get <&> (·.1.tys.find? name)
 
-def parseParam : TParser σ (String × Nat) := (parenthesized do
-  let ascription := do
-    let id <- ID
-    if <- test COLON then
-      let n <- spaces *> intLit
-      pure (id, n.toNat)
-    else pure (id, 0)
-  ascription) <|> (ID <&> fun id => (id, 0))
+mutual
+/-- Atomic kind: `Type` or a parenthesized kind. -/
+partial def kindAtom : TParser σ Kind :=
+  (kw "Type" $> Kind.type) <|> parenthesized kindArrow
+
+/-- Right-associative arrow chain of kinds: `Type`, `Type -> Type`,
+`(Type -> Type) -> Type`, … -/
+partial def kindArrow : TParser σ Kind := do
+  let lhs <- kindAtom
+  (ARROW *> kindArrow >>= fun rhs => pure (.karr lhs rhs)) <|> pure lhs
+end
+
+/-- Parse a kind expression. -/
+@[inline] def parseKind : TParser σ Kind := kindArrow
+
+def parseKV : TParser σ (String × Kind) := ID <&> fun id => (id, .type)
+
+def parseParam : TParser σ (String × Kind) := parseKV <? parenthesized do
+  let id <- ID
+  if <- test COLON then
+    spaces
+    let k <- parseKind
+    pure (id, k)
+  else pure (id, .type)
 
 def parseParams : TParser σ ParamInfo := do
   let ps <- takeMany parseParam
@@ -42,46 +59,65 @@ def parseParams : TParser σ ParamInfo := do
   if ps.any (String.isUpperInit ∘ Prod.fst) then
     error "bound type constructors/variables must begin with lowercase letter\n"
     throwUnexpected
-  let arity := ps.foldl (fun m (n, a) => m.insert n a) {}
-  return {ordered := ps, arity}
+  let kinds := ps.foldl (fun m (n, k) => m.insert n k) {}
+  return {ordered := ps, kinds}
 
 def getLocalTyArity (pinfo : ParamInfo) (name : String)
-  : TParser σ (Option (Nat × Bool)) := do
-  match pinfo.arity[name]? with
+  : TParser σ (Option (Kind × Bool)) := do
+  match pinfo.kinds[name]? with
   | some k =>
-    if k = 0 then pure none
+    if k.arity = 0 then pure none
     else
       pure (some (k, false))
   | none => getTyArity name
 
-def registerTy (name : String) (arity : Nat) (mt : Bool) (flag := true) : TParser σ Unit := do
+def registerTy (name : String) (kind : Kind) (mt : Bool) (flag := true) : TParser σ Unit := do
   if let true <- modifyGet fun orig@(st@{tys,..}, l) =>
     match tys.find? name with
     | none =>
-      (true, {st with tys := tys.insert name (arity, flag)}, l)
-    | some (arity', k) =>
-      if arity' == arity && mt then
-        if !k && flag then (true, {st with tys := tys.insert name (arity, flag)}, l)
-        else (true, orig)
-      else
+      (true, {st with tys := tys.insert name (kind, flag)}, l)
+    | some (kind', k) =>
+      -- Reconcile via kind unification — exact equality is too strict if
+      -- the registered/expected kinds mention `kvar`s during inference.
+      match Kind.unify kind' kind with
+      | .ok _ =>
+        if mt then
+          if !k && flag then (true, {st with tys := tys.insert name (kind, flag)}, l)
+          else (true, orig)
+        else
+          let err := Logging.error
+            "types are dynamically scoped: for this reason they may not be redefined.\n"
+          (false, st, l ++ err)
+      | .error _ =>
         let err := Logging.error $
           if mt then
-            s!"mutual inductive type {Logging.magenta name} arity mismatch,\n\
-              expected {arity'} but received {arity}\n"
-          else s!"types are dynamically scoped: for this reason they may not be redefined.\n"
+            s!"mutual inductive type {Logging.magenta name} kind mismatch,\n\
+              expected {kind'} but received {kind}\n"
+          else s!"type {Logging.magenta name} kind mismatch: {kind'} vs {kind}\n"
         (false, st, l ++ err)
   then return ()
   else throwUnexpected
 
+@[inline] def registerTyArity (name : String) (arity : Nat) (mt : Bool) (flag := true) : TParser σ Unit :=
+  let rec mk : Nat -> Kind
+    | 0     => .type
+    | n + 1 => .karr .type (mk n)
+  registerTy name (mk arity) mt flag
+
+@[inline] def kindOfParams (ps : Array (String × Kind)) : Kind :=
+  ps.foldr (fun (_, k) acc => .karr k acc) .type
+
 mutual
+/--
+- `TCon` for upper-case tyctors,
+- `TVar` for local lowercase tvs
+- placeholder `TCon` for forward-referencing in mutual block. -/
 partial def tyCtor (param : ParamInfo) : TParser σ MLType := do
   let id <- ID
-  if id.isUpperInit then return TApp id []
+  if id.isUpperInit then return TCon id
   else
-    match param.arity[id]? with
-    | some 0 => return TVar (.mkTV id)
-    | some _ =>
-      return TApp id []
+    match param.kinds[id]? with
+    | some _ => return TVar (.mkTV id)
     | none =>
       error s!"unbound type variable {id}\n"
       throwUnexpected
@@ -89,39 +125,24 @@ partial def tyCtor (param : ParamInfo) : TParser σ MLType := do
 partial def tyApps (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyTerm" do
   let hd <- tyAtom mt param
   match hd with
-  | .TApp h [] =>
-    match <- getLocalTyArity param h with
-    | some (0, _) => return TCon h
+  | .TCon h =>
+    match <- getTyArity h with
     | some (k, _) =>
-      let args <- take k $ tyAtom mt param
-      let extra <- takeMany $ tyAtom mt param
-      if extra.isEmpty then
-        if param.arity.getD h 0 > 0 then
-          return KApp (.mkTV h) args.toList
-        else return TApp h args.toList
-      else
-        error s!"type {Logging.magenta h} arity mismatch, \
-              expected {k} but received {k + extra.size}\n"
-        throwUnexpected
+      let args <- takeUpTo k.arity $ tyAtom mt param
+      return MLType.mkApp (.TCon h) args.toList
     | none =>
-      match <- getTyArity h with
-      | some (0, _) => return TCon h
-      | some (k, _) =>
-        let args <- take k $ tyAtom mt param
-        let extra <- takeMany $ tyAtom mt param
-        if extra.isEmpty then return TApp h args.toList
-        else
-          error s!"type {Logging.magenta h} arity mismatch, expected {k} but got {k + extra.size}\n"
-          throwUnexpected
-      | none =>
-        if mt then
-          modify fun (pe@{undTy,..}, s) => ({pe with undTy := h :: undTy}, s)
-          let arg <- takeMany $ tyAtom mt param;
-          registerTy h arg.size mt false
-          return TApp h arg.toList
-        else
-          error s!"undefined type {Logging.magenta h}\n"
-          throwUnexpected
+      if mt then -- Forward reference
+        modify fun (pe@{undTy,..}, s) => ({pe with undTy := h :: undTy}, s)
+        let args <- takeMany $ tyAtom mt param
+        registerTyArity h args.size mt false
+        return MLType.mkApp (.TCon h) args.toList
+      else
+        error s!"undefined type {Logging.magenta h}\n"
+        throwUnexpected
+  | .TVar v =>
+    let k := param.kinds.getD v.toStr .type
+    let args <- takeUpTo k.arity $ tyAtom mt param
+    return MLType.mkApp (.TVar v) args.toList
   | _ => return hd
 
 partial def tyProd (mt : Bool) (param : ParamInfo) : TParser σ MLType := do
@@ -145,8 +166,11 @@ def tyEmpty : TParser σ TyDecl := do
 def tyExp (paramInfo : ParamInfo := ∅) : TParser σ MLType := tyArrow false paramInfo
 
 def tyPred (param : ParamInfo) : TParser σ Pred := do
-  let (TApp s l) <- tyArrow false param | error s!"not a valid predicate" *> throwUnexpected
-  return ⟨s, l⟩
+  let ty <- tyArrow false param
+  match ty with
+  | .TApp (.TCon s) l => return ⟨s, l⟩
+  | .TCon s           => return ⟨s, []⟩
+  | _ => error s!"not a valid predicate" *> throwUnexpected
 @[inline] def tyPreds (param : ParamInfo) : TParser σ (Array Pred) := sbrack $ sepBy1 COMMA $ tyPred param
 
 def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyForall" do
@@ -182,7 +206,7 @@ def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
     error "duplicated fields not allowed in structure definition\n"
     throwUnexpected
 
-  registerTy tycon param.ordered.size mt
+  registerTy tycon (kindOfParams param.ordered) mt
 
   modify fun (st@{recordFields,..}, l) =>
     ({st with recordFields := recordFields.insert tycon fids}, l)
@@ -199,7 +223,7 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
       let tydecl <- tyRecord tycon param mt <* kwOpExact "}"
       return {tydecl with cls?}
     else
-      registerTy tycon param.ordered.size mt
+      registerTy tycon (kindOfParams param.ordered) mt
       let hd <- (optional BAR *> ctor mt param)
       let tl <- takeMany (BAR *> ctor mt param)
       return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}

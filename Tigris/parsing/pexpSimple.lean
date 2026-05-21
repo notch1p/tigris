@@ -249,7 +249,7 @@ partial def recordExpTyped : TParser σ Expr := parenthesized do
     let f <- ID; EQ; let e <- parseExpr; return (f, e)
   COLON
   match <- PType.tyExp with
-  | ty@(.TCon s) | ty@(.TApp s _) =>
+  | ty@(.TCon s) | ty@(.TApp (.TCon s) _) =>
     Ascribe (ty := ty) <$> reorderRecord s fs
   | ty => .Ascribe (ty := ty) <$> resolveBareRecord fs
 

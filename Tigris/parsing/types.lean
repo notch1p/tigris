@@ -76,6 +76,71 @@ def Pattern.render : Pattern -> String
   | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prodOrApp? s) (render s)) $ Logging.blue n
 
 instance : ToString Pattern := ⟨Pattern.toStr⟩
+/-- Kind is a lattice.
+- `type` denotes the single base sort `Type 0`
+- `karr` denotes `(· -> ·)` for universe
+- `kvar` denotes metavariables
+-/
+inductive Kind where
+  | type
+  | karr : Kind -> Kind -> Kind
+  | kvar : Nat -> Kind
+deriving Repr, BEq, Ord, Inhabited, Hashable
+
+instance : OfNat Kind n where
+  ofNat := n.fold (fun _ _ => Kind.karr .type) .type
+
+@[inline] def Kind.isArr : Kind -> Bool
+  | .karr .. => true | _ => false
+partial def Kind.toStr : Kind -> String
+  | .type        => "Type"
+  | .karr a b    =>
+    (if a.isArr then s!"({a.toStr})" else a.toStr) ++ " → " ++ b.toStr
+  | .kvar n      => s!"?k.{n}"
+instance : ToString Kind := ⟨Kind.toStr⟩
+
+/-- Arity = number of left-spine arrows. `Kind.arity Type = 0`,
+    `Kind.arity (Type → Type) = 1`, `Kind.arity (Type → Type → Type) = 2`. -/
+@[inline] partial def Kind.arity : Kind -> Nat
+  | .karr _ b => 1 + arity b
+  | _         => 0
+
+/-- Kind substitution. -/
+abbrev KSubst := Std.TreeMap Nat Kind
+
+partial def Kind.apply (s : KSubst) : Kind -> Kind
+  | .type     => .type
+  | .karr a b => .karr (apply s a) (apply s b)
+  | .kvar n   => s.getD n (.kvar n)
+
+partial def Kind.fv : Kind -> Std.TreeSet Nat
+  | .type     => ∅
+  | .karr a b => fv a ∪ fv b
+  | .kvar n   => {n}
+
+@[inline] def KSubst.compose (s₂ s₁ : KSubst) : KSubst :=
+  if s₁.isEmpty then s₂ else
+    s₁.foldl (init := s₂) fun acc k v => acc.insert k (Kind.apply s₂ v)
+
+infixl: 65 " ∪ₖ " => KSubst.compose
+
+/-- Bind kind metavar `n := k` with an occurs check. -/
+private def bindKV (n : Nat) (k : Kind) : Except String KSubst :=
+  if k == .kvar n then pure ∅
+  else if n ∈ Kind.fv k then throw s!"infinite kind: ?k.{n} occurs in {k}"
+  else pure (Std.TreeMap.empty.insert n k)
+
+/-- First-order unification on kinds; identical in structure to MLType
+unification but on the kind lattice. -/
+partial def Kind.unify : Kind -> Kind -> Except String KSubst
+  | .type, .type => pure ∅
+  | .karr a₁ b₁, .karr a₂ b₂ => do
+    let s₁ <- unify a₁ a₂
+    let s₂ <- unify (apply s₁ b₁) (apply s₁ b₂)
+    return s₂ ∪ₖ s₁
+  | .kvar n, k | k, .kvar n => bindKV n k
+  | k₁, k₂ => throw s!"cannot unify kinds {k₁} with {k₂}"
+
 inductive TV where
   | mkTV : String -> TV deriving Repr, Ord, Hashable
 
@@ -94,8 +159,8 @@ inductive MLType where
   | TCon  : String -> MLType
   | TArr  : MLType -> MLType -> MLType
   | TProd : MLType -> MLType -> MLType
-  | TApp  : String -> List MLType -> MLType
-  | KApp  : TV -> List MLType -> MLType -- HKT application
+  | TApp  : MLType -> List MLType -> MLType
+  | TyLam : TV -> MLType -> MLType
   /-- essentially a `TForall`. but more convenient -/
   | TSch  : Scheme -> MLType -- only allow rank-1 for now.
 deriving Repr, BEq, Ord, Inhabited, Hashable
@@ -187,7 +252,8 @@ structure UnaryEntry where
 abbrev BinaryTable := Lean.Data.Trie BinaryEntry
 abbrev PrefixTable := Lean.Data.Trie UnaryEntry
 abbrev PostfixTable := Lean.Data.Trie UnaryEntry
-abbrev TyArity := Lean.Data.Trie (Nat × Bool)
+/-- `Bool` indicates forward referencing. -/
+abbrev TyArity := Lean.Data.Trie (Kind × Bool)
 
 open Lean.Data.Trie in
 def Lean.Data.Trie.ofList (arr : List (String × α)) : Trie α :=
@@ -220,7 +286,7 @@ def error (s : String) : TParser σ Unit :=
 
 structure TyDecl where
   tycon : String
-  param : Array (String × Nat)
+  param : Array (String × Kind)
   ctors : Array $ Symbol × List (Symbol × MLType) × Nat
   cls?  : Bool := false -- class?
 deriving Repr
@@ -268,7 +334,7 @@ Assumptions:
 structure ClassInfo where
   cname    : Symbol -- cname == ctorName, assumed
   ctorName : Symbol
-  params   : Array (String × Nat) -- class param names + HKT arity
+  params   : Array (String × Kind) -- class param names + their kinds
   methods  : Array MethodInfo
   -- maybe superclass?? not considered now.
 deriving Repr

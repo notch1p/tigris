@@ -73,7 +73,7 @@ partial def patRecordTyped : TParser σ Pattern := do
     | some e => return (f, e)
   COLON
   match <- PType.tyCtor ∅ with
-  | .TCon s | .TApp s _ =>
+  | .TCon s | .TApp (.TCon s) _ =>
     reorderRecordPat s ps
   | _ => resolveBareRecordPat ps
 partial def patApp : TParser σ Pattern := do

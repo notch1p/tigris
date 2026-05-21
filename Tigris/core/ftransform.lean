@@ -12,7 +12,6 @@ variable {σ}
 namespace HelperF
 
 /--
-
 - `t × u`        has `.pair`
 - `t -> u`       has `.ctor "𝐂" 2`    `(cons '𝐂 #(code env))`
 - ADT/Imm Values has `.unknown`
@@ -106,13 +105,13 @@ partial def bindPatBinds
     realizeSel roots sel fun v => do
       (.letVal x (.var v) ·) <$> bindPatBinds roots bs[1:] (ρ.insert x x) k
 
-def predToApp : Pred -> MLType := fun {cls, args} => TApp cls args
+def predToApp : Pred -> MLType := fun {cls, args} => MLType.mkApp (TCon cls) args
 def unwrapTSch : MLType -> MLType
   | TSch (.Forall _ _ps t) => /-ps.foldr (TArr ∘ predToApp)-/ t
   | t => t
 
 partial def stripTy : FExpr -> FExpr
-  | TyApp f _ | TyLam _ f => stripTy f
+  | FExpr.TyApp f _ | FExpr.TyLam _ f => stripTy f
   | Let bs body ty =>
     Let (bs.map fun (id, sch, fe) => (id, sch, stripTy fe)) (stripTy body) (unwrapTSch ty)
   | Proj fe s id ty => Proj (stripTy fe) s id (unwrapTSch ty)
@@ -501,7 +500,7 @@ private partial def recordParamShapes (params : Array String) (paramTys : Array 
   else if hgt : sz > 1 then
     -- Intermediate `_pR#pᵢ` (i < sz - 2) are sub-pairs.
     for h : i in [:sz - 2] do
-      have : sz - 2 < sz := by grind
+      have : sz - 2 < sz := by omega
       have := Membership.get_elem_helper h rfl
       setShape s!"_pR#{params[i]}" .pair
     -- Final `_pR#p_{sz-2}` aliases the last param's value.

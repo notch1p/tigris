@@ -8,24 +8,19 @@ let i_Functor_0 : ∀ a, Functor (Sum a) =
             fun ?x₀ : Sum a a =>
               match ?x₀ with | Inl a => Inl@a@b a | Inr b => Inr@a@b (f b)))
 
-let f : ∀ α, Unit → Sum Int Int × Sum α Int =
+let main : ∀ α [Functor Sum α], Sum Int Int × Sum α Int =
   (Λ α.
      let rd_Functor_0 : Functor (Sum Int) = i_Functor_0@Int
-     and rd_Functor_1 : Functor (Sum α) = (Λ α. i_Functor_0@α)
-     in fun ?x₀ : Unit =>
-       match ?x₀ with
-       | () =>
-         let a : ∀ α, Sum Int α = (Λ α. Inl@Int@α 2)
-         and b : ∀ α, Sum α Int = (Λ α. Inr@α@Int 1)
-         in (rd_Functor_0[0, fmap]@(Sum Int)
-            (fun ?x₀ : Int =>
-               mul
-                 2
-                 ?x₀)
-            a@Int , rd_Functor_1[0, fmap]@(Sum α)
-            (fun ?x₀ : Int => add 1 ?x₀) b@α))
-
-let main : ∀ α, Unit → Sum Int Int × Sum α Int = (Λ α. f@α)
+     in fun d_Functor_0 : Functor (Sum α) =>
+       let a : ∀ α, Sum Int α = (Λ α. Inl@Int@α 2)
+       and b : ∀ α, Sum α Int = (Λ α. Inr@α@Int 1)
+       in (rd_Functor_0[0, fmap]@(Sum Int)
+          (fun ?x₀ : Int =>
+             mul
+               2
+               ?x₀)
+          a@Int , d_Functor_0[0, fmap]@(Sum α)
+          (fun ?x₀ : Int => add 1 ?x₀) b@α))
 ;; == Runtime ==
 (load "runtime.lisp")
 
@@ -79,31 +74,30 @@ let main : ∀ α, Unit → Sum Int Int × Sum α Int = (Λ α. f@α)
   (let ((|α1010| (car |payload|)))
     (let ((|Γ1011| (cdr |payload|)))
       (let ((|lam8| (svref (cdr |Γ1011|) 0)))
-        (let ((|_pL#?x₀| (car |α1010|)))
-          (cond
-            ((equal |_pL#?x₀| nil)
-              (let ((|c11| 2))
-                (let ((|con12| (cons '|Inl| (vector |c11|))))
-                  (let ((|c13| 1))
-                    (let ((|con14| (cons '|Inr| (vector |c13|))))
-                      (let ((|Γ1025| (cons '|𝐄| (vector))))
-                        (let ((|lam19| (cons '|𝐂| (vector #'|fn1012| |Γ1025|))))
-                          (let ((|pair20| (cons |lam19| |con12|)))
-                            (let ((|_code1022| (svref (cdr |lam8|) 0)))
-                              (let ((|Γc1023| (svref (cdr |lam8|) 1)))
-                                (let ((|ρc1024| (cons |pair20| |Γc1023|)))
-                                  (labels ((|k3| (|v2|)
-                                    (let ((|Γ1021| (cons '|𝐄| (vector))))
-                                      (let ((|lam26| (cons '|𝐂| (vector #'|fn1015| |Γ1021|))))
-                                        (let ((|pair27| (cons |lam26| |con14|)))
-                                          (let ((|_code1018| (svref (cdr |lam8|) 0)))
-                                            (let ((|Γc1019| (svref (cdr |lam8|) 1)))
-                                              (let ((|ρc1020| (cons |pair27| |Γc1019|)))
-                                                (labels ((|k5| (|v4|)
-                                                  (let ((|p29| (cons |v2| |v4|)))
-                                                    (funcall (the function |k|) |p29|))))
-                                                  (funcall (the function |_code1018|) |ρc1020| #'|k5|))))))))))
-                                    (funcall (the function |_code1022|) |ρc1024| #'|k3|)))))))))))))))))))
+        (let ((|_pL#d_Functor_0| (car |α1010|)))
+          (let ((|c11| 2))
+            (let ((|con12| (cons '|Inl| (vector |c11|))))
+              (let ((|c13| 1))
+                (let ((|con14| (cons '|Inr| (vector |c13|))))
+                  (let ((|Γ1025| (cons '|𝐄| (vector))))
+                    (let ((|lam19| (cons '|𝐂| (vector #'|fn1012| |Γ1025|))))
+                      (let ((|pair20| (cons |lam19| |con12|)))
+                        (let ((|_code1022| (svref (cdr |lam8|) 0)))
+                          (let ((|Γc1023| (svref (cdr |lam8|) 1)))
+                            (let ((|ρc1024| (cons |pair20| |Γc1023|)))
+                              (labels ((|k3| (|v2|)
+                                (let ((|p22| (svref (cdr |_pL#d_Functor_0|) 0)))
+                                  (let ((|Γ1021| (cons '|𝐄| (vector))))
+                                    (let ((|lam26| (cons '|𝐂| (vector #'|fn1015| |Γ1021|))))
+                                      (let ((|pair27| (cons |lam26| |con14|)))
+                                        (let ((|_code1018| (svref (cdr |p22|) 0)))
+                                          (let ((|Γc1019| (svref (cdr |p22|) 1)))
+                                            (let ((|ρc1020| (cons |pair27| |Γc1019|)))
+                                              (labels ((|k5| (|v4|)
+                                                (let ((|p29| (cons |v2| |v4|)))
+                                                  (funcall (the function |k|) |p29|))))
+                                                (funcall (the function |_code1018|) |ρc1020| #'|k5|)))))))))))
+                                (funcall (the function |_code1022|) |ρc1024| #'|k3|)))))))))))))))))
 
 ; entrypoint
 (defun |main| (|payload1000| |k|)

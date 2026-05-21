@@ -28,8 +28,8 @@ def 𝒮ₚ (M : 𝓜) : 𝓜 :=
 inductive FinDom | unit | bool deriving Repr
 namespace FinDom open TConst
 def headFinDom : MLType -> Option FinDom
-  | TCon "Unit" | TApp "Unit" _ => unit
-  | TCon "Bool" | TApp "Bool" _ => bool
+  | TCon "Unit" | TApp (TCon "Unit") _ => unit
+  | TCon "Bool" | TApp (TCon "Bool") _ => bool
   | _ => none
 def constsOf : FinDom -> List TConst
   | unit => [PUnit] | bool => [PBool true, PBool false]
@@ -74,13 +74,10 @@ private partial def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
   | TCon s => TCon s
   | TArr a b => TArr (substTV m a) (substTV m b)
   | TProd a b => TProd (substTV m a) (substTV m b)
-  | TApp s ts => TApp s (ts.map (substTV m))
-  | KApp v ts =>
-    match m[v]? with
-    | some (TApp h []) | some (TCon h) => TApp h (ts.map (substTV m))
-    | some (TVar v) => KApp v (ts.map (substTV m))
-    | none => KApp v (ts.map (substTV m))
-    | some other => other -- should not occur if subst is well-kinded
+  | TApp h ts => MLType.mkApp (substTV m h) (ts.map (substTV m))
+  | MLType.TyLam x body =>
+    -- Shadowing: drop `x` from the substitution before recursing.
+    MLType.TyLam x (substTV (m.erase x) body)
   | TSch (.Forall vs ps t) =>
     let m := vs.foldl .erase m
     .TSch (.Forall vs (ps.map fun p => p.mapArgs (substTV m)) t)
@@ -93,8 +90,8 @@ def ctorFieldTypes (td : TyDecl) (cname : Symbol) (tyArgs : List MLType) : Optio
   | some (_, fts, _) => some (fts.map (substTV substMap ∘ Prod.snd))
 
 def headTyconArgs : MLType -> Option (Symbol × List MLType)
-  | MLType.TApp s args => some (s, args)
-  | MLType.TCon s      => some (s, [])
+  | MLType.TApp (MLType.TCon s) args => some (s, args)
+  | MLType.TCon s                    => some (s, [])
   | _ => none
 open FinDom in
 partial def uncover

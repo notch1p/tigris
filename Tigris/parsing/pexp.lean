@@ -201,7 +201,12 @@ open PType in
 def instanceDecl : TParser σ TopDecl := do
   INSTANCE; optional COLON
   let (.Forall _ ctxPreds ty) <- tyScheme
-  let (.TApp cname args) := ty.getRightmost | error "not a valid class" *> throwUnexpected
+  let head <-
+    match ty.getRightmost with
+    | .TApp (.TCon cname) args => pure (cname, args)
+    | .TCon cname              => pure (cname, [])
+    | _ => error "not a valid class" *> throwUnexpected
+  let (cname, args) := head
   EQ;
   let methods <- instanceExp cname
   return .instBind {ctxPreds, cname, args, methods}

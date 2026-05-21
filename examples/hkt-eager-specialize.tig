@@ -1,0 +1,23 @@
+type Sum a b = Inl a | Inr b
+
+class Functor (f : Type -> Type) =
+  {fmap : forall a b, (a -> b) -> f a -> f b}
+
+instance forall a, Functor (Sum a) =
+  { fmap f
+    | Inl a => Inl a
+    | Inr b => Inr (f b)
+  }
+
+let main =
+  let x : forall b, Sum Int b = Inl 2 NB. a := Int, though b is universally quantified,
+                                      --  It does not interferes with instance resolution
+                                      --  as Tigris only sees `Functor (Sum a)`
+                                      --  per the definition above.
+
+  and y : Sum Bool Int = Inr 1        NB. Here however we cannot replace Bool with
+                                      --  a TV then generalize it, otherwise we would end up
+                                      --  similar to the example in the other file.
+
+  in ( fmap (2 * _) x
+     , fmap (1 + _) x)

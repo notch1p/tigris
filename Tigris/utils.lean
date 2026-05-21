@@ -138,11 +138,11 @@ open Associativity in def opTablePrim : List (Symbol × BinaryEntry) :=
 
 def opTable : BinaryTable := .ofList opTablePrim
 def tyTable : TyArity :=
-  .ofList [ ("Int"   , 0, true)
-          , ("String", 0, true)
-          , ("Bool"  , 0, true)
-          , ("Unit"  , 0, true)
-          , ("Empty" , 0, true)]
+  .ofList [ ("Int"   , .type, true)
+          , ("String", .type, true)
+          , ("Bool"  , .type, true)
+          , ("Unit"  , .type, true)
+          , ("Empty" , .type, true)]
 def initState : PEnv := {ops := opTable, tys := tyTable, undTy := []}
 
 namespace Parser.Error
@@ -270,7 +270,7 @@ def potentialOp : TParser σ String := do
   let hd <- tokenFilter isNotOpInit
   let tl <- takeMany $ tokenFilter isNotOpCand
   return tl.foldl String.push hd.toString
-local infixl:40 " <? " => flip (· <|> ·)
+infixl:40 " <? " => flip (· <|> ·)
 
 def takeInfixOp? (minPrec : Nat) (inPattern := false) : TParser σ $ Option BinaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp

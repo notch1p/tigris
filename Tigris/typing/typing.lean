@@ -21,35 +21,17 @@ partial def unify : MLType -> MLType -> Infer σ Subst
     let s₂ <- unify (apply s₁ r₁) (apply s₁ r₂)
     return s₂ ∪' s₁
   | TVar a, t | t, TVar a   => bindTV a t
-  | KApp h₁ as₁, KApp h₂ as₂ => do
-    if as₁.length != as₂.length then throw (.NoUnify (KApp h₁ as₁) (KApp h₂ as₂)) else
-      let headSub <- unify (TVar h₁) (TVar h₂)
+  | t@(TCon a), t'@(TCon b) =>
+    if a == b then pure ∅ else throw $ NoUnify t t'
+  | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) =>
+    if as₁.length != as₂.length then throw $ NoUnify t₁ t₂
+    else do
+      let headSub <- unify h₁ h₂
       List.foldlM2
         (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
         headSub as₁ as₂
-  | KApp h₁ as₁, TApp h₂ as₂ | TApp h₂ as₂, KApp h₁ as₁ =>
-    if as₁.length != as₂.length then throw (.NoUnify (KApp h₁ as₁) (TApp h₂ as₂))
-    else do
-      let headBind <- bindTV h₁ (TApp h₂ [])
-      List.foldlM2
-        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
-        headBind as₁ as₂
-  | t@(TApp h₁ []), t'@(TCon s) | t@(TCon s), t'@(TApp h₁ []) =>
-    if h₁ == s then pure ∅ else throw $ NoUnify t t'
-  | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) =>
-    if h₁ != h₂ || as₁.length != as₂.length then
-      throw $ NoUnify t₁ t₂
-    else
-      let rec go (s : Subst)
-        | [], [] => pure s
-        | x :: xs, y :: ys => do
-          let s' <- unify (apply s x) (apply s y)
-          go (s' ∪' s) xs ys
-        | _, _ => unreachable!
-      go ∅ as₁ as₂
-  | t@(TCon a), t'@(TCon b) =>
-    if a == b then pure ∅ else throw $ NoUnify t t'
-  | t₁, t₂                  => throw $ NoUnify t₁ t₂
+  | t₁@(TApp h []), t₂ | t₂, t₁@(TApp h []) => unify h t₂
+  | t₁, t₂ => throw $ NoUnify t₁ t₂
 
 @[inline] def fresh : Infer σ MLType :=
   modifyGet fun (s, l) => (TVar $ mkTV s!"?m.{s}", s + 1, l)

@@ -101,7 +101,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
         match method? with
         | none =>
           let base := tArgs.foldl FExpr.TyApp (.Var x ty)
-          instCtx.foldlM (fun acc p => mkApp acc <$> elaborateDict Γsch scope p Γfull) base
+          instCtx.foldlM (fun acc p => Helper.mkApp acc <$> elaborateDict Γsch scope p Γfull) base
         | some (ci, m) =>
           let some classPred := instCtx.find? (·.cls == ci.cname)
             | throw (.Impossible s!"method {x} has no matching predicate after instantiation\n")
@@ -134,7 +134,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
           let projMono : FExpr := .Proj dict m.mname m.idx projTy
           let others := instCtx.filter (·.cls != ci.cname)
           let projWithDicts <-
-            others.foldlM (fun acc p => mkApp acc <$> elaborateDict Γsch scope p Γfull) projMono
+            others.foldlM (fun acc p => Helper.mkApp acc <$> elaborateDict Γsch scope p Γfull) projMono
           tArgs.foldl .TyApp <$> wrapPoly projWithDicts
   | .Fun p pTy body ty => (.Fun p pTy · ty) <$> elaborate Γsch scope (blocked.insert p) Γfull body
   | .Fix e ty | .Fixcomb e ty => (.Fix · ty) <$> elaborate Γsch scope blocked Γfull e
@@ -268,3 +268,25 @@ in instance : ToFormat TopDeclF := ⟨TopDeclF.unexpand⟩
 in
 def unexpandDeclsF (arr : Array TopDeclF) : Format := joinSep' arr (line ++ line)
 
+
+-- example: No eagerly simplification
+instance : Functor $ Sum α where
+  map f
+  | .inr b => .inr (f b)
+  | .inl a => .inl a
+
+def prog [ToString α] : IO Unit :=
+  println! (1 + ·) <$> (Sum.inr 1 : α ⊕ Int)
+
+/--
+error: typeclass instance problem is stuck
+  ToString ?m.2
+
+Note: Lean will not try to resolve this typeclass instance problem because the type argument to `ToString` is a metavariable. This argument must be fully determined before Lean will try to resolve the typeclass.
+
+Hint: Adding type annotations and supplying implicit arguments to functions can give Lean more information for typeclass resolution. For example, if you have a variable `x` that you intend to be a `Nat`, but Lean reports it as having an unresolved type like `?m`, replacing `x` with `(x : Nat)` can get typeclass resolution un-stuck.
+-/
+#guard_msgs in
+#eval prog -- we mirror the approach used by Lean in Tigris by blocking all
+           -- context with MVs, even though it makes sense to not to (as the program is still well typed.)
+#eval prog (α := Unit) -- must be concrete

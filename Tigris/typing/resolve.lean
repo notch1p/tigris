@@ -5,7 +5,9 @@ namespace Resolve open MLType ConstraintInfer Rewritable
 
 def unifyHead (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError Subst := do
   if goalArgs.length != instArgs.length then
-    throw (.NoUnify (MLType.TApp "_goal" goalArgs) (MLType.TApp "_inst" instArgs))
+    throw (.NoUnify
+      (MLType.mkApp (MLType.TCon "_goal") goalArgs)
+      (MLType.mkApp (MLType.TCon "_inst") instArgs))
   else
     List.foldlM2
       (fun s g i =>
@@ -49,7 +51,7 @@ partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
         let sub <- unifyHead p.args info.args
         let ctx := apply sub info.ctx
         ctx.forM fun s => resolve env s $> ()
-        let specializedHead := MLType.TApp p.cls p.args
+        let specializedHead := MLType.mkApp (MLType.TCon p.cls) p.args
         pure $ .Ascribe (.Var info.iname) specializedHead
       match found with
       | none => found := some res

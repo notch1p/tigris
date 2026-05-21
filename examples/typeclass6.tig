@@ -1,6 +1,6 @@
 type Option a = None | Some a
 
-class Monad (m : 1) =
+class Monad (m : Type -> Type) =
   { pure : forall a, a -> m a
   , bind : forall a b, m a -> (a -> m b) -> m b
   }

@@ -1,0 +1,20 @@
+type Sum a b = Inl a | Inr b
+
+class Functor (f : Type -> Type) =
+  {fmap : forall a b, (a -> b) -> f a -> f b}
+
+instance forall a, Functor (Sum a) =
+  { fmap f
+    | Inl a => Inl a
+    | Inr b => Inr (f b)
+  }
+
+let main =
+  let a = Inl 2
+  and b = Inr 1
+  in ( fmap (2 * _) a
+     , fmap (1 + _) b)
+
+NB. yields
+-- (𝐂 . #(#<FUNCTION |fn1009|>
+--       (𝐄 . #((𝐂 . #(#<FUNCTION |fn1003|> (𝐄 . #())))))))
