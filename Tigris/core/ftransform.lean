@@ -11,6 +11,19 @@ variable {σ}
 
 namespace HelperF
 
+/--
+
+- `t × u`        has `.pair`
+- `t -> u`       has `.ctor "𝐂" 2`    `(cons '𝐂 #(code env))`
+- ADT/Imm Values has `.unknown`
+Type schemes / quantified types are peeled to their monotype body. -/
+partial def shapeOfMLType : MLType -> Shape
+  | .TSch (.Forall _ _ t) => shapeOfMLType t
+  | _ ×'' _   => .pair
+  | _ ->' _   => .ctor "𝐂" 2
+  | _          => .unknown
+@[inline] def shapeOfFExpr : FExpr -> Shape := shapeOfMLType ∘ FExpr.getTy
+
 def primOfName : String -> Option PrimOp
   | "add"     => some .add
   | "sub"     => some .sub
@@ -164,11 +177,19 @@ partial def lowerFunApp
   (ρ : Env) (ctors : Std.HashMap String Nat)
   (k : Name -> M σ LExpr) : M σ LExpr :=
   let n := getArrArity head
+  -- Intermediate (curried) call results are themselves functions
+  -- (i.e. closures `(cons '𝐂 #(code env))`). Only the FINAL call's
+  -- result shape comes from the outermost FExpr's type, set by the caller
+  -- via the wrapper `k` (see callsite in lowerF .App branch).
+  let curried : Shape := .ctor "𝐂" 2
 
   let applyUnary (vfName aName : Name) (cont : Name -> M σ LExpr) : M σ LExpr := do
     let u <- fresh "u"
+    setShape u .unknown
     let pair <- fresh "pair"
+    setShape pair .pair
     let r <- fresh "call"
+    setShape r curried
     let body <- cont r
     pure
     $ .letVal u (.cst .unit)
@@ -182,15 +203,18 @@ partial def lowerFunApp
     else
       buildPairs (name := ns.toList) fun tuple => do
         let r0 <- fresh "r"
+        setShape r0 curried
         .letRhs r0 (.call fv tuple) <$> k r0
 
   let mkPartial (fv : Name) (supplied : Array Name) (missing : Nat) : M σ LExpr := do
     let lamV <- do
       if missing = 1 then
         let p   <- fresh "arg"
+        setShape p .pair
         let aL  <- fresh "_pL#arg"
         let _aR <- fresh "_pR#arg"
         let res <- fresh "r"
+        setShape res curried
         let allArgs := supplied.push aL
         let callCore <- buildPairs (name := allArgs.toList) fun tuple =>
           pure $ .letRhs res (.call fv tuple) (.seq #[] (.ret res))
@@ -201,15 +225,18 @@ partial def lowerFunApp
         pure (.lam p body)
       else
         let param <- fresh "rest"
+        setShape param .pair
         let restNames : Array Name <- (missing - 1).foldM (init := #[]) fun _ _ acc =>
           acc.push <$> fresh
         let allArgs := supplied ++ restNames.push param
         let res <- fresh "r"
+        setShape res curried
         let callCore <- buildPairs (name := allArgs.toList) fun tuple =>
           pure $ .letRhs res (.call fv tuple) (.seq #[] (.ret res))
         let lamBody := destructTuple param (restNames.push param) 0 callCore
         pure (.lam param lamBody)
     let out <- fresh "clos"
+    setShape out (.ctor "𝐂" 2)
     let cont <- k out
     pure (.letVal out lamV cont)
 
@@ -219,6 +246,7 @@ partial def lowerFunApp
     else
       buildPairs (name := rest.toList) fun tuple2 => do
         let r1 <- fresh "r"
+        setShape r1 curried
         .letRhs r1 (.call fv tuple2) <$> k r1
 
   let applyAllWithTotal (total : Nat) (vf : Name) (ns : Array Name) : M σ LExpr := do
@@ -232,6 +260,7 @@ partial def lowerFunApp
       else
         buildPairs (name := now.toList) fun tuple => do
           let r0 <- fresh "r"
+          setShape r0 curried
           .letRhs r0 (.call vf tuple) <$> applyRest r0 rest
 
   let applyByType (vf : Name) (ns : Array Name) : M σ LExpr := do
@@ -245,6 +274,7 @@ partial def lowerFunApp
       else
         buildPairs (name := now.toList) fun tuple => do
           let r0 <- fresh "r"
+          setShape r0 curried
           let after <- applyRest r0 rest
           pure (.letRhs r0 (.call vf tuple) after)
 
@@ -264,6 +294,7 @@ partial def lowerFunApp
             else
               buildPairs (name := ns.toList) fun tuple => do
                 let r1 <- fresh "r"
+                setShape r1 curried
                 .letRhs r1 (.call vf tuple) <$> k r1
     applyD 0 vf0
 
@@ -288,6 +319,7 @@ partial def lowerF
     lowerF x ρ ctors fun vx =>
       lowerF y ρ ctors fun vy => do
         let r <- fresh "p"
+        setShape r .unknown -- primitive int/bool/string
         let cont <- k r
         return .letRhs r (.prim op #[vx, vy]) cont
   | none =>
@@ -295,6 +327,7 @@ partial def lowerF
     | some (cname, args, ar) =>
       if ar == 0 && args.isEmpty then
         let r <- fresh "con"
+        setShape r (.ctor cname 0)
         let cont <- k r
         return (.letRhs r (.mkConstr cname #[]) cont)
       else lowerCtorApp cname args ar ρ ctors k
@@ -304,43 +337,64 @@ partial def lowerF
 
       | .Var x _ =>
         match ctors[x]? with
-        | some 0 => let r <- fresh "con"; let cont <- k r; return (.letRhs r (.mkConstr x #[]) cont)
+        | some 0 =>
+          let r <- fresh "con"
+          setShape r (.ctor x 0)
+          let cont <- k r
+          return (.letRhs r (.mkConstr x #[]) cont)
         | _ => k (ρ.getD x x)
 
-      | .CI i _ => let v <- fresh "c" let body <- k v return .letVal v (.cst (.int i)) body
-      | .CB i _ => let v <- fresh "c" let body <- k v return .letVal v (.cst (.bool i)) body
-      | .CS i _ => let v <- fresh "c" let body <- k v return .letVal v (.cst (.str i)) body
-      | .CUnit _ => let v <- fresh "c" let body <- k v return .letVal v (.cst .unit) body
+      | .CI i _ =>
+        let v <- fresh "c"; setShape v .unknown
+        let body <- k v; return .letVal v (.cst (.int i)) body
+      | .CB i _ =>
+        let v <- fresh "c"; setShape v .unknown
+        let body <- k v; return .letVal v (.cst (.bool i)) body
+      | .CS i _ =>
+        let v <- fresh "c"; setShape v .unknown
+        let body <- k v; return .letVal v (.cst (.str i)) body
+      | .CUnit _ =>
+        let v <- fresh "c"; setShape v .unknown
+        let body <- k v; return .letVal v (.cst .unit) body
 
       | .Prod' l r _ =>
         lowerF l ρ ctors fun lv =>
           lowerF r ρ ctors fun rv => do
             let p <- fresh "p"
+            setShape p .pair
             let body <- k p
             return .letRhs p (.mkPair lv rv) body
 
-      | .Proj src _ idx _ =>
+      | .Proj src _ idx ty =>
         lowerF src ρ ctors fun sv => do
           let p <- fresh "p"
+          setShape p (shapeOfMLType ty)
           let body <- k p
           return .letRhs p (.proj sv idx) body
 
       | .Fun .. =>
         let (p0, rest, core) := decomposeLamChain e h
         let tupleParam <- fresh "args"
+        setShape tupleParam .pair -- multi-arg pack is nested pair
         let baseParams := #[p0] ++ rest
         let (allParams, core) := etaExpandParams baseParams core
+        recordParamShapes allParams (peelArgTys (FExpr.getTy e))
         let ρ := allParams.foldl (fun acc p => acc.insert p p) ρ
         let loweredCore <- lowerFCore core ρ ctors
         let body := destructArgsPrelude tupleParam allParams loweredCore
         let f <- fresh "lam"
         setArity f allParams.size
+        -- after closure-conversion `f` is `(cons '𝐂 #(code env))`
+        setShape f (.ctor "𝐂" 2)
         let kbody <- k f
         return .letVal f (.lam tupleParam body) kbody
 
       | .App .. =>
-        let (h, args) := decomposeApp e
-        lowerFunApp h args ρ ctors k
+        let (head, args) := decomposeApp e
+        let resSh := shapeOfFExpr e
+        lowerFunApp head args ρ ctors fun r => do
+          setShape r resSh
+          k r
       | .Cond c t e _ =>
         lowerF c ρ ctors fun cv =>
           .seq #[] <$> ((.cond cv · ·) <$> lowerF t ρ ctors k <*> lowerF e ρ ctors k)
@@ -355,14 +409,15 @@ partial def lowerF
               lowerRecFun fid selfN params core ρ ctors
             let bodyExpr <- lowerF body ρ ctors k
             return .letRec funs bodyExpr
-      | .Fix lam@(.Fun ..) _ => do
+      | .Fix lam@(.Fun ..) fixTy => do
         let (selfN, params, core) := decomposeLamChain lam ‹_›
         let (params, core) := etaExpandParams params core
         let fname <- fresh "f"
-        let funIR <- lowerRecFun fname selfN params core ρ ctors
+        let funIR <- lowerRecFun fname selfN params core ρ ctors fixTy
         let r <- fresh "r"
+        setShape r (.ctor "𝐂" 2)
         let cont <- k r
-        return .letRec #[⟨fname, funIR.param, funIR.body⟩] (.letVal r (.var fname) cont)
+        return .letRec #[funIR] (.letVal r (.var fname) cont)
       | .Fix .. => unreachable!
 
       | .Match scrs rows _ ex _ =>
@@ -379,6 +434,7 @@ partial def lowerCtorApp
   if args.size = arity then
     lowerMany args ρ ctors fun names => do
       let r <- fresh "con"
+      setShape r (.ctor cname arity)
       let cont <- k r
       pure (.letRhs r (.mkConstr cname names) cont)
   else if args.size < arity then
@@ -386,18 +442,22 @@ partial def lowerCtorApp
       let missing := arity - args.size
       let rec buildLam (i : Nat) (captured : Array Name) : M σ Value := do
         let p <- fresh "arg"
+        setShape p .unknown
         if i + 1 < missing then
           let inner <- buildLam (i+1) (captured.push p)
           let v <- fresh "lam"
+          setShape v (.ctor "𝐂" 2)
           let body := .letVal v inner (.seq #[] (.ret v))
           pure (.lam p body)
         else
           let res <- fresh "r"
+          setShape res (.ctor cname arity)
           let fields := supplied ++ captured.push p
           let body := .letRhs res (.mkConstr cname fields) (.seq #[] (.ret res))
           pure (.lam p body)
       let lamV <- buildLam 0 #[]
       let out <- fresh "clos"
+      setShape out (.ctor "𝐂" 2)
       let cont <- k out
       pure (.letVal out lamV cont)
   else -- should get blocked by typechecker, unreachable
@@ -406,40 +466,95 @@ partial def lowerCtorApp
       (fun f a => FExpr.App f a (MLType.TVar ⟨"?"⟩)))
       ρ ctors k
 
+/-- Collapse argument types from a (possibly polymorphic) function type. -/
+partial def peelArgTys : MLType -> Array MLType
+  | .TSch (.Forall _ _ t) => peelArgTys t
+  | a ->' b => #[a] ++ peelArgTys b
+  | _ => #[]
+/--
+Also records shapes for the `_pL#name` / `_pR#name` destructure-introduced
+names that `destructArgsPrelude` emits.
+
+
+- for `sz = 1`:
+  - `_pL#p₀` → shape of `p₀`
+  - `_pR#p₀` → `.unknown` (dummy sentinel unit)
+
+- for `sz ≥ 2`:
+  - `_pL#pᵢ === pᵢ` → shape of `pᵢ`                     i < sz - 1
+  - `_pR#pᵢ === (p_{i+1}, …)` → `.pair`                 i < sz - 2
+  - `_pR#p_{sz-2} === p_{sz-1}` → shape of `p_{sz-1}`
+
+**Note**: Getting the last `_pR` wrong would mark a function-typed argument as a `.pair`,
+causing codegen to use `(car x)` instead of `(svref (cdr x) 0)` to project
+the closure's codeptr, returning the ctor tag `𝐂` instead of a function. -/
+private partial def recordParamShapes (params : Array String) (paramTys : Array MLType) : M σ Unit := do
+  let shapeOfParam (i : Nat) : Shape :=
+    if h : i < paramTys.size then shapeOfMLType paramTys[i] else .unknown
+  let sz := params.size
+  for h : i in [:sz] do
+    let sh := shapeOfParam i
+    setShape params[i] sh
+    setShape s!"_pL#{params[i]}" sh
+  if h : sz = 1 then
+    setShape s!"_pR#{params[0]}" .unknown
+  else if hgt : sz > 1 then
+    -- Intermediate `_pR#pᵢ` (i < sz - 2) are sub-pairs.
+    for h : i in [:sz - 2] do
+      have : sz - 2 < sz := by grind
+      have := Membership.get_elem_helper h rfl
+      setShape s!"_pR#{params[i]}" .pair
+    -- Final `_pR#p_{sz-2}` aliases the last param's value.
+    setShape s!"_pR#{params[sz - 2]}" (shapeOfParam (sz - 1))
+
 partial def lowerRecFun
   (fid : Name) (selfN : String) (params : Array String) (core : FExpr) (ρ : Env)
   (ctors : Std.HashMap String Nat)
+  (fnTy : MLType := .TVar ⟨"?"⟩)
   : M σ LFun := do
   let ρ := ρ.insert selfN fid
+  -- The function value itself is a closure after CC
+  setShape fid (.ctor "𝐂" 2)
+  setShape selfN (.ctor "𝐂" 2)
+  recordParamShapes params (peelArgTys fnTy)
   if params.size = 0 then
     let p <- fresh "arg"
+    setShape p .unknown
     let body <- lowerFCore core (ρ.insert p p) ctors
     setArity fid 0
-    return ⟨fid, p, body⟩
+    return {fid, param := p, body, paramShape := .unknown}
   else
     let tupleParam <- fresh "args"
+    -- Both single-arg (packed with unit) and multi-arg (nested pair)
+    -- present as a pair at function entry.
+    setShape tupleParam .pair
     let ρ := params.foldl (fun acc p => acc.insert p p) ρ
     let loweredCore <- lowerFCore core ρ ctors
     let body := destructArgsPrelude tupleParam params loweredCore
     setArity fid params.size
-    return ⟨fid, tupleParam, body⟩
+    return {fid, param := tupleParam, body, paramShape := .pair}
 
 partial def lowerNonRecFun
   (fid : Name) (params : Array String) (core : FExpr) (ρ : Env)
   (ctors : Std.HashMap String Nat)
+  (fnTy : MLType := .TVar ⟨"?"⟩)
   : M σ LFun := do
+  setShape fid (.ctor "𝐂" 2)
+  recordParamShapes params (peelArgTys fnTy)
   if params.size = 0 then
     let p <- fresh "arg"
+    setShape p .unknown
     let body <- lowerFCore core (ρ.insert p p) ctors
     setArity fid 0
-    return ⟨fid, p, body⟩
+    return {fid, param := p, body, paramShape := .unknown}
   else
     let tupleParam <- fresh "args"
+    setShape tupleParam .pair
     let ρ := params.foldl (fun acc p => acc.insert p p) ρ
     let loweredCore <- lowerFCore core ρ ctors
     let body := destructArgsPrelude tupleParam params loweredCore
     setArity fid params.size
-    return ⟨fid, tupleParam, body⟩
+    return {fid, param := tupleParam, body, paramShape := .pair}
 
 partial def lowerNonRecBinds
   (defs : Subarray (String × FExpr)) (ρ : Env) (ctors : Std.HashMap String Nat)
@@ -447,7 +562,7 @@ partial def lowerNonRecBinds
   if h : defs.size = 0 then k ρ
   else
     let (x, e) := defs[0]
-    lowerF e ρ ctors fun v => copyArity v x *>
+    lowerF e ρ ctors fun v => copyArity v x *> copyShape v x *>
       .letVal x (.var v) <$> lowerNonRecBinds defs[1:] (ρ.insert x x) ctors k
 
 partial def lowerDT
@@ -533,9 +648,12 @@ partial def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat
   let fid := "main"
   let param := "arg"
   let body <- optimizeLam <$> build 0 ∅ none ctors
-  let main : LFun := {fid, param, body}
-  let mod := ⟨#[], main⟩
-  let modCC := runST fun _ => (IR.closureConvert mod).run' (1000, ∅)
+  -- main has a single dummy `arg` parameter (entry point); unknown shape
+  setShape param .unknown
+  let main : LFun := {fid, param, body, paramShape := .unknown}
+  let shapes <- getShapeMap
+  let mod : LModule := {funs := #[], main, shapes}
+  let modCC := runST fun _ => (IR.closureConvert mod).run' (1000, ∅, mod.shapes)
   return (mod, modCC)
 
 partial def lowerTopPatBind
@@ -591,10 +709,10 @@ open IRf
   let decls := decls.map fun
     | .idBind b => .idBind $ b.map fun (id, sch, fe) => (id, sch, HelperF.stripTy fe)
     | .patBind (pat, fe) => .patBind (pat, HelperF.stripTy fe)
-  runST fun _ => lowerModule decls ctors |>.run' (0, ∅)
+  runST fun _ => lowerModule decls ctors |>.run' (0, ∅, ∅)
 
 @[inline] def toLamF (ctors : Std.HashMap String Nat) (e : FExpr) : LExpr :=
-  runST fun _ => lowerFCore e (ctors := ctors) ∅ |>.run' (0, ∅)
+  runST fun _ => lowerFCore e (ctors := ctors) ∅ |>.run' (0, ∅, ∅)
 
 @[inline] def toLamFO (ctors : Std.HashMap String Nat) (e : FExpr) : LExpr :=
   optimizeLam (toLamF ctors e)
@@ -605,6 +723,7 @@ structure LoweringState where
   env    : Env
   ctors  : Std.HashMap String Nat
   arity  : Std.HashMap String Nat
+  shapes : ShapeMap
 deriving Inhabited
 
 @[inline] def withTyDecl (st : LoweringState) (ctors : Std.HashMap String Nat) : LoweringState :=
@@ -616,7 +735,7 @@ def lowerIdBind (st : LoweringState) (binds : Array BindingF) : LoweringState ×
   let env :=
     recs.foldl (fun ρ (fid, _, _, _) => ρ.insert fid fid)
     $ nonrecs.foldl (fun ρ (x, _) => ρ.insert x x) st.env
-  let (funs, gensym, arity) :=
+  let (funs, (gensym, arity, shapes)) :=
     runST fun _ => (do
       let recs <- recs.mapM fun (fid, selfN, ps, core) => do
         let (ps, core) := HelperF.etaExpandParams ps core
@@ -627,16 +746,16 @@ def lowerIdBind (st : LoweringState) (binds : Array BindingF) : LoweringState ×
           let (p0, rest, core) := HelperF.decomposeLamChain rhs h
           let base := #[p0] ++ rest
           let (allParams, core) := HelperF.etaExpandParams base core
-          let f <- lowerNonRecFun x allParams core env st.ctors
+          let f <- lowerNonRecFun x allParams core env st.ctors rhs.getTy
           pure (acc.push f)
         | _ => pure acc
-      pure $ recs ++ nonrecs).run (st.gensym, st.arity)
-  ({st with gensym, env, arity}, funs)
+      pure $ recs ++ nonrecs).run (st.gensym, st.arity, st.shapes)
+  ({st with gensym, env, arity, shapes}, funs)
 
 def lower1 (st : LoweringState) (e : FExpr) : LoweringState × LExpr :=
-  let (le, (gensym, arity)) :=
-    runST fun _ => lowerFCore e st.env st.ctors |>.run (st.gensym, st.arity)
-  ({st with gensym, arity}, le)
+  let (le, (gensym, arity, shapes)) :=
+    runST fun _ => lowerFCore e st.env st.ctors |>.run (st.gensym, st.arity, st.shapes)
+  ({st with gensym, arity, shapes}, le)
 
 end Incremental
 end IR

@@ -35,26 +35,28 @@ def sortedNames (s : Std.HashSet Name) : Array Name := s.toArray.qsort
 /-- we reuse the `M` monad found in lam.lean which carries a state where
   - gensym: counter
   - AMap: useless in CC/opt.
+  - ShapeMap: per-binding Shape; CC must set shapes for every binding it introduces.
 -/
 nonrec def fresh (h := "cc") : M σ Name := fresh h
 
-def mkEnv (envTag : Name) (fields : Array Name) (kont : Name -> LExpr) : LExpr :=
-  letI envName := "Γ"
-  .letRhs envName (.mkConstr envTag fields) (kont envName)
+/-- Fresh name + record its shape. -/
+@[inline] def freshSh (h : String) (sh : IR.Shape) : M σ Name := do
+  let n <- fresh h
+  IR.setShape n sh
+  return n
 
+def mkEnvM (envTag : Name) (fields : Array Name) (kont : Name -> M σ LExpr) : M σ LExpr := do
+  let envName <- freshSh "Γ" (IR.Shape.ctor envTag fields.size)
+  .letRhs envName (.mkConstr envTag fields) <$> kont envName
+
+def bindClosM (target : Name) (code : Name) (envName : Name) (kont : LExpr) : M σ LExpr := do
+  IR.setShape target (IR.Shape.ctor "𝐂" 2)
+  return .letRhs target (.mkConstr "𝐂" #[code, envName]) kont
+
+/-- Bind a closure with an already-allocated target name (no fresh).
+Returns the constructor LExpr; shape is recorded for `target`. -/
 def bindClos (target : Name) (code : Name) (envName : Name) (kont : LExpr) : LExpr :=
   .letRhs target (.mkConstr "𝐂" #[code, envName]) kont
-
-def mkPayload (arg env : Name) (kont : Name -> LExpr) : LExpr :=
-  letI p := "ρ"
-  .letRhs p (.mkPair arg env) (kont p)
-
-def proj (src : Name) (i : Nat) (kont : Name -> LExpr) : LExpr :=
-  letI x := "π" ++ toString i
-  .letRhs x (.proj src i) (kont x)
-
-def projPair (src : Name) (kont : Name -> Name -> LExpr) : LExpr :=
-  proj src 0 fun a => proj src 1 fun b => kont a b
 
 def freeVars (e : LExpr) : Std.HashSet Name :=
   fvExpr e
@@ -64,33 +66,32 @@ def tailAppDirectM
   (f : Name) (a : Name) : M σ (Array Stmt × Tail) := do
   match envVar? with
   | some e =>
-    let pl <- fresh "ρ"
+    let pl <- freshSh "ρ" IR.Shape.pair
     return (#[.let1 pl (.mkPair a e)], .app f pl)
   | none =>
-    let env <- fresh "Γ"
-    let pl <- fresh "ρ"
+    let env <- freshSh "Γ" IR.Shape.unknown -- projected env, arity unknown
+    let pl  <- freshSh "ρ" IR.Shape.pair
     return (#[.let1 env (.proj payload 1), .let1 pl (.mkPair a env)], .app f pl)
 
 def tailAppViaClosureM (clos : Name) (a : Name) : M σ (Array Stmt × Tail) := do
-  let code <- fresh "_code"
-  let env  <- fresh "Γc"
-  let pl   <- fresh "ρc"
+  let code <- freshSh "_code" IR.Shape.fn
+  let env  <- freshSh "Γc" IR.Shape.unknown -- env shape (arity unknown here)
+  let pl   <- freshSh "ρc" IR.Shape.pair
   return ( #[ .let1 code (.proj clos 0)
             , .let1 env  (.proj clos 1)
             , .let1 pl   (.mkPair a env)]
          , Tail.app code pl)
 
 def tailAppGlobalM (f : Name) (a : Name) : M σ (Array Stmt × Tail) := do
-  let env <- fresh "Γ₀"
-  let pl  <- fresh "ρ"
+  let env <- freshSh "Γ₀" (IR.Shape.ctor "𝐄" 0)
+  let pl  <- freshSh "ρ" IR.Shape.pair
   return ( #[ .let1 env (.mkConstr "𝐄" #[])
             , .let1 pl  (.mkPair a env)]
          , Tail.app f pl)
 
 attribute [inline]
-  proj  bindClos   mkPayload
+  bindClos
   fresh freeVars
-  mkEnv projPair
   sortedNames
 
 /-- Monadic rewriting of a tail inside a code body (can lift lambdas in branches).
@@ -157,36 +158,45 @@ def emitLetCallInCode
   (x f a : Name) (k : LExpr) : M σ LExpr := do
   if selfVar?.isEqSome f then
     let pl <- fresh "ρ"
+    IR.setShape pl IR.Shape.pair
     match envVar? with
     | some e =>
       return .letRhs pl (.mkPair a e)
            $ .letRhs x  (.call selfCode pl) k
     | none =>
       let env <- fresh "Γ"
+      IR.setShape env IR.Shape.unknown
       return .letRhs env (.proj payload 1)
            $ .letRhs pl  (.mkPair a env)
            $ .letRhs x   (.call selfCode pl) k
   else if f ∈ codeSet then
     let pl <- fresh "ρ"
+    IR.setShape pl IR.Shape.pair
     match envVar? with
     | some e =>
       return .letRhs pl (.mkPair a e)
            $ .letRhs x  (.call f pl) k
     | none =>
       let env <- fresh "Γ"
+      IR.setShape env IR.Shape.unknown
       return .letRhs env (.proj payload 1)
            $ .letRhs pl  (.mkPair a env)
            $ .letRhs x   (.call f pl) k
   else if f ∈ gCodes then
     let env <- fresh "Γ₀"
+    IR.setShape env (IR.Shape.ctor "𝐄" 0)
     let pl  <- fresh "ρ"
+    IR.setShape pl IR.Shape.pair
     return .letRhs env (.mkConstr "𝐄" #[])
          $ .letRhs pl  (.mkPair a env)
          $ .letRhs x   (.call f pl) k
   else
     let code <- fresh "_code"
+    IR.setShape code IR.Shape.fn
     let env  <- fresh "Γc"
+    IR.setShape env IR.Shape.unknown
     let pl   <- fresh "ρc"
+    IR.setShape pl IR.Shape.pair
     return .letRhs code (.proj f 0)
          $ .letRhs env  (.proj f 1)
          $ .letRhs pl   (.mkPair a env)
@@ -241,7 +251,7 @@ partial def expr (m : NMap) : LExpr -> LExpr
   | .letRhs x r b => .letRhs x (rhs m r) (expr (m.erase x) b)
   | .letRec fs b =>
     let m' := fs.foldl (init := m) (fun acc f => acc.erase f.fid |>.erase f.param)
-    let fs' := fs.map (fun ⟨fid,p,body⟩ => ⟨fid, p, expr (m'.erase p) body⟩)
+    let fs' := fs.map (fun f => {f with body := expr (m'.erase f.param) f.body})
     .letRec fs' (expr m' b)
   | .seq binds t => .seq (binds.map (fun (.let1 x r) => .let1 x (rhs m r))) (tail m t)
 end
@@ -284,21 +294,21 @@ partial def ccCodeBodyM
     let capVars' := sortedNames capsSet
     let payload := "payload"
     let codeSet' := codeSet.insert fid'
+    -- The code pointer's payload is the closure-call pair ⟨arg, env⟩.
+    IR.setShape payload IR.Shape.pair
+    IR.setShape fid' (IR.Shape.ctor "𝐂" 2)
     let (lb, liftedFuns) <-
       ccLiftedFunBodyM
         gCodes fid' payload p
         capVars' codeSet' none b
-    let funDef : LFun := ⟨fid', payload, lb⟩
+    let funDef : LFun := {fid := fid', param := payload, body := lb, paramShape := .pair}
     let (body', fs) <-
       ccCodeBodyM
         gCodes fid paramPayload origParam
         capVars codeSet selfVar? envVar? body
---    let newBody :=
---      mkEnv "𝐄" capVars' fun env =>
---        bindClos x fid' env body'
-    let newBody :=
-      mkEnv "𝐄" capVars' fun env =>
-        bindClos x fid' env (fuseImmediateTailCall env x fid' body')
+    IR.setShape x (IR.Shape.ctor "𝐂" 2)
+    let newBody <- mkEnvM "𝐄" capVars' fun env => pure $
+      bindClos x fid' env (fuseImmediateTailCall env x fid' body')
     return (newBody, liftedFuns.push funDef ++ fs)
 
   | .letVal x v body => do
@@ -336,12 +346,24 @@ partial def ccLiftedFunBodyM
   (selfVar? : Option Name := none)
   (body : LExpr)
   : M σ (LExpr × Array LFun) := do
-  let aN    := "α"
-  let envN  := "Γ"
+  -- Fresh per-function names for the destructured arg & env so the
+  -- global ShapeMap doesn't collide across nested lambdas.
+  let aN   <- fresh "α"
+  let envN <- fresh "Γ"
+  -- payload[0] is the user-level arg; reuse its existing shape if known.
+  let origSh <- IR.getShape origParam
+  IR.setShape aN origSh
+  -- payload[1] is the captures env; arity = capVars.size.
+  IR.setShape envN (IR.Shape.ctor "𝐄" capVars.size)
+  -- After CC, origParam still aliases α with the same shape.
+  IR.setShape origParam origSh
   let (inner, fs) <-
     ccCodeBodyM
       gCodes fid payload origParam
       capVars codeSet selfVar? (some envN) body
+  -- Captured variables keep their original (outer) shapes which are
+  -- already present in the shape map; their re-bindings via `.proj envN i`
+  -- inherit those via copyShape from the original capVars[i] entry.
   let wrapped :=
     .letRhs aN  (.proj payload 0) $
     .letRhs envN (.proj payload 1) $
@@ -407,14 +429,16 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     let fid <- fresh "fn"
     let capsSet := (fvExpr b).erase p
     let capVars := sortedNames capsSet
-    let payload := "payload"
+    let payload <- fresh "payload"
+    IR.setShape payload IR.Shape.pair
+    IR.setShape fid (IR.Shape.ctor "𝐂" 2)
     let codeSet : CodeSet := (∅ : CodeSet).insert fid
     let (liftedBody, fsL) <- ccLiftedFunBodyM gCodes fid payload p capVars codeSet none b
-    let funDef : LFun := ⟨fid, payload, liftedBody⟩
+    let funDef : LFun := {fid, param := payload, body := liftedBody, paramShape := .pair}
     let (body', newFuns) <- ccExpr gCodes body
-    let newBody :=
-      mkEnv "𝐄" capVars fun env =>
-        bindClos x fid env (fuseImmediateTailCall env x fid body')
+    IR.setShape x (IR.Shape.ctor "𝐂" 2)
+    let newBody <- mkEnvM "𝐄" capVars fun env => pure $
+      bindClos x fid env (fuseImmediateTailCall env x fid body')
     return (newBody, fsL.push funDef ++ newFuns)
 
   | .letVal x v body => do
@@ -424,8 +448,11 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
   | .letRhs x (.call f a) body => do
     if f ∈ gCodes then
       let env0 <- fresh "Γ₀"
+      IR.setShape env0 (IR.Shape.ctor "𝐄" 0)
       let pl   <- fresh "ρ"
+      IR.setShape pl IR.Shape.pair
       let (b', fs) <- ccExpr gCodes body
+      -- x's shape (call result) was set by ftransform; preserve it.
       let e' :=
         .letRhs env0 (.mkConstr "𝐄" #[])
         $ .letRhs pl   (.mkPair a env0)
@@ -433,8 +460,11 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
       return (e', fs)
     else
       let code <- fresh "_code"
+      IR.setShape code IR.Shape.fn
       let env  <- fresh "Γc"
+      IR.setShape env IR.Shape.unknown
       let pl   <- fresh "ρc"
+      IR.setShape pl IR.Shape.pair
       let (b', fs) <- ccExpr gCodes body
       let e' :=
         .letRhs code (.proj f 0)
@@ -451,18 +481,24 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
     -- Possibly mutual group
     let ids := funs.map (·.1)
     let fvBodies : Std.HashSet Name :=
-      funs.foldl (fun acc ⟨_, p, b⟩ => acc ∪ (fvExpr b).erase p) ∅
+      funs.foldl (fun acc f => acc ∪ (fvExpr f.body).erase f.param) ∅
     let capsSet := ids.foldl (·.erase) fvBodies
     let capVars := sortedNames capsSet
     let codeSet : CodeSet := ids.foldl (·.insert) ∅
     -- Convert each function to payload convention
-    let funs' : Array LFun <- funs.flatMapM fun ⟨fid, p, b⟩ => do
-        let payload := "payload"
-        let (body', fs) <- ccLiftedFunBodyM gCodes fid payload p capVars codeSet none b
-        pure $ #[⟨fid, payload, body'⟩] ++ fs
+    let funs' : Array LFun <- funs.flatMapM fun f => do
+        let payload <- fresh "payload"
+        IR.setShape payload IR.Shape.pair
+        IR.setShape f.fid (IR.Shape.ctor "𝐂" 2)
+        let (body', fs) <-
+          ccLiftedFunBodyM gCodes f.fid payload f.param capVars codeSet none f.body
+        pure $ #[{fid := f.fid, param := payload, body := body', paramShape := .pair}] ++ fs
     let (body', tailFuns) <- ccExpr gCodes body
 
-    let wrappers : Array (Name × Name) <- ids.mapM (fun fid => (fid, ·) <$> fresh (fid ++ "#clo"))
+    let wrappers : Array (Name × Name) <- ids.mapM fun fid => do
+      let w <- fresh (fid ++ "#clo")
+      IR.setShape w (IR.Shape.ctor "𝐂" 2)
+      pure (fid, w)
     let renameMap : Rename.NMap := wrappers.foldl (fun m (fid, w) => m.insert fid w) ∅
     let bodyRenamed := Rename.expr renameMap body'
 
@@ -471,15 +507,12 @@ partial def ccExpr (gCodes : CodeSet) : LExpr -> M σ (LExpr × Array LFun)
         let (fid, w) := wrappers[i]
         bindClos w fid envName (bindClosures (i + 1) envName k)
       else k
-    let groupIntro :=
-      mkEnv "𝐄" capVars fun envName =>
-        let fused :=
-          funs.foldl
-            (init := bodyRenamed)
-            (fun acc ⟨fid, _, _⟩ => fuseImmediateTailCall envName fid fid acc)
-        bindClosures 0 envName fused
-    --let groupIntro :=
-    --  mkEnv "𝐄" capVars fun envName => bindClosures 0 envName body'
+    let groupIntro <- mkEnvM "𝐄" capVars fun envName => pure $
+      let fused :=
+        funs.foldl
+          (init := bodyRenamed)
+          (fun acc f => fuseImmediateTailCall envName f.fid f.fid acc)
+      bindClosures 0 envName fused
     return (groupIntro, funs' ++ tailFuns)
 end
 end CC
@@ -491,12 +524,16 @@ section open CC variable {σ}
 - the variant `closureConvert` converts a whole module. Usually this should be used.
 -/
 def closureConvertFun (gCodes : CC.CodeSet) (f : LFun) : M σ (LFun × Array LFun) := do
-  let pl := "payload"
+  let pl <- fresh "payload"
+  IR.setShape pl IR.Shape.pair
+  IR.setShape f.fid (IR.Shape.ctor "𝐂" 2)
+  -- Seed the user param's shape from LFun.paramShape (set by ftransform).
+  IR.setShape f.param f.paramShape
   let capVars : Array Name := #[]
-  let {fid, param, body} := f
+  let {fid, param, body, ..} := f
   let codeSet : CodeSet := {f.fid}
   let (body, lifted) <- ccLiftedFunBodyM gCodes fid pl param capVars codeSet none body
-  return ({fid, param := pl, body}, lifted)
+  return ({fid, param := pl, body, paramShape := .pair}, lifted)
 
 @[inherit_doc closureConvertFun]
 def closureConvert (m : LModule) : M σ LModule := do
@@ -511,36 +548,42 @@ def closureConvert (m : LModule) : M σ LModule := do
   -- `seq2 f as bs` is `map f as ++ map f bs` but in one go.
   let funs := Array.seq2 (fun lf => {lf with body := optimizeLam lf.body}) outFuns liftedMain
   let main := {main' with body := optimizeLam main'.body}
-  return {funs, main}
+  let shapes <- IR.getShapeMap
+  return {funs, main, shapes}
 end
 
 namespace Incremental
 structure CCState where
   gensym : Nat
   gCodes : CC.CodeSet
-deriving Inhabited
+  shapes : ShapeMap := ∅
+
+instance : Inhabited CCState where
+  default := { gensym := 0, gCodes := ∅, shapes := ∅ }
 
 @[inline] def seedWith (st : CCState) (ids : Array Name) : CCState :=
   {st with gCodes := ids.foldl .insert st.gCodes}
 @[inline] def seedModule (st : CCState) (m : LModule) : CCState :=
-  {st with gCodes := m.funs.foldl (·.insert ·.fid) st.gCodes |>.insert m.main.fid}
+  {st with gCodes := m.funs.foldl (·.insert ·.fid) st.gCodes |>.insert m.main.fid
+  ,        shapes := st.shapes ∪ m.shapes}
 
 def stepFuns (st : CCState) (funs : Array LFun) : (CCState × Array LFun) :=
-  let ((gCodes, out), gensym, _) :=
+  let ((gCodes, out), (gensym, _, shapes)) :=
     runST fun _ => (do
       funs.foldlM (init := (st.gCodes, #[])) fun (g, acc) f => do
         let (f, lifted) <- IR.closureConvertFun g f
         let optf := {f with body := IR.optimizeLam f.body}
         let optLifted := lifted.map fun (f : LFun) => {f with body := IR.optimizeLam f.body}
         let g := optLifted.foldl (Std.TreeSet.insert · $ LFun.fid ·) (g.insert f.fid)
-        pure (g, (acc : Array LFun).push optf ++ optLifted)).run (st.gensym, ∅)
-  ({gensym, gCodes}, out)
+        pure (g, (acc : Array LFun).push optf ++ optLifted)).run (st.gensym, ∅, st.shapes)
+  ({gensym, gCodes, shapes}, out)
 
 def stepExpr (st : CCState) (e : LExpr) : CCState × LExpr × Array LFun :=
-  let ((e, lifted), gensym, _) := runST fun _ => (IR.CC.ccExpr st.gCodes e).run (st.gensym, ∅)
+  let ((e, lifted), (gensym, _, shapes)) :=
+    runST fun _ => (IR.CC.ccExpr st.gCodes e).run (st.gensym, ∅, st.shapes)
   let lifted := lifted.map fun f => {f with body := IR.optimizeLam f.body}
   let gCodes := lifted.foldl (·.insert ·.fid) st.gCodes
-  ({gensym, gCodes}, e, lifted)
+  ({gensym, gCodes, shapes}, e, lifted)
 end Incremental
 
 end IR

@@ -93,8 +93,8 @@ partial def fvExpr : LExpr -> Std.HashSet Name
     s ∪ sb.erase x
   | .letRec funs b =>
     let sb  := funs.foldl (·.erase ·.fid) (fvExpr b)
-    funs.foldl (init := sb) fun acc ⟨fid, p, body⟩ =>
-      let fb := fvExpr body |>.erase fid |>.erase p
+    funs.foldl (init := sb) fun acc f =>
+      let fb := fvExpr f.body |>.erase f.fid |>.erase f.param
       acc ∪ fb
   | .seq binds tail =>
     letI sb := binds.foldl (init := ∅) fun acc (.let1 _ rhs) => acc ∪ (fvRhs rhs)
@@ -225,7 +225,7 @@ partial def cfExpr (env : KEnv) : LExpr -> LExpr
   | .letRec funs body =>
     letI ids   := funs.map (·.fid)
     let env'  := env.eraseMany ids
-    letI funs' := funs.map fun ⟨fid, p, b⟩ => ⟨fid, p, cfExpr (env'.erase p) b⟩
+    letI funs' := funs.map fun f => {f with body := cfExpr (env'.erase f.param) f.body}
     .letRec funs' (cfExpr env' body)
   | .seq binds tail =>
     match cfTail env tail with
@@ -323,7 +323,7 @@ partial def countExpr : LExpr -> UMap -> UMap
   | .letVal _ v b, m  => countExpr b (countValue v m)
   | .letRhs _ r b, m  => countExpr b (countRhs r m)
   | .letRec fs b, m   =>
-    let m := fs.foldl (init := m) fun acc ⟨_, _, body⟩ => countExpr body acc
+    let m := fs.foldl (init := m) fun acc f => countExpr f.body acc
     countExpr b m
   | .seq binds tail, m =>
     let m := binds.foldl (init := m) fun acc (.let1 _ rhs) => countRhs rhs acc
@@ -386,9 +386,9 @@ partial def occursInExpr (x : Name) : LExpr -> Bool
     occursInRhs x r || if y == x then false else occursInExpr x b
   | .letRec funs b =>
     let inBody := occursInExpr x b
-    let inFuns := funs.any fun ⟨fid, p, body⟩ =>
-      if fid == x || p == x then false
-      else occursInExpr x body
+    let inFuns := funs.any fun f =>
+      if f.fid == x || f.param == x then false
+      else occursInExpr x f.body
     inBody || inFuns
   | .seq binds tail =>
     binds.any (fun (.let1 _ rhs) => occursInRhs x rhs) || occursInTail x tail
@@ -430,8 +430,8 @@ partial def cpdce (env : AEnv) (uses : UMap) : LExpr -> LExpr
     else .letRhs x rhs' body'
 
   | .letRec funs body =>
-    let funs' := funs.map fun ⟨fid, p, b⟩ =>
-      ⟨fid, p, cpdce (env.erase fid |>.erase p) uses b⟩
+    let funs' := funs.map fun f =>
+      {f with body := cpdce (env.erase f.fid |>.erase f.param) uses f.body}
     let body' := cpdce env uses body
     let keep := funs'.any $ occursIn body' ∘ LFun.fid
     if keep then .letRec funs' body' else body'
@@ -504,7 +504,7 @@ partial def tailcallify : LExpr -> LExpr := fun e =>
     .letRhs x rhs (tailcallify body)
 
   | .letRec funs body =>
-    letI funs' := funs.map fun ⟨fid, p, b⟩ => ⟨fid, p, tailcallify b⟩
+    letI funs' := funs.map fun f => {f with body := tailcallify f.body}
     .letRec funs' (tailcallify body)
 
   | .seq binds tail =>

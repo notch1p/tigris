@@ -349,7 +349,7 @@ partial def lowerE
           let funIR <- lowerRecFun fname selfN params core ρ ctors
           let r <- fresh "r"
           let cont <- k r
-          return .letRec #[⟨fname, funIR.param, funIR.body⟩]
+          return .letRec #[{fid := fname, param := funIR.param, body := funIR.body}]
                  (.letVal r (.var fname) cont)
         | none => lowerE lam ρ ctors k
 
@@ -378,13 +378,13 @@ partial def lowerRecFun
   if params.size = 0 then
     let p <- fresh "arg"
     let body <- lower core (ρ₀.insert p p) ctors
-    return ⟨fid, p, body⟩
+    return {fid, param := p, body}
   else
     let tupleParam <- fresh "args"
     let ρ := params.foldl (init := ρ₀) fun acc p => acc.insert p p
     let loweredCore <- lower core ρ ctors
     let body' := destructArgsPrelude tupleParam params loweredCore
-    return ⟨fid, tupleParam, body'⟩
+    return {fid, param := tupleParam, body := body'}
 
 partial def bindPatBinds
   (roots : Array Name)
@@ -546,16 +546,16 @@ partial def lowerModule (decls : Array TopDeclT) : M σ (LModule × LModule) := 
   let param := "arg"
   let body <- optimizeLam <$> build 0 ∅ none ∅
   let main : LFun := {fid, param, body}
-  let mod := ⟨#[], main⟩
-  return Prod.mk mod (runST fun _ => (IR.closureConvert mod).run' (1000, ∅))
+  let mod : LModule := {funs := #[], main}
+  return Prod.mk mod (runST fun _ => (IR.closureConvert mod).run' (1000, ∅, ∅))
 
 end
 
-def toLamModuleT decls := runST fun _ => IR.lowerModule decls |>.run' (0, ∅)
-def toLamT s e := runST fun _ => lower e (ctors := s) |>.run' (0, ∅)
+def toLamModuleT decls := runST fun _ => IR.lowerModule decls |>.run' (0, ∅, ∅)
+def toLamT s e := runST fun _ => lower e (ctors := s) |>.run' (0, ∅, ∅)
 def toLamTO s e := optimizeLam (toLamT s e)
 def dumpLamModuleT decls := toLamModuleT decls |>.map fmtModule fmtModule
 def toLamModuleT1 s e :=
-  letI e := optimizeLam $ runST fun _ => lower e (ctors := s) |>.run' (0, ∅)
-  runST fun _ => closureConvert ⟨#[], "main", "arg", e⟩ |>.run' (0, ∅)
+  letI e := optimizeLam $ runST fun _ => lower e (ctors := s) |>.run' (0, ∅, ∅)
+  runST fun _ => closureConvert {funs := #[], main := {fid := "main", param := "arg", body := e}} |>.run' (0, ∅, ∅)
 attribute [inline] toLamModuleT toLamT toLamTO dumpLamModuleT toLamModuleT1

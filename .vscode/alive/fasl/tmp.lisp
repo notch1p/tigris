@@ -1,3 +1,27 @@
+;; == Optimized IR CC'd ==
+
+fn1000 (payload) {
+  let α = payload[0]
+  let _pL#?x₀ = α[0]
+  let p1 = _pL#?x₀[0]
+  let p2 = _pL#?x₀[1]
+  let p3 = ADD(p1, p2)
+  RET p3
+}
+
+main (payload) {
+  let Γ = 𝐄⟦⟧
+  let lam4 = 𝐂⟦fn1000, Γ⟧
+  letι c5 = 1
+  letι c6 = 2
+  let p7 = ⟨c5, c6⟩
+  letι u8 = ()
+  let pair9 = ⟨p7, u8⟩
+  _code1001 := lam4[0];
+  Γc1002 := lam4[1];
+  ρc1003 := ⟨pair9, Γc1002⟩;
+  _code1001(ρc1003)ᵀ
+}
 ;; == Runtime ==
 (load "runtime.lisp")
 
@@ -8,61 +32,29 @@
 
 ; hoisted functions
 
-(defun |«<++>»| (|payload| |k|)
+(defun |fn1000| (|payload| |k|)
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|α| (car |payload|)))
-    (let ((|Γ| (cdr |payload|)))
-      (let ((|_pL#x| (car |α|)))
-        (let ((|_pR#x| (cdr |α|)))
-          (cond
-            ((eq (car |_pL#x|) '|Nil|)
-              (cond
-                ((eq (car |_pR#x|) '|Nil|)
-                  (let ((|c6| 0))
-                    (funcall (the function |k|) |c6|)))
-                (t
-                  (let ((|c7| 0))
-                    (funcall (the function |k|) |c7|)))))
-            ((eq (car |_pL#x|) '|Cons|)
-              (cond
-                ((eq (car |_pR#x|) '|Cons|)
-                  (format nil "~A" |_pL#x|)
-                  (let ((|p8| (svref (cdr |_pL#x|) 0)))
-                    (let ((|p9| (svref (cdr |p8|) 1)))
-                      (let ((|p10| (svref (cdr |_pR#x|) 0)))
-                        (let ((|p11| (svref (cdr |p10|) 1)))
-                          (let ((|p12| 0))
-                            (let ((|pair13| (cons |p9| |p11|)))
-                              (let ((|ρ1000| (cons |pair13| |Γ|)))
-                                (labels ((|k1| (|v0|)
-                                  (let ((|p15| (%int+ |p12| |v0|)))
-                                    (funcall (the function |k|) |p15|))))
-                                  (funcall #'|«<++>»| |ρ1000| #'|k1|))))))))))
-                (t
-                  (let ((|c16| 0))
-                    (funcall (the function |k|) |c16|)))))
-            (t
-              (let ((|c17| 0))
-                (funcall (the function |k|) |c17|)))))))))
+    (let ((|_pL#?x₀| (car |α|)))
+      (let ((|p1| (svref (cdr |_pL#?x₀|) 0)))
+        (let ((|p2| (svref (cdr |_pL#?x₀|) 1)))
+          (let ((|p3| (%int+ |p1| |p2|)))
+            (funcall (the function |k|) |p3|)))))))
 
 ; entrypoint
 (defun |main| (|payload| |k|)
+  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
   (let ((|Γ| (cons '|𝐄| (vector))))
-    (let ((|«<++>»#clo1004| (cons '|𝐂| (vector #'|«<++>»| |Γ|))))
-      (let ((|c18| 123))
-        (let ((|c19| 456))
-          (let ((|con20| (cons '|Nil| (vector))))
-            (let ((|con21| (cons '|Cons| (vector |c19| |con20|))))
-              (let ((|con22| (cons '|Cons| (vector |c18| |con21|))))
-                (let ((|c23| 374))
-                  (let ((|c24| 290))
-                    (let ((|con25| (cons '|Nil| (vector))))
-                      (let ((|con26| (cons '|Cons| (vector |c24| |con25|))))
-                        (let ((|con27| (cons '|Cons| (vector |c23| |con26|))))
-                          (let ((|pair28| (cons |con22| |con27|)))
-                            (let ((|_code1001| (svref (cdr |«<++>»#clo1004|) 0)))
-                              (let ((|Γc1002| (svref (cdr |«<++>»#clo1004|) 1)))
-                                (let ((|ρc1003| (cons |pair28| |Γc1002|)))
-                                  (funcall (the function |_code1001|) |ρc1003| |k|))))))))))))))))))
+    (let ((|lam4| (cons '|𝐂| (vector #'|fn1000| |Γ|))))
+      (let ((|c5| 1))
+        (let ((|c6| 2))
+          (let ((|p7| (cons |c5| |c6|)))
+            (let ((|u8| nil))
+              (let ((|pair9| (cons |p7| |u8|)))
+                (let ((|_code1001| (svref (cdr |lam4|) 0)))
+                  (let ((|Γc1002| (svref (cdr |lam4|) 1)))
+                    (let ((|ρc1003| (cons |pair9| |Γc1002|)))
+                      (funcall (the function |_code1001|) |ρc1003| |k|))))))))))))
 
 ; driver
 (defun |__start| ()

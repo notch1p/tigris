@@ -18,9 +18,6 @@ Simple codegen from CPS IR to SBCL (w/ labels + funcall).
   - store as-is if `f` is a local function-valued var
   - otherwise if `f` is toplevel/label-bound, store `#'f`
   - otherwise, store as-is.
-- `f(a, k)`:
-  - `(funcall f ...)` where f is local variable
-  - `(funcall #'f ...)` where f is toplevel/label-bound
 - `clos[0]`:
   - mark as function-valued if clos is constructed from 𝐂.
 - ite/switch to if/cond
@@ -31,14 +28,8 @@ Simple codegen from CPS IR to SBCL (w/ labels + funcall).
 
 namespace Codegen.CL open CPS
 
-inductive Shape where
-  | unknown
-  | pair
-  | ctor (tag : Name) (arity : Nat)
-  | fn -- function object inside value cell
-deriving Inhabited, BEq, Repr
-
-abbrev ShapeEnv := Std.HashMap Name Shape
+/-- `Shape` is now provided by the CPS IR. -/
+abbrev ShapeEnv := Std.HashMap Name CPS.Shape
 abbrev KontSet := Std.HashSet Name
 abbrev FunSet  := Std.HashSet Name
 
@@ -118,37 +109,11 @@ def emitPrim : IR.PrimOp -> String
 
 def isBoundVar : Name -> S Bool :=
   (get <&> (Std.HashMap.contains ∘ Ctx.shapes) <*> pure ·)
-def setShape (x : Name) (s : Shape) : S Unit :=
+def setShape (x : Name) (s : CPS.Shape) : S Unit :=
   modify fun ctx => {ctx with shapes := ctx.shapes.insert x s}
 def joinArgs (xs : Array Name) : String :=
   xs.foldl1D (· ++ " " ++ toString ·) ""
 attribute [inline] isBoundVar setShape joinArgs
-
-def recordShape (x : Name) : CRhs -> S Unit
-  | .mkPair _ _    => setShape x .pair
-  | .mkConstr t fs => setShape x (.ctor t fs.size)
-  | .alias y       =>
-    modify fun ctx =>
-      let sh := ctx.shapes.getD y .unknown
-      {ctx with shapes := ctx.shapes.insert x sh}
-  | .proj s i      =>
-    modify fun ctx@{shapes, payloadParam,..} =>
-      -- recall, payload = ⟨α, Γ⟩ where
-      -- α consists of uncurried args (in nested pair)
-      -- Γ is 𝐄⟦...] where ... contains the captured variables
-      if s == payloadParam then
-        if i == 0 then {ctx with shapes := shapes.insert x .pair} -- α
-        else {ctx with shapes := shapes.insert x .unknown}        -- Γ
-      else
-        match shapes.getD s .unknown with
-        | .ctor "𝐂" _ =>
-          if i == 0 then {ctx with shapes := shapes.insert x .fn}
-          else {ctx with shapes := shapes.insert x .unknown}
-        | .pair =>
-          if i == 1 then {ctx with shapes := shapes.insert x .pair}
-          else {ctx with shapes := shapes.insert x .unknown}
-        | _ => {ctx with shapes := shapes.insert x .unknown}
-  | _ => setShape x .unknown
 
 def asFuncValue (x : Name) : S String := do
   get <&> fun {shapes,knownFuns,..} =>
@@ -184,19 +149,10 @@ def emitCRhs : CRhs -> S String
   | .const k => return emitConst k
   | .alias y => return (sym y)
 
-def isProdRight : CRhs -> Bool × String
-  | .proj pr _ => (pr.startsWith "_pR", pr)
-  | _ => (false, "")
-
 mutual
-partial def emitLet1 (x : Name) (rhs : CRhs) (body : CExpr) : S String := do
-  if x.startsWith "_code" then /- very rough pattern matching temporary solution -/
-    if let (true, pr) := isProdRight rhs then
-      setShape x .fn
-      setShape pr $ .ctor "𝐂" 2
-
+partial def emitLet1 (x : Name) (sh : CPS.Shape) (rhs : CRhs) (body : CExpr) : S String := do
+  setShape x sh
   let rhsS <- emitCRhs rhs
-  recordShape x rhs -- emit first then update, important for recursive functions
   return s!"(let (({sym x} {rhsS}))\n\
               {<- ind}{<- withIndent (emitCExpr body)})"
 
@@ -249,35 +205,35 @@ partial def emitTail : CTail -> S String
 
 partial def emitLetRec (funs : Array CFun) (body : CExpr) : S String :=
   withKnownFuns funs do
-    let defs <- funs.mapM fun {payloadParam, kontParam, body, fid} => do
+    let defs <- funs.mapM fun f => do
       modify fun ctx =>
-        {ctx with localKont := ∅
-        ,         shapes    := Std.HashMap.insert ∅ payloadParam .pair
-        ,         payloadParam
-        ,         kontParam}
-      let b <- withIndent (emitCExpr body)
-      return s!"({sym fid} ({sym payloadParam} {sym kontParam})\n{b})"
+        {ctx with localKont    := ∅
+        ,         shapes       := Std.HashMap.insert ∅ f.payloadParam f.payloadShape
+        ,         payloadParam := f.payloadParam
+        ,         kontParam    := f.kontParam}
+      let b <- withIndent (emitCExpr f.body)
+      return s!"({sym f.fid} ({sym f.payloadParam} {sym f.kontParam})\n{b})"
     let defs := defs.foldl1D (· ++ "\n" ++ ·) ""
     return s!"(labels ({defs})\n{<- ind}{<- withIndent (emitCExpr body)})"
 
 partial def emitCExpr : CPS.CExpr -> S String
-  | .let1 x rhs b => emitLet1 x rhs b
+  | .let1 x sh rhs b => emitLet1 x sh rhs b
   | .letKont k p kb b => emitLetKont k p kb b
   | .letRec funs b => emitLetRec funs b
   | .tail t => emitTail t
 end
 
-def emitFun (knownFuns : FunSet) : CFun -> String
-  | {body, payloadParam, kontParam, fid} =>
-    let body := withIndent (withIndent (emitCExpr body)) |>.run' $
-      let shapes := Std.HashMap.insert ∅ payloadParam Shape.pair
-      { payloadParam
-      , kontParam
-      , knownFuns
-      , shapes}
-    let pragma := s!"(declare (optimize (speed 3) (safety 0) (debug 0)) \
-                              (ignorable {sym payloadParam}))"
-    s!"(defun {sym fid} ({sym payloadParam} {sym kontParam})\n  {pragma}\n  {body})\n"
+def emitFun (knownFuns : FunSet) (f : CFun) : String :=
+  let body := withIndent (withIndent (emitCExpr f.body)) |>.run' $
+    -- use payload shape
+    let shapes := Std.HashMap.insert ∅ f.payloadParam f.payloadShape
+    { payloadParam := f.payloadParam
+    , kontParam    := f.kontParam
+    , knownFuns
+    , shapes}
+  let pragma := s!"(declare (optimize (speed 3) (safety 0) (debug 0)) \
+                            (ignorable {sym f.payloadParam}))"
+  s!"(defun {sym f.fid} ({sym f.payloadParam} {sym f.kontParam})\n  {pragma}\n  {body})\n"
 
 def emitModule (m : CModule)
   (package : Option String := none) (addDriver := true)
@@ -296,4 +252,3 @@ def emitModule (m : CModule)
   (hd, funs, main, driver)
 
 end Codegen.CL
-

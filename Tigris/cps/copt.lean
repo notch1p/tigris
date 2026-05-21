@@ -22,13 +22,13 @@ partial def occursVarCTail (x : CName) : CTail -> Bool
     s == x || ar.any (occursVarCExpr x ∘ Prod.snd ∘ .snd) || d?.any (occursVarCExpr x)
   | .halt v => v == x
 partial def occursVarCExpr (x : CName) : CExpr -> Bool
-  | .let1 y rhs b =>
+  | .let1 y _ rhs b =>
     occursVarCRhs x rhs || if y == x then false else occursVarCExpr x b
   | .letKont kid param kbody body =>
     if kid == x || param == x then false
     else occursVarCExpr x kbody || occursVarCExpr x body
   | .letRec funs body =>
-    let matcher | ⟨f, p, k, _⟩ => f == x || p == x || k == x
+    let matcher (f : CFun) := f.fid == x || f.payloadParam == x || f.kontParam == x
     let bodyShadow := funs.any matcher
     let funBodies := funs.any fun f =>
       if matcher f then false else occursVarCExpr x f.body
@@ -37,7 +37,7 @@ partial def occursVarCExpr (x : CName) : CExpr -> Bool
 end
 
 partial def occursKontUse (k : CName) : CExpr -> Bool
-  | .let1 _ rhs b =>
+  | .let1 _ _ rhs b =>
     occursVarCRhs k rhs || occursKontUse k b
   | .letKont kid _ kbody body =>
     if kid == k then false else occursKontUse k kbody || occursKontUse k body
@@ -55,8 +55,8 @@ partial def occursKontUse (k : CName) : CExpr -> Bool
     | _ => false -- halt, matchFail
 
 partial def replaceKont (kOld kNew : CName) : CExpr -> CExpr
-  | .let1 x rhs b =>
-    .let1 x rhs (replaceKont kOld kNew b)
+  | .let1 x sh rhs b =>
+    .let1 x sh rhs (replaceKont kOld kNew b)
   | .letKont kid param kbody body =>
     if kid == kOld then
       .letKont kid param kbody body
@@ -81,8 +81,8 @@ partial def replaceKont (kOld kNew : CName) : CExpr -> CExpr
     .tail t'
 
 partial def inlineTrivialKont : CExpr -> CExpr
-  | .let1 x rhs b =>
-    .let1 x rhs (inlineTrivialKont b)
+  | .let1 x sh rhs b =>
+    .let1 x sh rhs (inlineTrivialKont b)
   | .letKont kid param kbody body =>
     match kbody with
     | .tail (.appKont k' v) =>
@@ -112,7 +112,7 @@ partial def inlineTrivialKont : CExpr -> CExpr
     .tail t'
 
 partial def substVarCPS (x y : CName) : CExpr -> CExpr
-  | .let1 z rhs b =>
+  | .let1 z sh rhs b =>
     let rhs' :=
       match rhs with
       | .prim op args    => .prim op (args.map (fun a => if a == x then y else a))
@@ -123,9 +123,9 @@ partial def substVarCPS (x y : CName) : CExpr -> CExpr
       | .const k         => .const k
       | .alias a         => .alias (if a == x then y else a)
     if z == x then
-      .let1 z rhs' b
+      .let1 z sh rhs' b
     else
-      .let1 z rhs' (substVarCPS x y b)
+      .let1 z sh rhs' (substVarCPS x y b)
   | .letKont kid param kbody body =>
     let kbody' := if param == x then kbody else substVarCPS x y kbody
     let body'  := if kid == x then body else substVarCPS x y body
@@ -163,11 +163,11 @@ partial def substVarCPS (x y : CName) : CExpr -> CExpr
     .tail t'
 
 partial def dceCExpr : CExpr -> CExpr
-  | .let1 x (.alias y) b => dceCExpr (substVarCPS x y b)
-  | .let1 x rhs b =>
+  | .let1 x _ (.alias y) b => dceCExpr (substVarCPS x y b)
+  | .let1 x sh rhs b =>
     let b' := dceCExpr b
     if occursVarCExpr x b' then
-      .let1 x rhs b'
+      .let1 x sh rhs b'
     else b'
   | .letKont kid param kbody body =>
     let kbody' := dceCExpr kbody

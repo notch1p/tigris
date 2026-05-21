@@ -17,6 +17,7 @@ pipeline:
 
 namespace CPS
 open IR (PrimOp Const comma fmtName fmtConst fmtPrim)
+export IR (Shape ShapeMap)
 
 abbrev CName := Name
 abbrev Ren := Std.HashMap CName CName
@@ -46,9 +47,13 @@ inductive CTail where
   | matchFail   (pat : Array Name)
 deriving Repr, Inhabited, BEq
 
-/-- CPS expression in ANF: pure let1 / letKont / local fun groups, ending with a tail. -/
+/-- CPS expression in ANF: pure let1 / letKont / local fun groups, ending with a tail.
+
+`let1` carries the static `Shape` of `x` — set at IR construction time so the
+SBCL backend never needs to guess. `letKont`'s param shape is implicit `.unknown`
+(it's the result of a function call). -/
 inductive CExpr where
-  | let1    (x : CName) (rhs : CRhs) (body : CExpr)
+  | let1    (x : CName) (sh : Shape) (rhs : CRhs) (body : CExpr)
   | letKont (kid : CName) (param : CName) (kBody : CExpr) (body : CExpr)
   | letRec  (funs : Array CFun) (body : CExpr)
   | tail    (t : CTail)
@@ -57,7 +62,11 @@ deriving Repr, Inhabited, BEq
 structure CFun where
   fid          : CName
   payloadParam : CName
-  kontParam    : CName
+  /-- Shape of `payloadParam`. For closure-converted code pointers this is
+  always `.pair` (payload = `⟨arg, env⟩`); for synthesized entry points
+  like `__start` it may be `.unknown`. -/
+  payloadShape : Shape := .pair
+  kontParam    : CName  -- conventionally a function value (continuation)
   body         : CExpr
 deriving Repr, Inhabited, BEq
 
@@ -69,6 +78,12 @@ structure CModule where
 deriving Repr, Inhabited
 
 section PP open Std Format
+
+def fmtShape : Shape -> Format
+  | .unknown    => "·"
+  | .pair       => "⟨,⟩"
+  | .ctor t ar  => s!"«{t}/{ar}»"
+  | .fn         => "fn"
 
 def fmtCRhs : CRhs -> Format
   | .prim op args =>
@@ -108,9 +123,9 @@ where
 
 
 partial def fmtCExpr : CExpr -> Format
-  | .let1 x r b =>
+  | .let1 x sh r b =>
     group $ "let"
-      <> group (fmtName x <> "=" ++ indentD (fmtCRhs r))
+      <> group (fmtName x <> ":" <> fmtShape sh <> "=" ++ indentD (fmtCRhs r))
         ++ "\n"
         ++ (fmtCExpr b)
   | .letKont k p kb b =>
@@ -119,13 +134,13 @@ partial def fmtCExpr : CExpr -> Format
     ++ "\n"
     ++ (fmtCExpr b)
   | .letRec funs b =>
-    let ffmt
-      | {fid, payloadParam, kontParam, body} =>
-        group $
-          indentD ("label" <> fid ++ paren (fmtName payloadParam
-                                            ++ comma
-                                            ++ fmtName kontParam)
-                  ++ ":" ++ indentD (fmtCExpr body))
+    let ffmt (f : CFun) :=
+      group $
+        indentD ("label" <> f.fid ++ paren (fmtName f.payloadParam
+                                          ++ ":" ++ fmtShape f.payloadShape
+                                          ++ comma
+                                          ++ fmtName f.kontParam)
+                ++ ":" ++ indentD (fmtCExpr f.body))
     group $ "letω"
       <> group ((joinSep (funs.foldr (List.cons ∘ ffmt) []) line) <+> "in")
     ++ "\n"
@@ -133,19 +148,18 @@ partial def fmtCExpr : CExpr -> Format
   | .tail t => fmtCTail t
 end
 
-def fmtCFun : CFun -> Format
-  | {fid, payloadParam, kontParam, body} =>
-    group $ (fmtName fid <> paren (fmtName payloadParam
+def fmtCFun (f : CFun) : Format :=
+  group $ (fmtName f.fid ++ paren (fmtName f.payloadParam
+                                   ++ ":" ++ fmtShape f.payloadShape
                                    ++ comma
-                                   ++ fmtName kontParam))
-      <> "{" ++ (indentD (fmtCExpr body) ++ line) ++ "}"
+                                   ++ fmtName f.kontParam))
+    <> "{" ++ (indentD (fmtCExpr f.body) ++ line) ++ "}"
 
-def fmtCModule : CModule -> Format
-  | {funs, main} =>
-    let fs := funs.foldr (List.cons ∘ fmtCFun) []
-    group $ joinSep fs (line ++ line)
-      ++ (if funs.isEmpty then .nil else line ++ line)
-      ++ fmtCFun main
+def fmtCModule (m : CModule) : Format :=
+  let fs := m.funs.foldr (List.cons ∘ fmtCFun) []
+  group $ joinSep fs (line ++ line)
+    ++ (if m.funs.isEmpty then .nil else line ++ line)
+    ++ fmtCFun m.main
 
 end PP
 

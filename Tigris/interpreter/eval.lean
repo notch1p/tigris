@@ -292,4 +292,3 @@ abbrev defaultVE : VEnv where
 @[always_inline, inline] def eval! s (e : VEnv := defaultVE) := parse! s |> eval e
 
 end Interpreter
-

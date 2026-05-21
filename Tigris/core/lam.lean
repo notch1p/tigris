@@ -13,6 +13,30 @@ inductive Const where
   | unit | int (i : Int) | bool (b : Bool) | str (s : String)
 deriving Repr, BEq, Inhabited
 
+/--
+Used by the SBCL backend to decide concrete lowerings
+(car/cdr vs svref, funcall vs direct call, #'fn vs sym).
+Inferred at the Lambda IR lowering stage from FExpr
+and propagated through CC, CPS.
+-/
+inductive Shape where
+  | unknown
+  | pair
+  | ctor (tag : Name) (arity : Nat)
+  /-- a value that is a function (code pointer extracted from a closure,
+      or a value that must be funcall'd). -/
+  | fn
+deriving Repr, Inhabited, BEq
+
+abbrev ShapeMap := Std.HashMap Name Shape
+
+@[inline] def Shape.isFn : Shape -> Bool
+  | .fn => true | _ => false
+@[inline] def Shape.isPair : Shape -> Bool
+  | .pair => true | _ => false
+@[inline] def Shape.isCtor : Shape -> Bool
+  | .ctor .. => true | _ => false
+
 instance : ToString Const where
   toString
   | .unit => "()"
@@ -93,6 +117,10 @@ structure LFun where
   fid    : Name
   param  : Name
   body   : LExpr
+  /-- Shape of `param` at function entry.
+  - Before closure conversion: shape of the user-level argument.
+  - After closure conversion: always `.pair` because the closure payload is encoded so -/
+  paramShape : Shape := .unknown
 deriving Repr, Inhabited
 
 end
@@ -103,7 +131,11 @@ attribute [inherit_doc Value] Rhs Stmt Tail LExpr
 structure LModule where
   funs : Array LFun
   main : LFun
-deriving Repr, Inhabited
+  /-- Keys are LExpr-level Names. -/
+  shapes : ShapeMap := ∅
+
+instance : Inhabited LModule where
+  default := { funs := ∅, main := default, shapes := ∅ }
 
 section PP open Std Format
 
@@ -181,10 +213,9 @@ partial def fmtLExpr : LExpr -> Format
     ++ "\n"
     ++ (fmtLExpr b)
   | .letRec funs b =>
-    let ffmt
-      | ⟨fid, p, body⟩ =>
-        group $
-          indentD ("label" <> fid ++ paren p ++ ":" ++ indentD (fmtLExpr body))
+    let ffmt f :=
+      group $
+        indentD ("label" <> f.fid ++ paren f.param ++ ":" ++ indentD (fmtLExpr f.body))
     group $ "letω"
       <> group ((joinSep (funs.foldr (List.cons ∘ ffmt) []) line) <+> "in")
     ++ "\n"
@@ -192,32 +223,49 @@ partial def fmtLExpr : LExpr -> Format
 end
 
 def fmtFun : LFun -> Std.Format
-  | {fid, param, body} =>
+  | {fid, param, body,..} =>
     group $ (fmtName fid <> paren (fmtName param))
       <> "{" ++ (indentD (fmtLExpr body) ++ line) ++ "}"
 
-def fmtModule : LModule -> Std.Format
-  | {funs, main} =>
-    let fs := funs.foldr (List.cons ∘ fmtFun) []
-    group $ joinSep fs (line ++ line)
-      ++ (if funs.isEmpty then .nil else line ++ line)
-      ++ fmtFun main
+def fmtModule (m : LModule) : Std.Format :=
+  let funs := m.funs
+  let fs := funs.foldr (List.cons ∘ fmtFun) []
+  group $ joinSep fs (line ++ line)
+    ++ (if funs.isEmpty then .nil else line ++ line)
+    ++ fmtFun m.main
 end PP
 
 abbrev AMap := Std.HashMap Name Nat
-abbrev M (σ) := StateRefT (Nat × AMap) (ST σ)
+/-- M state:
+- `Nat`: gensym counter
+- `AMap`: arity table
+- `ShapeMap`: per-binding Shape, propagated FExpr → LExpr → CC → CPS.
+-/
+abbrev MState := Nat × AMap × ShapeMap
+abbrev M (σ) := StateRefT MState (ST σ)
 
 @[inline] def fresh (h := "x") : M σ Name :=
-  modifyGet (fun (n, am) => (h ++ toString n, (n + 1, am)))
+  modifyGet (fun (n, am, sm) => (h ++ toString n, (n + 1, am, sm)))
 
 @[inline] def setArity (n : Name) (k : Nat) : M σ Unit :=
-  modify fun (i, am) => (i, am.insert n k)
+  modify fun (i, am, sm) => (i, am.insert n k, sm)
 @[inline] def getArity (n : Name) : M σ (Option Nat) :=
-  get <&> (·.2.get? n)
+  get <&> (·.2.1.get? n)
 @[inline] def copyArity (x y : Name) : M σ Unit := do
   if let some a <- getArity x
   then setArity y a
   else pure ()
+
+@[inline] def setShape (n : Name) (sh : Shape) : M σ Unit :=
+  modify fun (i, am, sm) => (i, am, sm.insert n sh)
+@[inline] def getShape (n : Name) : M σ Shape :=
+  get <&> (·.2.2.getD n .unknown)
+@[inline] def getShapeMap : M σ ShapeMap :=
+  get <&> (·.2.2)
+@[inline] def setShapeMap (sm : ShapeMap) : M σ Unit :=
+  modify fun (i, am, _) => (i, am, sm)
+@[inline] def copyShape (src dst : Name) : M σ Unit :=
+  getShape src >>= setShape dst
 
 abbrev Env := Std.HashMap String Name
 
