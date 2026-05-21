@@ -15,23 +15,25 @@ def truncate (n : Nat) (s : String) : String :=
 def EnvHeader : List Text.SString := ["id", "type", "value"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignE : Align EnvHeader := (left, left, right)
 def genTable (E : Env) (widTy : Nat) (widVal : Nat) : VEnv -> TableOf EnvHeader
-  | {env := VE} => E.1.keysArray.map fun (k : String) =>
+  | {env := VE} => ⟨E.1.keysArray.map fun (k : String) =>
     ( .str k
     , .str $ truncate widTy  $ toString $ E.1.get! k
-    , .str $ truncate widVal $ toString $ VE.getD  k (.VEvalError "⋯ "))
+    , .str $ truncate widVal $ toString $ VE.getD  k (.VEvalError "⋯ "))⟩
+
 
 def PEnvHeader : List Text.SString := ["op", "prec", "assoc"].map fun s => ⟨s, {style := [.bold]}⟩
+
 def genTableOp (PE : BinaryTable) : TableOf PEnvHeader :=
-  PE.values.foldl (init := #[]) fun a {sym, prec, assoc,..} =>
+  ⟨PE.values.foldl (init := #[]) fun a {sym, prec, assoc,..} =>
     a.push
       ( .str sym
       , ⟨toString prec, [], .cyan, .defaultColor⟩
-      , ⟨toString assoc, [], .magenta, .defaultColor⟩)
+      , ⟨toString assoc, [], .magenta, .defaultColor⟩)⟩
 def alignPE : Align PEnvHeader := (left, right, left)
 
 def HelpHeader : List Text.SString := ["cmd", "info"].map fun s => ⟨s, {style := [.bold]}⟩
 def alignH : Align HelpHeader := (right,left)
-def helpMsg : TableOf HelpHeader :=
+def helpMsg : TableOf HelpHeader := .mk $
   #[ (.str "#dump [x] [y]"    , .str "dump the REPL environment in table form")
    , (.str ""                 , .str "set truncate threshold for table printer")
    , (.str ""                 , .str "(type,val) = (x, y)")
@@ -66,7 +68,7 @@ def helpMsg : TableOf HelpHeader :=
    , (.str ""                 , .str "implies `#cps`.")
    , (.str ""                 , .str "the only backend is common lisp for now.")]
 
-def tiglHelpMsg : TableOf HelpHeader :=
+def tiglHelpMsg : TableOf HelpHeader := .mk
   #[ (.str "--lam"                  , .str "emit raw lambda IR w/ optmizations")
    , (.str "--cc"                   , .str "emit CC'd lambda IR")
    , (.str "--cps"                  , .str "emit CPS IR")

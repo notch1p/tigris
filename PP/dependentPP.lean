@@ -82,7 +82,9 @@ section
 variable (header : List Text.SString)
 abbrev Row := ToProd header id
 abbrev Align := ToProd header λ _ => Alignment
-abbrev TableOf := Array $ Row header
+abbrev Table := Array $ Row header
+structure TableOf (header : List Text.SString) where
+  table : Table header
 abbrev OverrideWidth := ToProd header λ _ => Option Nat
 
 end
@@ -134,13 +136,14 @@ structure PPSpec (header : List Text.SString) where
   -/
   truncate : Bool := false
 
-def calcMaxWidthPerCol (t : TableOf header) : OverrideWidth header :=
-  match h : header with
-  | [] => ()
-  | [_] =>
-    some $ t.push (h ▸ toProd header) |>.foldl (flip $ max ∘ Text.SString.length) 0
-  | %[_, _ | _] =>
-    t.push (h ▸ toProd header) |>.foldl (flip $ flip (h ▸ max) ∘ rowLengthToList) $ h ▸ 0
+def calcMaxWidthPerCol : TableOf header -> OverrideWidth header
+  | {table} =>
+    match h : header with
+    | [] => ()
+    | [_] =>
+      some $ table.push (h ▸ toProd header) |>.foldl (flip $ max ∘ Text.SString.length) 0
+    | %[_, _ | _] =>
+      table.push (h ▸ toProd header) |>.foldl (flip $ flip (h ▸ max) ∘ rowLengthToList) $ h ▸ 0
 
 def calcMaxWidthRow (t : Row header) : Nat :=
   match header with
@@ -185,7 +188,7 @@ def padRow (mw : Nat) (spec : PPSpec header) (t : Row header) (acc := "")
 
 def padHeader (mw : Nat) (spec : PPSpec header) (accl := 0) (acc := "")
   : String × Nat :=
-  let 
+  let
     { align    := as
     , width    := ov
     , margin   := mg
@@ -204,14 +207,15 @@ def padHeader (mw : Nat) (spec : PPSpec header) (accl := 0) (acc := "")
         padHeader mw {spec with align := as.2, width := ovs} (accl + mw + mg)
       $ withAlign acc x.render (mw - x.length) mg tr as.1
 
-@[inline] def calcMaxWidthTbl (t : TableOf header) : Nat := t.foldl (max · $ calcMaxWidthRow ·) 0
+@[inline] def calcMaxWidthTbl : TableOf header -> Nat :=
+  Array.foldl (max · $ calcMaxWidthRow ·) 0 ∘ TableOf.table
 
 def tabulate (name : String) (spec : PPSpec header) (t : TableOf header) : String :=
   let mw := calcMaxWidthTbl t
   let spec :=
     if spec.padsBy matches .perCell
     then spec else {spec with width := calcMaxWidthPerCol t ∪ spec.width}
-  let bd := t.foldr (init := "") (padRow mw spec · ++ "\n" ++ ·)
+  let bd := t.1.foldr (init := "") (padRow mw spec · ++ "\n" ++ ·)
   if spec.header? then
     let (hd, totl) := padHeader mw spec
     s!"{name}\n{hd}\n{pad totl '='}\n{bd}"

@@ -289,4 +289,9 @@ Hint: Adding type annotations and supplying implicit arguments to functions can 
 #guard_msgs in
 #eval prog -- we mirror the approach used by Lean in Tigris by blocking all
            -- context with MVs, even though it makes sense to not to (as the program is still well typed.)
+
+/--
+info: (inr 2)
+-/
+#guard_msgs in
 #eval prog (α := Unit) -- must be concrete
