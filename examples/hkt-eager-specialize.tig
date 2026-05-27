@@ -11,7 +11,7 @@ instance forall a, Functor (Sum a) =
 
 let main =
   let x : forall b, Sum Int b = Inl 2 NB. a := Int, though b is universally quantified,
-                                      --  It does not interferes with instance resolution
+                                      --  It does not interfere with instance resolution
                                       --  as Tigris only sees `Functor (Sum a)`
                                       --  per the definition above.
 
@@ -20,4 +20,4 @@ let main =
                                       --  similar to the example in the other file.
 
   in ( fmap (2 * _) x
-     , fmap (1 + _) x)
+     , fmap (1 + _) y)
