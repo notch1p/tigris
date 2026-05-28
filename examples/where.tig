@@ -1,0 +1,13 @@
+-- Bugged in IR lowering, only usable via #load in tigris REPL.
+data Boxed a = B a
+
+infixr 30 "`on`"
+infixl 50 "^"
+
+let rec main =
+  boxedAdd 20 30
+where
+  boxedAdd  = (_ ^ _) `on` B
+  B x ^ B y = x + y
+  f `on` g  = fun x y =>
+    f (g x) (g y)

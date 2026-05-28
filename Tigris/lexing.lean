@@ -3,6 +3,10 @@ import Tigris.parsing.types
 infixr : 60 " <$ " => Functor.mapConst
 infixr : 60 " $> " => flip Functor.mapConst
 
+def List.isSubsingleton : List α -> Bool
+  | _ :: _ :: _ => false
+  | _ => true
+
 def String.isUpperInit (s : String) : Bool :=
   if h : s.atEnd 0 = true then false
   else (s.get' 0 h) >= 'A' && (s.get' 0 h) <= 'Z'
@@ -27,7 +31,7 @@ def lowercase' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   withErrorMessage "alphabetic lowercase character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_'
 def oneOf [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m] (l : List Char)
-  : ParserT ε σ Char m Char := withBacktracking $ withErrorMessage "expected one of {l}" $ tokenFilter (· ∈ l)
+  : ParserT ε σ Char m Char := withBacktracking $ withErrorMessage s!"expected one of {l}" $ tokenFilter (· ∈ l)
 
 section
 variable {σ}
@@ -36,12 +40,10 @@ def void : TParser σ β -> TParser σ Unit := (() <$ ·)
 def MLCOMMENTL : TParser σ Unit := void $ string "(*"
 def MLCOMMENTR : TParser σ Unit := void $ string "*)"
 
+/-- does NOT consume eol -/
 def comment : TParser σ Unit :=
   withBacktracking $
-   (string "NB." <|> string "--") *> dropUntil (endOfInput <|> void eol) anyToken
-
-def spaces : TParser σ Unit :=
-  dropMany <| MLCOMMENTR <|> MLCOMMENTL <|> void ASCII.whitespace <|> comment <|> void eol
+   (string "NB." <|> string "--") *> dropUntil (endOfInput <|> void (lookAhead eol)) anyToken
 
 def hspaces : TParser σ Unit :=
   dropMany <| MLCOMMENTR
@@ -54,22 +56,30 @@ def eol1 : TParser σ Unit := void eol
 partial def vspaces : TParser σ Unit :=
   eol *> go where go := do if <- test (hspaces *> eol1) then go
 
-/-- consume **one of** ' ' '\n' consecutively -/
-@[inline] partial
-def indentCol : TParser σ Nat := go 0 where go n :=
-  try
-    oneOf [' ', '\t'] >>= fun
-    | ' ' => char ' ' *> go (n + 1)
-    | '\t' => char '\t' *> go (n + tabWidth)
-    | _ => return n
-  catch _ => return n
+/--
+count (AND consume) consecutive leading spaces/tabs.
+Never fails.
+-/
+@[inline] partial def indentCol : TParser σ Nat := go 0 where
+  go n :=
+    option? (oneOf [' ', '\t']) >>= fun
+    | some ' '  => go (n + 1)
+    | some '\t' => go (n + tabWidth)
+    | _         => pure n
 
-def indentGuard (cmp : Nat -> Nat -> Bool) (rel : String) (ref : Nat) : TParser σ Unit := withBacktracking do
+/--
+test if the current indentation `col` (from `indentCol`) satisfies
+- `col · ref` where `·` is one of `> >= ==`.
+- otherwise backtracks the same amount that indentCol consumed.
+-/
+def indentGuard
+  (cmp : Nat -> Nat -> Bool) (rel : String) (ref : Nat)
+  : TParser σ Unit := withBacktracking do
   let col <- indentCol
   if cmp col ref then return ()
   else
-    error s!"indentation mismatch: got {col}, expected indentation {rel} {ref}"
-    throwUnexpected
+    throwUnexpectedWithMessage none
+      s!"indentation mismatch: got {col}, expected indentation {rel} {ref}"
 
 def colGt (n : Nat) : TParser σ Unit := indentGuard (· > ·) ">" n
 def colGe (n : Nat) : TParser σ Unit := indentGuard (· >= ·) ">=" n
@@ -90,16 +100,61 @@ attribute [inline]
   colGtCur colGeCur colEqCur
   pushCol currentCol popCol
 
-/-- After a linebreak,
-    measure and consume the indentation on the next line,
-    then run `p baseline`. -/
+/--
+helper combinator used by `spaces`.
+Parses consecutive blank lines conditionally (described below).
+Consider
+
+```lean4
+let rec x = y where
+  y = f a
+  z = g b
+```
+To prevent greedy funapp parsing of `y := (= (f a z) (g b))` and instead
+parse as two items,
+- Inside a layout block,
+  only consume a line if `col > base` (i.e. indented).
+  This permits (but not w/o the indentation)
+
+```lean4
+    where
+      y = f
+        a
+  --  ^^ indented, parse as funapp
+```
+
+- otherwise, fail and fallback to caller, which tries layout parsing.
+-/
+def crossLine : TParser σ Unit := withBacktracking do
+  eol1
+  dropMany $ hspaces *> eol1
+  let ({indentStack,..}, _) <- get
+  if !indentStack.isSubsingleton then
+    let base := indentStack.headD 0
+    let col <- lookAhead indentCol
+    if col > base then return ()
+    else throwUnexpectedWithMessage none s!"dedent: col {col} <= baseline {base}"
+
+/--
+only consumes newline if `crossLine` permits it.
+Note that crossLine itself already consumes consecutive blank lines if it succeeds.
+-/
+partial def spaces : TParser σ Unit := do
+  hspaces
+  if <- test crossLine then spaces
+
+/--
+After a linebreak,
+measure and consume the indentation on the next line, then run `p baseline`.
+-/
 def withBaseline (p : Nat -> TParser σ α) : TParser σ α := vspaces *> indentCol >>= p
 
-/-- Enter a new layout block after a linebreak.
-    - Require the next line's indentation to be strictly greater than the current baseline (strict=true),
-      or ≥ current baseline (strict=false).
-    - Push that indentation as the new baseline while parsing `p`.
-    - Pop it afterwards.
+/--
+Enter a new layout block after a linebreak.
+- Require the next line's indentation to be strictly greater than the current baseline (strict=true),
+  or ≥ current baseline (strict=false).
+- Push that indentation as the new baseline while parsing `p`.
+- Pop it afterwards.
 -/
 def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
   vspaces
@@ -113,21 +168,12 @@ def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
     if base < cur then
       error s!"expected indentation >= {cur} to start a block, got {base}"
       throwUnexpected
-  pushCol base *> p <* popCol
-
-/--
-  Parse 1+ aligned (to baseline) items (with backtracking).
-  - Assumes indentation is already consumed prior to parsing the 1st item
-  - then repeatedly:
-    - linebreak
-    - another item
-  - stops on dedent/different indentation.
-
-  - `foldl` is backtracking.
--/
-def alignedMany1 (baseline : Nat) (item : TParser σ α) : TParser σ (Array α) :=
-  item >>= fun init =>
-    foldl Array.push #[init] $ vspaces *> colEq baseline *> item
+  pushCol base
+  try
+    let r <- p
+    popCol
+    return r
+  catch e => popCol; throw e
 
 abbrev ws (t : TParser σ α) := spaces *> t <* spaces
 
@@ -146,7 +192,7 @@ def reserved :=
    , "class"   , "forall", "data"  , "type"  , "with"
    , "instance", "else"  , "then"  , "let", "prefix", "postfix"
    , "and"     , "rec"   , "fun"
-   , "fn"      , "in"    , "if"]
+   , "fn"      , "in"    , "if"    , "where"]
 
 open ASCII in private def ID' : TParser σ String :=
   withErrorMessage "identifier" do
@@ -194,6 +240,29 @@ def kwOpExact (s : String) : TParser σ Unit := spaces *>
   $ void
   $ string s)
 
+/--
+Parse 1+ items, separated by either:
+- `;` (on the current line, optionally followed by a layout step to an
+  aligned next line), or
+- an aligned newline alone (next non-blank line indented exactly to
+  `baseline`).
+
+Backtrackes if neither.
+
+Note: Use `aligned1` in the current block.
+-/
+def alignedMany1 (baseline : Nat) (item : TParser σ α) : TParser σ (Array α) :=
+  item >>= fun init =>
+    foldl Array.push #[init] $ sepStep *> item
+where
+  sepStep : TParser σ Unit := first $
+    [ SEMICOLON <* optional (vspaces *> colEq baseline)
+    , vspaces *> colEq baseline]
+  SEMICOLON := kwOpExact ";"
+
+def aligned1 (p : TParser σ α) : TParser σ (Array α) :=
+  alignedMany1 (item := p) =<< currentCol
+
 def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := spaces *>
   ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
@@ -213,6 +282,7 @@ abbrev AND     : TParser σ Unit := kw "and"
 abbrev POSTFIX : TParser σ Unit := kw "postfix"
 abbrev PREFIX  : TParser σ Unit := kw "prefix"
 abbrev FORALL  : TParser σ Unit := kw "forall"
+abbrev WHERE   : TParser σ Unit := kw "where"
 abbrev FORALL' : TParser σ Unit := spaces *>
                                     ( withBacktracking
                                     $ withErrorMessage s!"kw '∀'"
@@ -221,6 +291,7 @@ abbrev FORALL' : TParser σ Unit := spaces *>
 abbrev EXTERN : TParser σ Unit := kw "extern"
 abbrev CLASS : TParser σ Unit := kw "class"
 abbrev INSTANCE : TParser σ Unit := kw "instance"
+abbrev SEMICOLON := @alignedMany1.SEMICOLON
 
 abbrev TYPE? : TParser σ Bool := do
   if <- test TYPE then return false
@@ -229,11 +300,11 @@ abbrev TYPE? : TParser σ Bool := do
 
 abbrev BAR  : TParser σ Unit := kwOpNoExtend "|" (· == '|')
 abbrev ARROW: TParser σ Unit := spaces *>
-   (withBacktracking
+  ( withBacktracking
   $ withErrorMessage "reserved operator '=>' or '->'"
   $ (void $ string "=>") <|> (void $ string "->"))
 abbrev COMMA: TParser σ Unit := kwOpExact ","
-abbrev EQ   : TParser σ Unit := kwOpNoExtend "=" (fun c => c == '>' || c == '=')
+abbrev EQ   : TParser σ Unit := kwOpExact ":=" <|> kwOpNoExtend "=" (fun c => c == '>' || c == '=')
 abbrev END  : TParser σ Unit := kwOpExact ";;"
 abbrev COLON: TParser σ Unit := kwOpExact ":"
 abbrev UNDERSCORE : TParser σ Unit := kwOpExact "_"

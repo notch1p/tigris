@@ -36,7 +36,7 @@ def infixlDecl : TParser σ Binding := do
       updateInfix op i.toNat .leftAssoc $ η₂ e
       return (s!"({op})", e)
     else
-      updateInfix op i.toNat .leftAssoc $ η₂ CUnit
+      updateInfix op i.toNat .leftAssoc $ η₂ $ Var s!"«{op}»"
       return (s!"({op})", CUnit)
 
   | _, _ => return ("_", CUnit)
@@ -52,7 +52,7 @@ def infixrDecl : TParser σ Binding := do
       updateInfix op i.toNat .rightAssoc $ η₂ e
       return (s!"({op})", e)
     else
-      updateInfix op i.toNat .rightAssoc $ η₂ CUnit
+      updateInfix op i.toNat .rightAssoc $ η₂ $ Var s!"«{op}»"
       return (s!"({op})", CUnit)
   | _, _ => return ("_", CUnit)
 
@@ -107,7 +107,7 @@ def let1Common
       if pre.isEmpty then
         let pos <- getPosition
         if let some op <- option? potentialOp then
-          if op ∈ ["=", ":", "|"] then setPosition pos *> ann >>= kont id pre
+          if op ∈ ["=",":=", ":", "|"] then setPosition pos *> ann >>= kont id pre
           else
             if reservedOp.find? op |>.isSome
             then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
@@ -146,15 +146,27 @@ def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding 
         let core := Fix $ Fun id $ transMatch pre a
         return (id, unwrapAnn ann? core)
 
+def whereBindings (bindingParser : TParser σ Binding)
+  : TParser σ $ Array Binding := WHERE *> hspaces *>
+  option? (lookAhead eol1) >>=
+    fun
+    | some _ => withBlock true $ aligned1 bindingParser -- block layout
+    | none   => sepBy1 (kwOpExact ";") bindingParser    -- inline layout (sep by `;`)
+
 def letDeclDispatch : TParser σ $ Array Binding := do
   LET
   let bs <-
     match <- test REC with
     | false => sepBy1 AND $ let1Common letBody
-    | true => sepBy1 AND $ let1Common letrecBody
+    | true =>
+      let b <- sepBy1 AND $ let1Common letrecBody
+      let some b' <- option? $ whereBindings whereRec | pure b
+      pure $ b' ++ b
   match <- option? (IN *> parseExpr) with
   | some body => return #[("_", Let bs body)]
   | none => return bs
+where
+  whereRec := let1Common letrecBody
 
 def letPatDecl : TParser σ (Pattern × Expr) := do
   LET;
