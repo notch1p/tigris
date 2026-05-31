@@ -24,7 +24,7 @@ cabal.project.local
 cabal.project.local~
 .HTF/
 .ghc.environment.*
-
+.vscode/alive/fasl
 *.abcl
 *.fasl
 *.dx32fsl

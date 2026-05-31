@@ -60,7 +60,7 @@ def hspaces : TParser σ Unit :=
 def eol1 : TParser σ Unit := void eol
 
 partial def vspaces : TParser σ Unit :=
-  eol *> go where go := do if <- test (hspaces *> eol1) then go
+  hspaces *> eol *> go where go := do if <- test (hspaces *> eol1) then go
 
 /--
 count (AND consume) consecutive leading spaces/tabs.
@@ -158,8 +158,9 @@ partial def spaces : TParser σ Unit := do
 /--
 Does not check `crossLine`. Useful for keywords.
 -/
-def dumbspaces : TParser σ Unit :=
-  dropMany <| MLCOMMENTR <|> MLCOMMENTL <|> void ASCII.whitespace <|> comment <|> void eol
+partial def dumbspaces : TParser σ Unit := do
+  hspaces
+  if <- test eol1 then dumbspaces
 
 /--
 After a linebreak,
@@ -270,6 +271,10 @@ def kwOpExact (s : String) : TParser σ Unit := dumbspaces *>
   $ withErrorMessage s!"kwOp '{s}'"
   $ void
   $ string s)
+def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := dumbspaces *>
+  ( withBacktracking
+  $ withErrorMessage s!"kwOp '{s}'"
+  $ string s *> notFollowedBy (tokenFilter badNext))
 
 /--
 Parse 1+ items, separated by either:
@@ -287,40 +292,37 @@ def alignedMany1 (baseline : Nat) (item : TParser σ α) : TParser σ (Array α)
     foldl Array.push #[init] $ sepStep *> item
 where
   sepStep : TParser σ Unit := first $
-    [ SEMICOLON <* hspaces <* optional (vspaces *> colEq baseline)
+    [ (SEMICOLON <|> AND) <* hspaces <* optional (vspaces *> colEq baseline)
     , vspaces *> colEq baseline]
   SEMICOLON := kwOpExact ";"
+  AND       := kw "and"
 
 def aligned1 (p : TParser σ α) : TParser σ (Array α) :=
   alignedMany1 (item := p) =<< currentCol
 
-def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := dumbspaces *>
-  ( withBacktracking
-  $ withErrorMessage s!"kwOp '{s}'"
-  $ string s *> notFollowedBy (tokenFilter badNext))
-abbrev LET     : TParser σ Unit := kw "let"
-abbrev IN      : TParser σ Unit := kw "in"
-abbrev FUN     : TParser σ Unit := kw "fun"
-abbrev IF      : TParser σ Unit := kw "if"
-abbrev ELSE    : TParser σ Unit := kw "else"
-abbrev THEN    : TParser σ Unit := kw "then"
-abbrev REC     : TParser σ Unit := kw "rec"
-abbrev MATCH   : TParser σ Unit := kw "match"
-abbrev WITH    : TParser σ Unit := kw "with"
-abbrev TYPE    : TParser σ Unit := kw "type" <|> kw "data"
-abbrev MUTUAL  : TParser σ Unit := kw "mutual"
-abbrev AND     : TParser σ Unit := kw "and"
-abbrev POSTFIX : TParser σ Unit := kw "postfix"
-abbrev PREFIX  : TParser σ Unit := kw "prefix"
-abbrev FORALL  : TParser σ Unit := kw "forall"
-abbrev WHERE   : TParser σ Unit := kw "where"
-abbrev FORALL' : TParser σ Unit := spaces *>
-                                    ( withBacktracking
-                                    $ withErrorMessage s!"kw '∀'"
-                                    $ void
-                                    $ string "∀")
-abbrev EXTERN : TParser σ Unit := kw "extern"
-abbrev CLASS : TParser σ Unit := kw "class"
+abbrev LET      : TParser σ Unit := kw "let"
+abbrev IN       : TParser σ Unit := kw "in"
+abbrev FUN      : TParser σ Unit := kw "fun"
+abbrev IF       : TParser σ Unit := kw "if"
+abbrev ELSE     : TParser σ Unit := kw "else"
+abbrev THEN     : TParser σ Unit := kw "then"
+abbrev REC      : TParser σ Unit := kw "rec"
+abbrev MATCH    : TParser σ Unit := kw "match"
+abbrev WITH     : TParser σ Unit := kw "with"
+abbrev TYPE     : TParser σ Unit := kw "type" <|> kw "data"
+abbrev MUTUAL   : TParser σ Unit := kw "mutual"
+abbrev AND                       := @alignedMany1.AND
+abbrev POSTFIX  : TParser σ Unit := kw "postfix"
+abbrev PREFIX   : TParser σ Unit := kw "prefix"
+abbrev FORALL   : TParser σ Unit := kw "forall"
+abbrev WHERE    : TParser σ Unit := kw "where"
+abbrev FORALL'  : TParser σ Unit := spaces *>
+                                     ( withBacktracking
+                                     $ withErrorMessage s!"kw '∀'"
+                                     $ void
+                                     $ string "∀")
+abbrev EXTERN   : TParser σ Unit := kw "extern"
+abbrev CLASS    : TParser σ Unit := kw "class"
 abbrev INSTANCE : TParser σ Unit := kw "instance"
 abbrev SEMICOLON := @alignedMany1.SEMICOLON
 
@@ -359,9 +361,51 @@ def alignedBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
   hspaces *> option? (lookAhead eol1) >>=
     fun
     | some _ => withBlock true $ aligned1 bindingParser -- block layout
-    | none   => withInlineBlock (p := aligned1 bindingParser) =<< currentColAbs -- inline block/ sepBy `;`
+                -- inline block/ sepBy `;`/`and` (same semantics)
+    | none   => withInlineBlock (p := aligned1 bindingParser) =<< currentColAbs
 
 @[inline]
 def whereBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
   WHERE *> alignedBindings bindingParser
+
+/--
+- Parse 1+ BARs
+- each BAR has its own layout
+  i.e. BAR's column is locally (within the branch)
+  the new baseline.
+
+This way, the branch body can
+dedent below the surrounding binding's baseline without
+being parsed as an layout block ending.
+- as long as it stays strictly indented past the BAR itself.
+
+A practical problem this addresses is when mixing
+matching branches with `Lexing.crossLine`. Consider (applies to let block aswell)
+
+```lean4
+let rec x = 1
+where f -- this style of not aligning BARs to `f` is common for large codes
+  | 0 => e
+  | 1 =>
+    e -- must be indented past `f` if not for the local baseline override.
+      -- this it expected because of the restriction `crossLine` imposes.
+
+      g := ... -- more bindings
+```
+
+If there were more bindings after `f`,
+such as the `g` shown here, then this would be a parse error
+since it is within the local layout of the second branch.
+This should match Lean's behavior and `f`'s body must be
+aligned or indented past `f` for `g` to be parsed.
+
+- Note that BARs aren't required to align nor relevant here, currently.
+-/
+def barBranches (branchParser : TParser σ α) : TParser σ $ Array α :=
+  takeMany1 do
+    dumbspaces
+    let col <- currentColAbs
+    BAR
+    withInlineBlock col branchParser
+
 end Parsing

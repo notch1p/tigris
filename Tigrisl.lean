@@ -88,6 +88,7 @@ def main (fp : List String) : IO Unit := do
               let (_, cc) <- do
                 let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
                 let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+                print s!"i: "
                 print logger
                 pure $ IR.toLamModuleF decls ctors
               let mod := CPS.toCPS cc
@@ -178,4 +179,3 @@ def main (fp : List String) : IO Unit := do
     println! "- FASL target outputs standalone binary"
     println! "  by concatenating linked sources in specific order."
     println! "- LISP target load linked sources/runtime dynamically"
-

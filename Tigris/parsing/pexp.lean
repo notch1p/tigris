@@ -86,9 +86,9 @@ def postfixDecl : TParser σ Binding := do
 
 def letBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
   fun id pre ann? => do
-    match <- test BAR with
+    match <- test (lookAhead BAR) with
     | true =>
-      let a <- sepBy1 BAR matchDiscr
+      let a <- barBranches matchDiscr
       let core := transMatch pre $ pointedExp a
       return (id, unwrapAnn ann? core)
     | false =>
@@ -132,9 +132,9 @@ def let1Common
 
 def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
   fun id pre ann? => do
-    match <- test BAR with
+    match <- test (lookAhead BAR) with
     | true =>
-      let a <- sepBy1 BAR matchDiscr
+      let a <- barBranches matchDiscr
       let core := Fix $ Fun id $ transMatch pre $ pointedExp a
       return (id, unwrapAnn ann? core)
     | false =>
@@ -179,9 +179,9 @@ def externDecl : TParser σ TopDecl := do
 def instanceBinder : TParser σ Binding := do
   let f <- ID
   let pre <- takeMany funBinderID
-  match <- test BAR with
+  match <- test (lookAhead BAR) with
   | true =>
-    let a <- sepBy1 BAR matchDiscr
+    let a <- barBranches matchDiscr
     return (f, transMatch pre $ pointedExp a)
   | false =>
     EQ; let a <- parseExpr

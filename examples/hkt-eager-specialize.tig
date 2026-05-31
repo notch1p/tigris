@@ -15,7 +15,7 @@ let main =
                                       --  as Tigris only sees `Functor (Sum a)`
                                       --  per the definition above.
 
-  and y : Sum Bool Int = Inr 1        NB. Here however we cannot replace Bool with
+      y : Sum Bool Int = Inr 1        NB. Here however we cannot replace Bool with
                                       --  a TV then generalize it, otherwise we would end up
                                       --  similar to the example in the other file.
 

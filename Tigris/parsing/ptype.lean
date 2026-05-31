@@ -221,7 +221,7 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
   let tycon <- ID
   if tycon.isUpperInit then
     let param <- parseParams;
-    first $
+    first
       [ EQ *> do
           if <- test (kwOpExact "{") then
             let tydecl <- tyRecord tycon param mt false <* kwOpExact "}"
@@ -231,7 +231,10 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
             let hd <- (optional BAR *> ctor mt param)
             let tl <- takeMany (BAR *> ctor mt param)
             return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}
-      , WHERE *> tyRecord tycon param mt true <&> fun tydecl => {tydecl with cls?}]
+      , WHERE *> tyRecord tycon param mt true <&> fun tydecl => {tydecl with cls?}
+      , registerTy tycon (kindOfParams param.ordered) mt *>
+        pure {tycon, param := param.ordered, ctors := {}}
+      ]
 
   else
     error "type constructor must begin with an uppercase letter\n"

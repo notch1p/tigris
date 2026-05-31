@@ -11,13 +11,13 @@ enum BYTELEN { Bin = 2, Tri, Quad, Invalid = 0 };
 
 OBJRES
 string_repeat_ascii(uint8_t c, size_t n) {
-  char *str = (char *)calloc(n + 1, sizeof(uint8_t));
+  char* str = (char*)calloc(n + 1, sizeof(uint8_t));
   memset(str, c, n * sizeof(uint8_t));
 
   return lean_mk_string(str);
 }
 
-enum BYTELEN codepoint_to_bytes(uint32_t c, char *s) {
+enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {
   if (c < 0x800) {
     s[0] = 0xC0 | c >> 6;
     s[1] = 0x80 | c & 0x3F;
@@ -44,7 +44,7 @@ string_repeat_utf8(uint32_t c, size_t n) {
   assert(len);
 
   size_t lenb = n * len;
-  char *str = (char *)calloc(lenb + 1, sizeof(uint8_t));
+  char* str = (char*)calloc(lenb + 1, sizeof(uint8_t));
 
   for (size_t i = 0; i < n; i++) {
     memcpy(str + i * len, bytes, len);
@@ -62,7 +62,7 @@ LEAN_EXPORT OBJRES lean_disable_stdout_buffer(uint8_t i) {
   if (i == 0) {
     setbuf(stdout, NULL);
   }
-  return lean_io_result_mk_ok(lean_box(0)); // runtime Unit repr
+  return lean_io_result_mk_ok(lean_box(0));  // runtime Unit repr
 }
 
 #if defined(_WIN32)
@@ -74,13 +74,12 @@ static HANDLE g_ctrlEvent = NULL;
 
 static BOOL WINAPI ctrl_handler(DWORD dwCtrlType) {
   switch (dwCtrlType) {
-  case CTRL_C_EVENT:
-  case CTRL_BREAK_EVENT:
-    if (g_ctrlEvent)
-      SetEvent(g_ctrlEvent);
-    return TRUE;
-  default:
-    return FALSE;
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+      if (g_ctrlEvent) SetEvent(g_ctrlEvent);
+      return TRUE;
+    default:
+      return FALSE;
   }
 }
 
@@ -137,7 +136,7 @@ static void sigint_handler() {
 
 LEAN_EXPORT OBJRES lean_sigint_pipe() {
   if (sig_pipe[0] != -1)
-    return lean_io_result_mk_ok(lean_box(sig_pipe[0])); // already installed
+    return lean_io_result_mk_ok(lean_box(sig_pipe[0]));  // already installed
   if (pipe(sig_pipe) != 0)
     return lean_mk_io_user_error(
         lean_mk_string("sigint pipe installation failed"));
@@ -145,7 +144,7 @@ LEAN_EXPORT OBJRES lean_sigint_pipe() {
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = sigint_handler;
   sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART; // restart interrupted syscalls
+  sa.sa_flags = SA_RESTART;  // restart interrupted syscalls
   if (sigaction(SIGINT, &sa, NULL) != 0) {
     close(sig_pipe[0]);
     close(sig_pipe[1]);
@@ -159,13 +158,10 @@ LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t fd) {
   char b;
   for (;;) {
     ssize_t r = read(fd, &b, 1);
-    if (r == 1)
-      return lean_io_result_mk_ok(lean_box(1));
-    if (r == 0)
-      return lean_io_result_mk_ok(lean_box(0)); // EOF
-    if (errno == EINTR)
-      continue; // retry
+    if (r == 1) return lean_io_result_mk_ok(lean_box(1));
+    if (r == 0) return lean_io_result_mk_ok(lean_box(0));  // EOF
+    if (errno == EINTR) continue;                          // retry
     return lean_mk_io_user_error(lean_mk_string("read() failed"));
   }
 }
-#endif // _win32
+#endif  // _win32

@@ -159,15 +159,15 @@ partial def matchDiscr  : TParser σ $ Array Pattern × Expr := do
 
 partial def matchExp    : TParser σ Expr := do
   MATCH let e <- sepBy1 COMMA parseExpr; WITH
-  let br <- takeMany1 (BAR *> matchDiscr)
+  let br <- barBranches matchDiscr
                                   return Match e br
 
 partial def let1 : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
   let ann? <- option? (COLON *> PType.tyForall false ∅)
-  match <- test BAR with
+  match <- test (lookAhead BAR) with
   | true =>
-    let br <- sepBy1 BAR matchDiscr
+    let br <- barBranches matchDiscr
     let core := transMatch pre $ pointedExp br
     let rhs := match ann? with | some ty => Expr.Ascribe core ty
                                | none => core
@@ -181,9 +181,9 @@ partial def let1 : TParser σ (Symbol × Expr) := do
 partial def letrec1 : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
   let ann? <- option? (COLON *> PType.tyForall false ∅)
-  match <- test BAR with
+  match <- test (lookAhead BAR) with
   | true =>
-    let br <- sepBy1 BAR matchDiscr
+    let br <- barBranches matchDiscr
     let core := Fix $ Fun id $ transMatch pre $ pointedExp br
     let rhs := match ann? with | some ty => .Ascribe core ty | none => core
     return Prod.mk id rhs
@@ -208,7 +208,8 @@ partial def letDispatch : TParser σ Expr := do
       EQ let e₁ <- parseExpr; IN let e₂ <- parseExpr
       return Match #[e₁] #[(#[pat], e₂)]
     | none =>
-      let grp <- sepBy1 AND let1
+      -- let grp <- sepBy1 AND let1
+      let grp <- alignedBindings let1
       IN; let e₂ <- parseExpr
       return Let grp e₂
   | true =>
@@ -218,7 +219,8 @@ partial def letDispatch : TParser σ Expr := do
       warn "found non-variable pattern on the left hand side,\nThis expression will be treated as a letexp\n"
       return Match #[e₁] #[(#[pat], e₂)]
     | none =>
-      let grp <- sepBy1 AND letrec1
+      --let grp <- sepBy1 AND letrec1
+      let grp <- alignedBindings letrec1
       IN; let e₂ <- parseExpr
       return Let grp e₂
 partial def fixpointExp : TParser σ Expr := do
@@ -229,8 +231,8 @@ partial def fixpointExp : TParser σ Expr := do
 
 partial def funDispatch : TParser σ Expr := do
   FUN
-  match <- test BAR with
-  | true => let args <- sepBy1 BAR matchDiscr; return pointedExp args
+  match <- test (lookAhead BAR) with
+  | true => let args <- barBranches matchDiscr; return pointedExp args
   | false =>
     let pat <- takeMany1 funBinderID; ARROW let e <- parseExpr
     return transMatch pat e

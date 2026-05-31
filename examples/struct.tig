@@ -1,5 +1,7 @@
 -- struct def is syntactic sugar for single-ctor inductive type def
-type Point = {x : Int, y : Int}
+type Point where 
+  x : Int
+  y : Int
 
 extern println "%println" : forall a, a -> Unit
 

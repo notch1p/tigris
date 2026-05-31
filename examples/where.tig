@@ -5,7 +5,9 @@ infixr 30 "`on`"
 infixl 50 "^"
 
 let rec main =
-  boxedAdd 20 30
+  let x = 20
+      y = 30
+  in boxedAdd 20 30
 where
   boxedAdd  = (_ ^ _) `on` B
   B x ^ B y = x + y
