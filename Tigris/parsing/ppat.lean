@@ -45,10 +45,9 @@ partial def patAtom : TParser σ Pattern := ws $ first' (combine := simpErrorCom
    , (string "true") $> (PConst $ .PBool true)
    , (string "false") $> (PConst $ .PBool false)
    , strLit <&> (PConst ∘ .PStr)
-   , do
-       let id <- ID;
-       if id.isUpperInit then return PCtor id #[]
-       else return PVar id
+   , ID <&> fun id =>
+      if id.isUpperInit then PCtor id #[]
+      else PVar id
    ]
 
 partial def patProd : TParser σ Pattern := do
@@ -58,23 +57,22 @@ partial def patProd : TParser σ Pattern := do
          | 1 => es[0]
          | _ + 2 => es[0:es.size - 1].foldr PProd' es[es.size - 1]
 
-partial def patRecord : TParser σ Pattern := do
-  resolveBareRecordPat =<< braced do sepBy COMMA do
-    let f <- ID;
-    match <- option? $ EQ *> parsePattern with
-    | none => return (f, PVar f)
-    | some e => return (f, e)
+partial def patRecord : TParser σ Pattern :=
+  resolveBareRecordPat =<< (braced $ sepBy COMMA $ ID >>= fun f =>
+    option? (EQ *> parsePattern) <&>
+      fun
+      | none => (f, PVar f)
+      | some e => (f, e))
 
 partial def patRecordTyped : TParser σ Pattern := do
-  let ps <- braced do sepBy COMMA do
-    let f <- ID;
-    match <- option? $ EQ *> parsePattern with
-    | none => return (f, PVar f)
-    | some e => return (f, e)
+  let ps <- braced $ sepBy COMMA $ ID >>= fun f =>
+    option? (EQ *> parsePattern) <&>
+      fun
+      | some e => (f, e)
+      | none   => (f, PVar f)
   COLON
   match <- PType.tyCtor ∅ with
-  | .TCon s | .TApp (.TCon s) _ =>
-    reorderRecordPat s ps
+  | .TCon s | .TApp (.TCon s) _ => reorderRecordPat s ps
   | _ => resolveBareRecordPat ps
 partial def patApp : TParser σ Pattern := do
   let hd <- patPrimary

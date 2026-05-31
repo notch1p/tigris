@@ -146,13 +146,6 @@ def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding 
         let core := Fix $ Fun id $ transMatch pre a
         return (id, unwrapAnn ann? core)
 
-def whereBindings (bindingParser : TParser σ Binding)
-  : TParser σ $ Array Binding := WHERE *> hspaces *>
-  option? (lookAhead eol1) >>=
-    fun
-    | some _ => withBlock true $ aligned1 bindingParser -- block layout
-    | none   => sepBy1 (kwOpExact ";") bindingParser    -- inline layout (sep by `;`)
-
 def letDeclDispatch : TParser σ $ Array Binding := do
   LET
   let bs <-
@@ -183,18 +176,19 @@ def externDecl : TParser σ TopDecl := do
   COLON let sch <- PType.tyScheme
   return .extBind id name sch
 
-partial def instanceExp (ctor : Symbol)
+def instanceBinder : TParser σ Binding := do
+  let f <- ID
+  let pre <- takeMany funBinderID
+  match <- test BAR with
+  | true =>
+    let a <- sepBy1 BAR matchDiscr
+    return (f, transMatch pre $ pointedExp a)
+  | false =>
+    EQ; let a <- parseExpr
+    return (f, transMatch pre a)
+
+def instanceExp (ctor : Symbol) (fs : Array Binding)
   : TParser σ (Array $ String × Expr) := do
-  let fs <- braced do sepBy COMMA do
-    let f <- ID;
-    let pre <- takeMany funBinderID
-    match <- test BAR with
-    | true =>
-      let a <- sepBy1 BAR matchDiscr
-      return (f, transMatch pre $ pointedExp a)
-    | false =>
-      EQ; let a <- parseExpr
-      return (f, transMatch pre a)
   let ({recordFields,..}, _) <- get
   let some order := recordFields.get? ctor | error s!"unknown record {ctor}\n"; throwUnexpected
   let mut mp : Std.HashMap String Expr := ∅
@@ -219,8 +213,10 @@ def instanceDecl : TParser σ TopDecl := do
     | .TCon cname              => pure (cname, [])
     | _ => error "not a valid class" *> throwUnexpected
   let (cname, args) := head
-  EQ;
-  let methods <- instanceExp cname
+  let fs <- first
+    [ EQ *> braced (sepBy COMMA instanceBinder)
+    , whereBindings instanceBinder ]
+  let methods <- instanceExp cname fs
   return .instBind {ctxPreds, cname, args, methods}
 
 end Parsing

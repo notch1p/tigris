@@ -198,9 +198,11 @@ def tyInstScheme : TParser σ (Scheme × ParamInfo) := do
   if !ordered.isEmpty || !pred.isEmpty then COMMA
   (·, param) <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
 
-def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool)
+def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool) (offside? : Bool)
   : TParser σ TyDecl := withErrorMessage "TyRecord" do
-  let fields <- sepBy COMMA (tyField mt param)
+  let fields <-
+    if offside? then alignedBindings (tyField mt param)
+    else sepBy COMMA (tyField mt param)
   let (fids, tys) := fields.unzip
   if fids.hasDuplicates id then
     error "duplicated fields not allowed in structure definition\n"
@@ -218,15 +220,18 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
   let cls? <- TYPE?
   let tycon <- ID
   if tycon.isUpperInit then
-    let param <- parseParams; EQ
-    if <- test (kwOpExact "{") then
-      let tydecl <- tyRecord tycon param mt <* kwOpExact "}"
-      return {tydecl with cls?}
-    else
-      registerTy tycon (kindOfParams param.ordered) mt
-      let hd <- (optional BAR *> ctor mt param)
-      let tl <- takeMany (BAR *> ctor mt param)
-      return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}
+    let param <- parseParams;
+    first $
+      [ EQ *> do
+          if <- test (kwOpExact "{") then
+            let tydecl <- tyRecord tycon param mt false <* kwOpExact "}"
+            return {tydecl with cls?}
+          else
+            registerTy tycon (kindOfParams param.ordered) mt
+            let hd <- (optional BAR *> ctor mt param)
+            let tl <- takeMany (BAR *> ctor mt param)
+            return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}
+      , WHERE *> tyRecord tycon param mt true <&> fun tydecl => {tydecl with cls?}]
 
   else
     error "type constructor must begin with an uppercase letter\n"

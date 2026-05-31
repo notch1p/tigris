@@ -1,13 +1,13 @@
 type Sum a b = Inl a | Inr b
 
-class Functor (f : Type -> Type) =
-  {fmap : forall a b, (a -> b) -> f a -> f b}
+class Functor (f : Type -> Type) where
+  fmap : forall a b, (a -> b) -> f a -> f b
 
-instance forall a, Functor (Sum a) =
-  { fmap f
-    | Inl a => Inl a
-    | Inr b => Inr (f b)
-  }
+instance forall a, Functor (Sum a) where
+  fmap f
+  | Inl a => Inl a
+  | Inr b => Inr (f b)
+  
 
 let main =
   let x : forall b, Sum Int b = Inl 2 NB. a := Int, though b is universally quantified,

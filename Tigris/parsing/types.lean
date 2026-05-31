@@ -272,6 +272,7 @@ structure PEnv where
   undTy : List Symbol -- undefined types (used in mutual rectypes definition)
   recordFields : Std.HashMap Symbol (Array Symbol) := {}
   indentStack  : List Nat := [0]
+  lastEol : Nat := 0
 
 --abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT Substring Char

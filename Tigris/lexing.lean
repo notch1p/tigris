@@ -40,6 +40,12 @@ def void : TParser σ β -> TParser σ Unit := (() <$ ·)
 def MLCOMMENTL : TParser σ Unit := void $ string "(*"
 def MLCOMMENTR : TParser σ Unit := void $ string "*)"
 
+def eol : TParser σ Char := withErrorMessage "expected newline" do
+    let c <- (ASCII.cr *> ASCII.lf) <|> ASCII.lf
+    let pos <- getPosition
+    modify fun (pe, l) => ({pe with lastEol := pos.byteIdx},l)
+    return c
+
 /-- does NOT consume eol -/
 def comment : TParser σ Unit :=
   withBacktracking $
@@ -86,6 +92,12 @@ def colGe (n : Nat) : TParser σ Unit := indentGuard (· >= ·) ">=" n
 def colEq (n : Nat) : TParser σ Unit := indentGuard (· == ·) "==" n
 def currentCol : TParser σ Nat :=
   get <&> fun ({indentStack,..}, _) => indentStack.headD 0
+
+/-- column with respect to current line start-/
+def currentColAbs : TParser σ Nat :=
+  get >>= fun ({lastEol,..}, _) =>
+    getPosition <&> fun ⟨byteIdx⟩ => byteIdx - lastEol
+
 def pushCol (n : Nat) : TParser σ Unit :=
   modify fun (pe, log) =>
     ({pe with indentStack := n :: pe.indentStack}, log)
@@ -144,6 +156,12 @@ partial def spaces : TParser σ Unit := do
   if <- test crossLine then spaces
 
 /--
+Does not check `crossLine`. Useful for keywords.
+-/
+def dumbspaces : TParser σ Unit :=
+  dropMany <| MLCOMMENTR <|> MLCOMMENTL <|> void ASCII.whitespace <|> comment <|> void eol
+
+/--
 After a linebreak,
 measure and consume the indentation on the next line, then run `p baseline`.
 -/
@@ -169,6 +187,19 @@ def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
       error s!"expected indentation >= {cur} to start a block, got {base}"
       throwUnexpected
   pushCol base
+  try
+    let r <- p
+    popCol
+    return r
+  catch e => popCol; throw e
+
+/--
+Enter a layout block whose baseline is `col`, without consuming a linebreak.
+Use when the first item already sits on the current line and its column
+should be the alignment baseline for any continuation lines.
+-/
+def withInlineBlock (col : Nat) (p : TParser σ α) : TParser σ α := do
+  pushCol col
   try
     let r <- p
     popCol
@@ -228,13 +259,13 @@ def parenthesized (t : TParser σ α) : TParser σ α := between '(' t ')'
 def braced (t : TParser σ α) : TParser σ α := between '{' t '}'
 def sbrack (t : TParser σ α) : TParser σ α := between '[' t ']'
 
-def kw (s : String) : TParser σ Unit := spaces *>
+def kw (s : String) : TParser σ Unit := dumbspaces *>
                                      (withBacktracking
                                     $ withErrorMessage s!"kw '{s}'"
                                     $ string s
                                     *> notFollowedBy alphanum')
 
-def kwOpExact (s : String) : TParser σ Unit := spaces *>
+def kwOpExact (s : String) : TParser σ Unit := dumbspaces *>
   ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ void
@@ -256,14 +287,14 @@ def alignedMany1 (baseline : Nat) (item : TParser σ α) : TParser σ (Array α)
     foldl Array.push #[init] $ sepStep *> item
 where
   sepStep : TParser σ Unit := first $
-    [ SEMICOLON <* optional (vspaces *> colEq baseline)
+    [ SEMICOLON <* hspaces <* optional (vspaces *> colEq baseline)
     , vspaces *> colEq baseline]
   SEMICOLON := kwOpExact ";"
 
 def aligned1 (p : TParser σ α) : TParser σ (Array α) :=
   alignedMany1 (item := p) =<< currentCol
 
-def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := spaces *>
+def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := dumbspaces *>
   ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
   $ string s *> notFollowedBy (tokenFilter badNext))
@@ -321,3 +352,16 @@ abbrev INFIXR : TParser σ Unit := kw "infixr"
 end
 
 end Lexing
+
+namespace Parsing open Lexing Parser
+
+def alignedBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
+  hspaces *> option? (lookAhead eol1) >>=
+    fun
+    | some _ => withBlock true $ aligned1 bindingParser -- block layout
+    | none   => withInlineBlock (p := aligned1 bindingParser) =<< currentColAbs -- inline block/ sepBy `;`
+
+@[inline]
+def whereBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
+  WHERE *> alignedBindings bindingParser
+end Parsing

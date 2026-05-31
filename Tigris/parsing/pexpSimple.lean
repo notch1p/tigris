@@ -245,8 +245,10 @@ partial def recordExp   : TParser σ Expr :=
     let f <- ID; EQ; let e <- parseExpr; return (f, e))
 
 partial def recordExpTyped : TParser σ Expr := parenthesized do
-  let fs <- braced do sepBy COMMA do
-    let f <- ID; EQ; let e <- parseExpr; return (f, e)
+  let fs <- braced $ sepBy COMMA $ ID >>= fun f =>
+    option? (EQ *> parseExpr) <&> fun
+                                  | some e  => (f, e)
+                                  | _       => (f, Var f)
   COLON
   match <- PType.tyExp with
   | ty@(.TCon s) | ty@(.TApp (.TCon s) _) =>

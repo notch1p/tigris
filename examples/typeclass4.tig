@@ -10,12 +10,10 @@ let rec listEq
   | x :: xs, y :: ys =>
     if x = y then listEq xs ys else false
   | _, _ => false
-instance ∀a [Eq a], Eq (Option a) =
-  { eq
-    | None, None => true
-    | Some a, Some b => a = b
-    | _, _ => false
-  }
+instance ∀a [Eq a], Eq (Option a) where
+  eq | None, None => true
+     | Some a, Some b => a = b
+     | _, _ => false
 instance forall a [Eq a], Eq (List a) =
   {eq = listEq}
 
