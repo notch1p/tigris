@@ -123,7 +123,7 @@ def main : IO Unit := do
       | .ok b  => println! reprStr b
       | .error e => println! Logging.error $ toString e
     /- typecheck w/o evaluation -/
-    else if buf.startsWith "#t" then
+    else if buf.startsWith "#t" || buf.startsWith "#c" then
       try
         let exp <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace).toString pe |> ofExcept
         let (s, l) <- MLType.runInfer1 exp e |> ofExcept

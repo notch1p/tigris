@@ -162,9 +162,9 @@ def Simple.rebuild
 end Parser.Error
 section open Error
 private def dedupMsgsAt
-  (pos : Stream.Position Substring)
-  (msgs : Array (Stream.Position Substring × String))
-  : Array (Stream.Position Substring × String) :=
+  (pos : Stream.Position Substring.Raw)
+  (msgs : Array (Stream.Position Substring.Raw × String))
+  : Array (Stream.Position Substring.Raw × String) :=
   let seen : Std.HashSet String := ∅
   (·.1) <| msgs.foldl (init := (#[], seen)) fun (out, seen) (p, m) =>
     if p == pos then
@@ -172,7 +172,7 @@ private def dedupMsgsAt
         (out.push (p, m), seen)
       else (out, seen)
     else (out, seen)
-def simpErrorCombine (e₁ : Simple Substring Char) (e₂ : Simple Substring Char) : Simple Substring Char :=
+def simpErrorCombine (e₁ : Simple Substring.Raw Char) (e₂ : Simple Substring.Raw Char) : Simple Substring.Raw Char :=
   let (p₁, f₁, m₁) := e₁.flatten
   let (p₂, f₂, m₂) := e₂.flatten
   if p₁ < p₂ then e₂ else if p₂ < p₁ then e₁ else
@@ -340,15 +340,14 @@ def transformPrim (e : Expr) : ST σ (Expr × Nat) := do
     | Fixcomb e => Fixcomb <$> go e
     | Cond c t e => Cond <$> go c <*> go t <*> go e
     | Match e discr =>
-      Match <$> e.mapM go <*> discr.attach.mapM fun ⟨pe, property'⟩ =>
-        have : sizeOf pe.2 < 1 + sizeOf e + sizeOf discr := by
-          have h₁ := (prod_sizeOf_lt pe).2 <> Array.sizeOf_lt_of_mem property'
-          omega
-        (pe.1, ·) <$> go pe.2
+      Match <$> e.mapM go <*> discr.attach.mapM fun ⟨pe, mem⟩ =>
+        match h' : pe with
+        | (ps, pexpr) => (ps, ·) <$> (
+          have := h' ▸ prod_sizeOf_lt_snd ps pexpr;
+          have := Array.sizeOf_lt_of_mem (h' ▸ mem);
+          go pexpr)
     | e => return e
-
   (· , ·) <$> (go e) <*> cnt.get
-
 @[inline] def transShorthand (e : Expr) : Expr :=
   let (e, n) := runST fun _ => transformPrim e
   n.foldRev (fun i _ a => Fun (hole i) a) e

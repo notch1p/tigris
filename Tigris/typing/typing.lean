@@ -30,7 +30,7 @@ partial def unify : MLType -> MLType -> Infer σ Subst
       List.foldlM2
         (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
         headSub as₁ as₂
-  | t₁@(TApp h []), t₂ | t₂, t₁@(TApp h []) => unify h t₂
+  | TApp h [], t₂ | t₂, TApp h [] => unify h t₂
   | t₁, t₂ => throw $ NoUnify t₁ t₂
 
 @[inline] def fresh : Infer σ MLType :=

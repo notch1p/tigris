@@ -1,12 +1,21 @@
 import Parser
 import PP.dependentPP
 
-@[simp, grind]
-axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
-axiom prod_sizeOf_lt_fst [SizeOf α] [SizeOf β]
-  (a : α) (b : β) : sizeOf a < sizeOf (a, b)
-axiom prod_sizeOf_lt_snd [SizeOf α] [SizeOf β]
-  (a : α) (b : β) : sizeOf b < sizeOf (a, b)
+-- retired
+--axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
+--axiom prod_sizeOf_lt_fst [SizeOf α] [SizeOf β]
+--  (a : α) (b : β) : sizeOf a < sizeOf (a, b)
+--axiom prod_sizeOf_lt_snd [SizeOf α] [SizeOf β]
+--  (a : α) (b : β) : sizeOf b < sizeOf (a, b)
+
+theorem prod_sizeOf_lt_fst [SizeOf α] [SizeOf β] (a : α) (b : β)
+  : sizeOf a < sizeOf (a, b) := Prod.mk.sizeOf_spec a b ▸ by omega
+theorem prod_sizeOf_lt_snd [SizeOf α] [SizeOf β] (a : α) (b : β)
+  : sizeOf b < sizeOf (a, b) := Prod.mk.sizeOf_spec a b ▸ by omega
+attribute [simp, grind] prod_sizeOf_lt_fst prod_sizeOf_lt_snd
+
+@[inline, reducible] def Function.on (g : β -> β -> γ) (f : α -> β)
+  : α -> α -> γ := fun x y => g (f x) (f y)
 
 abbrev Symbol := String
 
@@ -92,7 +101,7 @@ instance : OfNat Kind n where
 
 @[inline] def Kind.isArr : Kind -> Bool
   | .karr .. => true | _ => false
-partial def Kind.toStr : Kind -> String
+def Kind.toStr : Kind -> String
   | .type        => "Type"
   | .karr a b    =>
     (if a.isArr then s!"({a.toStr})" else a.toStr) ++ " → " ++ b.toStr
@@ -101,19 +110,19 @@ instance : ToString Kind := ⟨Kind.toStr⟩
 
 /-- Arity = number of left-spine arrows. `Kind.arity Type = 0`,
     `Kind.arity (Type → Type) = 1`, `Kind.arity (Type → Type → Type) = 2`. -/
-@[inline] partial def Kind.arity : Kind -> Nat
+@[inline] def Kind.arity : Kind -> Nat
   | .karr _ b => 1 + arity b
   | _         => 0
 
 /-- Kind substitution. -/
 abbrev KSubst := Std.TreeMap Nat Kind
 
-partial def Kind.apply (s : KSubst) : Kind -> Kind
+def Kind.apply (s : KSubst) : Kind -> Kind
   | .type     => .type
   | .karr a b => .karr (apply s a) (apply s b)
   | .kvar n   => s.getD n (.kvar n)
 
-partial def Kind.fv : Kind -> Std.TreeSet Nat
+def Kind.fv : Kind -> Std.TreeSet Nat
   | .type     => ∅
   | .karr a b => fv a ∪ fv b
   | .kvar n   => {n}
@@ -274,8 +283,8 @@ structure PEnv where
   indentStack  : List Nat := [0]
   lastEol : Nat := 0
 
---abbrev TParser := SimpleParserT Substring Char $ StateRefT String $ StateT PEnv $ ST α
-abbrev TParser σ := SimpleParserT Substring Char
+--abbrev TParser := SimpleParserT Substring.Raw Char $ StateRefT String $ StateT PEnv $ ST α
+abbrev TParser σ := SimpleParserT Substring.Raw Char
                   $ StateRefT (PEnv × String) (ST σ)
 
 def warn (s : String) : TParser σ Unit :=

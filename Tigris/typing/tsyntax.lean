@@ -14,20 +14,19 @@ def applyTE : Subst -> TExpr -> TExpr
   | s, .Fix e ty          => .Fix (applyTE s e) (apply s ty)
   | s, .App f a ty        => .App (applyTE s f) (applyTE s a) (apply s ty)
   | s, .Let bs b ty       =>
-    .Let (bs.attach.map fun ⟨p, prop⟩ =>
-            have :=
-              (prod_sizeOf_lt p.2 |>.2)
-              <> (prod_sizeOf_lt p |>.2)
-              <> sizeOf_lt_of_mem prop
-            (p.1, apply s p.2.1, applyTE s p.2.2))
+    .Let (bs.attach.map fun ⟨(sym, sch, expr), mem⟩ =>
+                            have := prod_sizeOf_lt_snd sch expr
+                                 <> prod_sizeOf_lt_snd sym (sch, expr)
+                                 <> sizeOf_lt_of_mem mem
+                            (sym, apply s sch, applyTE s expr))
          (applyTE s b) (apply s ty)
   | s, .Cond c t e ty     => .Cond (applyTE s c) (applyTE s t) (applyTE s e) (apply s ty)
   | s, .Prod' l r ty      => .Prod' (applyTE s l) (applyTE s r) (apply s ty)
   | s, .Match scr br ty ex red =>
     .Match (scr.map (applyTE s))
-           (br.attach.map fun ⟨p, prop⟩ =>
-             have := (prod_sizeOf_lt p |>.2) <> sizeOf_lt_of_mem prop
-             (p.1, applyTE s p.2))
+           (br.attach.map fun ⟨(ps, expr), mem⟩ =>
+             have := prod_sizeOf_lt_snd ps expr <> sizeOf_lt_of_mem mem
+             (ps, applyTE s expr))
            (apply s ty) ex red
   | s, .Ascribe e ty      => .Ascribe (applyTE s e) (apply s ty)
 termination_by _ t => t
@@ -47,9 +46,11 @@ def fvTE : TExpr -> Std.TreeSet TV
   | .Prod' l r ty => fv ty ∪ fvTE l ∪ fvTE r
   | .Let binds body ty =>
     let fvBinds :=
-      binds.attach.foldl (init := ∅) fun acc ⟨p, prop⟩ =>
-        have := (prod_sizeOf_lt p.2 |>.2) <> (prod_sizeOf_lt p |>.2) <> (Array.sizeOf_lt_of_mem prop)
-        acc ∪ fv p.2.1 ∪ fvTE p.2.2
+      binds.attach.foldl (init := ∅) fun acc ⟨(sym, sch, expr), prop⟩ =>
+        have := prod_sizeOf_lt_snd sch expr
+             <> prod_sizeOf_lt_snd sym (sch, expr)
+             <> sizeOf_lt_of_mem prop
+        acc ∪ fv sch ∪ fvTE expr
     fv ty ∪ fvBinds ∪ fvTE body
 
   | .Match scrutinees branches resTy _ex _red =>
@@ -58,9 +59,9 @@ def fvTE : TExpr -> Std.TreeSet TV
         have := sizeOf_lt_of_mem prop
         acc ∪ fvTE te
     let fvBranches :=
-      branches.attach.foldl (init := ∅) fun acc ⟨p, prop⟩ =>
-        have := (prod_sizeOf_lt p |>.2) <> sizeOf_lt_of_mem prop
-        acc ∪ fvTE p.2
+      branches.attach.foldl (init := ∅) fun acc ⟨(ps, expr), prop⟩ =>
+        have := prod_sizeOf_lt_snd ps expr <> sizeOf_lt_of_mem prop
+        acc ∪ fvTE expr
     fv resTy ∪ fvScrs ∪ fvBranches
 termination_by te => te
 

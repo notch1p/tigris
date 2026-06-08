@@ -95,8 +95,8 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
       -- with `as₂`. Do NOT rebuild the LHS via `mkApp` — that re-flattens
       -- and recurses on the same input, looping forever.
       let d := n₁ - n₂
-      let h₁' := MLType.mkApp h₁ (as₁.take d)
-      let as₁' := as₁.drop d
+      let (as₁, as₁') := as₁.splitAt d
+      let h₁' := mkApp h₁ as₁
       (do let headSub <- unify h₁' h₂
           List.foldlM2
             (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))

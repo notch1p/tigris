@@ -13,8 +13,6 @@ def String.isUpperInit (s : String) : Bool :=
 def String.isLowerInit (s : String) : Bool :=
   if h : s.atEnd 0 = true then false
   else (s.get' 0 h) >= 'a' && (s.get' 0 h) <= 'z'
-@[inline] def Function.on (g : β -> β -> γ) (f : α -> β)
-  : α -> α -> γ := fun x y => g (f x) (f y)
 
 namespace Lexing open Parser Parser.Char
 

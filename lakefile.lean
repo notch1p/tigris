@@ -99,4 +99,4 @@ lean_exe "tigrisl" where
   root := `Tigrisl
   needs := #[runtime.lean]
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"d8428e25efb794c9147bb9beac1dfe2e51447c3e"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"054bbbeab6d1918fb538ef66c6d148e9afda87e8"

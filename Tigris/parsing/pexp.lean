@@ -29,7 +29,7 @@ def infixlDecl : TParser σ Binding := do
   INFIXL; let i <- intExp let s <- strExp
   match s, i with
   | CS op, CI i =>
-    let op := op.trim
+    let op := op.trimAscii.toString
     if reservedOp.find? op matches some _
     then error s!"this operator {op} may not be redefined\n"; throwUnexpected
     if let some e <- option? $ ARROW *> parseExpr then
@@ -45,7 +45,7 @@ def infixrDecl : TParser σ Binding := do
   INFIXR; let i <- intExp let s <- strExp
   match s, i with
   | CS op, CI i =>
-    let op := op.trim
+    let op := op.trimAscii.toString
     if reservedOp.find? op matches some _
     then error s!"this operator {op} may not be redefined\n"; throwUnexpected
     if let some e <- option? $ ARROW *> parseExpr then
@@ -60,7 +60,7 @@ def prefixDecl : TParser σ Binding := do
   PREFIX; let i <- intExp let s <- strExp
   match s, i with
   | CS op , CI i =>
-    let op := op.trim
+    let op := op.trimAscii.toString
     if reservedOp.find? op |>.isSome
     then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
     ARROW let e <- parseExpr
@@ -74,7 +74,7 @@ def postfixDecl : TParser σ Binding := do
   POSTFIX; let i <- intExp let s <- strExp
   match s, i with
   | CS op , CI i =>
-    let op := op.trim
+    let op := op.trimAscii.toString
     if reservedOp.find? op |>.isSome
     then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
     ARROW let e <- parseExpr
