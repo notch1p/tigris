@@ -11,7 +11,7 @@ instance forall a, Functor (Sum a) where
 
 let main =
   let a = Inl 2
-  and b = Inr 1
+      b = Inr 1
    in ( fmap (2 * _) a
       , fmap (1 + _) b)
 

@@ -1,4 +1,4 @@
-@[extern "lean_string_repeat", expose] private def leanStringRepeat (c : @&Char) (n : @&Nat) : String :=
+@[extern "lean_string_repeat"] private def leanStringRepeat (c : @&Char) (n : @&Nat) : String :=
   go c "" n where
   go c acc
   | 0 => acc
@@ -12,7 +12,7 @@
 @[always_inline, inline] def Char.repeat (c : Char) (n : Nat) : String :=
   leanStringRepeat c n
 
-@[extern "lean_disable_stdout_buffer", expose] opaque setStdoutBuf : Bool -> IO Unit
+@[extern "lean_disable_stdout_buffer"] opaque setStdoutBuf : Bool -> IO Unit
 
 @[extern "lean_sigint_pipe"]
 opaque installSigintPipe : IO Int32

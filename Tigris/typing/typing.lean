@@ -523,7 +523,7 @@ def inferToplevel (b : Array TopDecl) (E : Env) : Except TypingError (Env × Log
     | .extBind s _ sch => pure
       ({E with E := E.E.insert s sch}, L)
     | .idBind group => inferGroup group E L <&> Prod.snd
-    | .tyBind ty@{ctors, tycon, param} =>
+    | .tyBind ty@{ctors, tycon, param,..} =>
       return (· , L) <| ctors.foldl (init := E) fun {E, tyDecl, clsInfo, instInfo} (cname, fields, _) =>
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV ∘ Prod.fst) []) fields
         ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo⟩
@@ -550,7 +550,7 @@ def inferToplevelT (b : Array TopDecl) (E : Env) : Except TypingError (Array Top
     | .idBind group =>
       let (a, E, l) <- inferGroupT group E L
       return (acc.push a, E, l)
-    | .tyBind ty@{ctors, tycon, param} =>
+    | .tyBind ty@{ctors, tycon, param,..} =>
       return (acc.push (.tyBind ty), ·, L) <| ctors.foldl (init := E) fun {E, tyDecl, clsInfo, instInfo} (cname, fields, _) =>
         letI s := ctorScheme tycon (param.foldr (List.cons ∘ mkTV ∘ Prod.fst) []) fields
         ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo⟩

@@ -1,6 +1,7 @@
 *.tig linguist-language=ocaml
 examples/typeclass*.tig linguist-language=haskell
 examples/where.tig linguist-language=haskell
+examples/hkt-*.tig linguist-language=haskell
 examples/* linguist-vendored
 runtime.lean linguist-vendored
 docs/midterm/report.tex linguist-vendored

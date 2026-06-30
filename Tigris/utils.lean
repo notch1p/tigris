@@ -275,7 +275,7 @@ infixl:40 " <? " => flip (· <|> ·)
 def takeInfixOp? (minPrec : Nat) (inPattern := false) : TParser σ $ Option BinaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({ops,..}, _) <- get
-  match ops.find? tokSpan with
+  match ops.matchPrefix tokSpan 0 with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
@@ -289,7 +289,7 @@ def takeInfixOp? (minPrec : Nat) (inPattern := false) : TParser σ $ Option Bina
 def takePrefixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({pre,..}, _) <- get
-  match pre.find? tokSpan with
+  match pre.matchPrefix tokSpan 0 with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then throwUnexpectedWithMessage none "prec too low"
@@ -303,7 +303,7 @@ def takePrefixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none 
 def takePostfixOp? (minPrec : Nat) : TParser σ $ Option UnaryEntry := pure none <? do
   let tokSpan <- spaces *> lookAhead potentialOp
   let ({post,..}, _) <- get
-  match post.find? tokSpan with
+  match post.matchPrefix tokSpan 0 with
   | none => throwUnexpected
   | some entry@{sym,prec,..} =>
     if prec < minPrec then throwUnexpectedWithMessage none "prec too low"

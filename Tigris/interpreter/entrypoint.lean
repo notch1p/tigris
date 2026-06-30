@@ -106,8 +106,9 @@ end Parsing
 
 namespace MLType
 
-def parseToplevel (s : String) : IO Unit :=
-  match runST fun _ => (Parsing.toplevelFile <* Lexing.spaces <* Parser.endOfInput) s |>.run (initState, "") with
+def parseToplevel (s : String) (toplevel := `File) : IO Unit :=
+  let p {σ} : TParser σ (Array TopDecl) := if toplevel matches `File then Parsing.toplevelFile else Parsing.toplevel
+  match runST fun _ => (p <* Lexing.spaces <* Parser.endOfInput) s |>.run (initState, "") with
   | (.error _ e, (_, l)) => do
     println! l
     println! e
