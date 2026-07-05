@@ -153,15 +153,20 @@ mutual
 partial def emitLet1 (x : Name) (sh : CPS.Shape) (rhs : CRhs) (body : CExpr) : S String := do
   setShape x sh
   let rhsS <- emitCRhs rhs
-  return s!"(let (({sym x} {rhsS}))\n\
-              {<- ind}{<- withIndent (emitCExpr body)})"
+
+  if body matches .let1 .. then
+    return s!"(let (({sym x} {rhsS}))\n\
+            {<- ind}{<- (emitCExpr body)})"
+  else
+    return s!"(let (({sym x} {rhsS}))\n\
+                {<- ind}{<- withIndent (emitCExpr body)})"
 
 partial def emitLetKont (kid param : Name) (kBody body : CExpr) : S String := do
   modify fun ctx => {ctx with localKont := ctx.localKont.insert kid}
   let ii <- ind
-  return s!"(labels (({sym kid} ({sym param})\n\
-                    {ii}{<- withIndent (emitCExpr kBody)}))\n\
-              {ii}{<- withIndent (emitCExpr body)})"
+  return s!"(labels\n{ii}(({sym kid} ({sym param})\n\
+                    {<- withIndent ind}{<- withIndent $ emitCExpr kBody}))\n\
+              {ii}{<- emitCExpr body})"
 
 partial def emitTail : CTail -> S String
   | .matchFail discr =>
@@ -187,7 +192,7 @@ partial def emitTail : CTail -> S String
   | .switchConst s cases d? => do
     let ii <- ind
     let br <- cases.mapM fun (k, b) => do
-      let b <- withIndent $ withIndent (emitCExpr b)
+      let b <- withIndent (emitCExpr b)
       pure s!"((equal {sym s} {emitConst k})\n{ii}  {b})"
     let defs <- d?.mapM (withIndent $ withIndent $ emitCExpr ·)
     let br := br.foldl1D (· ++ "\n" ++ ii ++ ·) ""
@@ -196,7 +201,7 @@ partial def emitTail : CTail -> S String
   | .switchCtor s cases d? => do
     let ii <- ind
     let br <- cases.mapM fun (tag, ar, b) => do
-      let b <- withIndent $ withIndent $ withShapes s (.ctor tag ar) $ (emitCExpr b)
+      let b <- withIndent $ withShapes s (.ctor tag ar) $ (emitCExpr b)
       return s!"((eq (car {sym s}) {qsym tag})\n{ii}  {b})"
     let defs <- d?.mapM (withIndent $ withIndent $ emitCExpr ·)
     let br := br.foldl1D (· ++ "\n" ++ ii ++ ·) ""
@@ -224,9 +229,9 @@ partial def emitCExpr : CPS.CExpr -> S String
 end
 
 def emitFun (knownFuns : FunSet) (f : CFun) : String :=
-  let body := withIndent (withIndent (emitCExpr f.body)) |>.run' $
+  let body := withIndent (emitCExpr f.body) |>.run' $
     -- use payload shape
-    let shapes := Std.HashMap.insert ∅ f.payloadParam f.payloadShape
+    let shapes := Std.HashMap.insert ∅ f.payloadParam f.payloadShape ;
     { payloadParam := f.payloadParam
     , kontParam    := f.kontParam
     , knownFuns
