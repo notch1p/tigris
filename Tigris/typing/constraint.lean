@@ -92,7 +92,7 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
     else if n₁ > n₂ then
       -- Claude: Length-equalize: fuse the prefix of `as₁` into the head and unify
       -- the resulting "fused head" against `h₂`, then zip the suffix args
-      -- with `as₂`. Do NOT rebuild the LHS via `mkApp` — that re-flattens
+      -- with `as₂`. Do NOT rebuild the LHS via `mkApp` -- that re-flattens
       -- and recurses on the same input, looping forever.
       let d := n₁ - n₂
       let (as₁, as₁') := as₁.splitAt d
@@ -454,24 +454,6 @@ partial def normHK : MLType -> MLType
   | a ×'' b => normHK a ×'' normHK b
   | t => t
 
-partial def normHK' : MLType -> MLType
-  | .TApp h args =>
-    let h' :=
-      match h with
-      | .TCon s => if s.isLowerInit then .TVar (.mkTV s) else .TCon s
-      | other => normHK' other
-    MLType.mkApp h' (args.map normHK')
-  | .TCon s =>
-    if s.isLowerInit then .TVar (.mkTV s) else .TCon s
-  | .TyLam x body => .TyLam x (normHK' body)
-  | a ->' b => normHK' a ->' normHK' b
-  | a ×'' b => normHK' a ×'' normHK' b
-  | .TSch (.Forall vs ps t) => .TSch (.Forall vs (ps.map normHKPred) (normHK' t))
-  | t => t
-
-partial def normHKPred' (p : Pred) : Pred :=
-  p.mapArgs normHK'
-
 partial def normHKPred (p : Pred) : Pred :=
   p.mapArgs normHK
 end
@@ -595,7 +577,7 @@ def inferToplevelC
         if let some ex := ex then
           Logging.warn
             s!"Partial pattern matching, \
-               possible cases such as {ex.map Pattern.render} are ignored\n"
+               possible cases such as {ex.map Pattern.toStr} are ignored\n"
         else ""
       return (acc.push $ .patBind (pat, sch, e), E, L ++ l₁ ++ l ++ l₂ ++ l₃)
     | .instBind inst => do

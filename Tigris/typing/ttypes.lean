@@ -14,7 +14,7 @@ def prod? | _ ×'' _ => true | _ => false
 def app? | MLType.TApp .. => true | _ => false
 def lam? | MLType.TyLam .. => true | _ => false
 def parenthesize s := paren? (arr? s || prod? s || app? s || lam? s)
-open Std.Format Std.ToFormat in open Logging (magenta) in
+open Std.Format Std.ToFormat in
 mutual
 def MLType.toStr : MLType -> String
   | .TVar a => toString a
@@ -33,8 +33,8 @@ def MLType.toStr : MLType -> String
   | .TSch sch => sch.toStr
 
 def MLType.renderFmt : MLType -> Std.Format
+  | .TCon a
   | .TVar a => format a
-  | .TCon a => magenta a
   | a ->' b => nestD $ group $ paren? (arr? a) (MLType.renderFmt a) <> "→" <+> MLType.renderFmt b
   | a ×'' b => nestD $ group $ paren? (prod? a) (MLType.renderFmt a) <> "×" <+> MLType.renderFmt b
   | .TApp h [] => MLType.renderFmt h
@@ -49,8 +49,7 @@ def MLType.renderFmt : MLType -> Std.Format
 def Pred.toStr : Pred -> String
   | {cls, args} => cls ++ args.foldl (· ++ " " ++ MLType.toStr ·) ""
 def Pred.renderFmt : Pred -> Std.Format
-  | {cls, args} =>
-    Logging.magenta cls ++ args.foldl (· ++ " " ++ MLType.renderFmt ·) ""
+  | {cls, args} => cls ++ args.foldl (· ++ " " ++ MLType.renderFmt ·) ""
 
 def Scheme.renderFmt : Scheme -> Std.Format
   | .Forall _ [] t' => t'.renderFmt
@@ -127,7 +126,7 @@ instance : ToString TypingError where
   | .NoMatchL v pat =>
     s!"The ctor/constant {v} cannot be matched against\nany of the patterns: {pat}."
   | .NoMatch e v arr =>
-    let arr := arr.map $ Array.map Pattern.render ∘ Prod.fst
+    let arr := arr.map $ Array.map Pattern.toStr ∘ Prod.fst
     s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString arr}."
   | .Duplicates (mkTV a) b =>
     "Unbounded fixpoint constructor does not exist in a strongly normalized system.\n" ++

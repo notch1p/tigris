@@ -34,17 +34,17 @@ inductive FExpr where
   | Fix    (e : FExpr) (ty : MLType)                  -- rec tag
   | Proj   (src : FExpr) (mname : String)
            (idx : Nat) (ty : MLType)                  -- field projection
-deriving Repr, Inhabited
-
-def FExpr.getTy
-  | CI _ ty | CS _ ty | CB _ ty | CUnit ty
-  | Var _ ty | Fun _ _ _ ty | App _ _ ty
-  | Let _ _ ty | Prod' _ _ ty | Cond _ _ _ ty
-  | Match _ _ ty _ _ | Fix _ ty | Proj _ _ _ ty => ty
-  | TyLam _ f
-  | TyApp f _ => f.getTy
+with @[computed_field]
+  getTy : FExpr -> MLType
+  | .CI _ ty | .CS _ ty | .CB _ ty | .CUnit ty
+  | .Var _ ty | .Fun _ _ _ ty | .App _ _ ty
+  | .Let _ _ ty | .Prod' _ _ ty | .Cond _ _ _ ty
+  | .Match _ _ ty _ _ | .Fix _ ty | .Proj _ _ _ ty => ty
+  | .TyLam _ f
+  | .TyApp f _ => f.getTy
     -- TyApp currently doesn't carry result type.
     -- f.getTy should NOT yield a arrow type as polys are erased after instantiation
+deriving Repr, Inhabited
 
 namespace SysF open MLType TExpr Rewritable
 open ConstraintInfer (unify)

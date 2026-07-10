@@ -77,7 +77,7 @@ def registerTy (name : String) (kind : Kind) (mt : Bool) (flag := true) : TParse
     | none =>
       (true, {st with tys := tys.insert name (kind, flag)}, l)
     | some (kind', k) =>
-      -- Reconcile via kind unification — exact equality is too strict if
+      -- Claude: Reconcile via kind unification -- exact equality is too strict if
       -- the registered/expected kinds mention `kvar`s during inference.
       match Kind.unify kind' kind with
       | .ok _ =>

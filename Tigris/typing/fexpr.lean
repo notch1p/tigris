@@ -176,11 +176,11 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
       if let some ex := ex then
         Logging.warn
           s!"Partial pattern matching, an unmatched candidate is\
-             \n  {ex.map (Pattern.render)}\n"
+             \n  {ex.map (Pattern.toStr)}\n"
       else
         if red.isEmpty then "" else
           letI br := red.foldl (init := "") fun a i =>
-            s!"{a}\n  {i + 1})  {br[i]!.1.map (Pattern.render)}"
+            s!"{a}\n  {i + 1})  {br[i]!.1.map (Pattern.toStr)}"
           Logging.warn s!"Found redundant alternatives at{br}\n"
     let brF :=
       if red.isEmpty then brF else

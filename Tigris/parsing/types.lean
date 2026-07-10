@@ -36,6 +36,14 @@ inductive TConst where
   | PStr (s : String)
 deriving Inhabited, Repr, BEq, Hashable
 
+open Std.ToFormat in
+instance : Std.ToFormat TConst where
+  format
+  | .PUnit => format ()
+  | .PInt i => format i
+  | .PBool b => format b
+  | .PStr s => repr s
+
 instance : ToString TConst where
   toString
   | .PUnit => toString ()
@@ -54,6 +62,13 @@ inductive Pattern where
   | PConst (p : TConst)
   | PProd' (p₁ : Pattern) (p₂ : Pattern)
   | PCtor (name : String) (args : Array Pattern)
+with @[computed_field]
+  vars : Pattern -> Array String
+  | .PVar x       => #[x]
+  | .PWild        => #[]
+  | .PConst _     => #[]
+  | .PProd' p q   => vars p ++ vars q
+  | .PCtor _ args => args.flatMap vars
 deriving Inhabited, Repr
 
 def Pattern.beq : Pattern -> Pattern -> Bool
@@ -61,7 +76,7 @@ def Pattern.beq : Pattern -> Pattern -> Bool
   | PConst p₁, PConst p₂ => p₁ == p₂
   | PProd' p₁ p₂, PProd' p₁' p₂' => p₁.beq p₁' && p₂.beq p₂'
   | _, PWild => true
-  | _, PVar _ => true
+  | _, PVar .. => true
   | _, _ => false
 
 instance : BEq Pattern := ⟨Pattern.beq⟩
@@ -84,7 +99,7 @@ def Pattern.render : Pattern -> String
   | PProd' p₁ p₂ => toString (render p₁, render p₂)
   | PCtor n args => args.foldl (fun a s => a ++ " " ++ paren (prodOrApp? s) (render s)) $ Logging.blue n
 
-instance : ToString Pattern := ⟨Pattern.toStr⟩
+
 /-- Kind is a lattice.
 - `type` denotes the single base sort `Type 0`
 - `karr` denotes `(· -> ·)` for universe
@@ -158,7 +173,7 @@ instance : BEq TV := ⟨fun (.mkTV s) (.mkTV s') => s == s'⟩
 instance : ToString TV := ⟨fun (.mkTV s) => s⟩
 instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩
 def TV.renderFmt : TV -> Std.Format
-  | mkTV s => Logging.cyan s
+  | mkTV s => s
 def TV.toStr : TV -> String | mkTV s => s
 instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
 
@@ -200,6 +215,9 @@ def MLType.decomposeArr' : MLType -> (List MLType × MLType)
     let (as, r) := decomposeArr' b
     (a :: as, r)
   | t => ([], t)
+
+instance : ToString Pattern := ⟨Pattern.toStr⟩
+
 inductive Expr where
   | CI (i : Int)       | CS (s : String)        | CB (b : Bool) | CUnit
   | App (e₁ e₂ : Expr) | Cond (e₁ e₂ e₃ : Expr) | Let (ae : Array $ Symbol × Expr) (e₂ : Expr)

@@ -8,7 +8,7 @@ namespace IRf
 inductive Sel where
   | base (idx : Nat)
   | field (s : Sel) (idx : Nat)
-deriving Repr, Inhabited
+deriving Repr, Inhabited, Hashable
 
 structure RowState where
   pats : Array Pattern

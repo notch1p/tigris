@@ -14,7 +14,7 @@ def 𝒮 (head : Symbol) (arity : Nat) (M : 𝓜) : 𝓜 :=
           (args.toList ++ ps) :: acc
         else
           acc
-    | PVar _ :: ps | PWild :: ps =>
+    | PVar .. :: ps | PWild :: ps =>
         (List.replicate arity PWild ++ ps) :: acc
     | _ => acc
 
@@ -22,7 +22,7 @@ def 𝒮ₚ (M : 𝓜) : 𝓜 :=
   M.foldr (init := []) fun row acc =>
     match row with
     | PProd' p q :: ps => (p :: q :: ps) :: acc
-    | PVar _ :: ps | PWild :: ps => (PWild :: PWild :: ps) :: acc
+    | PVar .. :: ps | PWild :: ps => (PWild :: PWild :: ps) :: acc
     | _ => acc
 
 inductive FinDom | unit | bool deriving Repr
@@ -45,14 +45,14 @@ def 𝒮ₖ (k : TConst) (M : 𝓜) : 𝓜 :=
   M.foldr (init := []) fun s a =>
     match s with
     | PConst k' :: ps => if k == k' then ps :: a else a
-    | PVar _ :: ps | PWild :: ps => ps :: a
+    | PVar .. :: ps | PWild :: ps => ps :: a
     | _ => a
 end FinDom
 
 def 𝒟 (M : 𝓜) : 𝓜 :=
   M.foldr (init := []) fun row acc =>
     match row with
-    | PVar _ :: ps => ps :: acc
+    | PVar .. :: ps => ps :: acc
     | PWild :: ps  => ps :: acc
     | _ => acc
 def ς (M : 𝓜) : Std.HashSet (Symbol × Nat) :=
@@ -189,7 +189,7 @@ partial def useful
     | t₁ ×'' t₂ =>
       match p with
       | PProd' p1 p2 => useful lookup (t₁ :: t₂ :: σ) (𝒮ₚ M) (p1 :: p2 :: ps)
-      | PVar _ | PWild =>
+      | PVar .. | PWild =>
         useful lookup (t₁ :: t₂ :: σ) (𝒮ₚ M) (PWild :: PWild :: ps)
       | _ => false
     | _ =>
@@ -200,7 +200,7 @@ partial def useful
         let complete := all.all (fun k => sig.contains k)
         match p with
         | PConst k => useful lookup σ (𝒮ₖ k M) ps
-        | PVar _ | PWild =>
+        | PVar .. | PWild =>
           if complete then
             all.any (fun k => useful lookup σ (𝒮ₖ k M) ps)
           else
@@ -216,7 +216,7 @@ partial def useful
               match ctorFieldTypes td cname tyArgs with
               | some fts => useful lookup (fts ++ σ) (𝒮 cname args.size M) (args.toList ++ ps)
               | none     => false
-            | PVar _ | PWild =>
+            | PVar .. | PWild =>
               let sig := ς M
               let complete := completeData td sig
               if complete then
@@ -228,13 +228,13 @@ partial def useful
           | none =>
             -- unknown type: fall back to default
             match p with
-            | PVar _ | PWild => useful lookup σ (𝒟 M) ps
+            | PVar .. | PWild => useful lookup σ (𝒟 M) ps
             | PConst k       => useful lookup σ (FinDom.𝒮ₖ k M) ps
             | _              => useful lookup σ (𝒟 M) ps
         | none =>
           -- not a product/finite/data head: default
           match p with
-          | PVar _ | PWild => useful lookup σ (𝒟 M) ps
+          | PVar .. | PWild => useful lookup σ (𝒟 M) ps
           | PConst k       => useful lookup σ (FinDom.𝒮ₖ k M) ps
           | _              => useful lookup σ (𝒟 M) ps
   | _, _ => false

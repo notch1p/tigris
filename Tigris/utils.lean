@@ -235,12 +235,10 @@ def Array.foldl1D (f : α -> α -> α) (arr : Array α) (dflt : α) : α :=
   let mf mx y := some $ match mx with | none => y | some x => f x y
   arr.foldl mf none |>.getD dflt
 
-def Std.Format.joinSep' [Std.ToFormat α]
-  (arr : Array α) (sep : Format)
+def Std.Format.joinSep' [Std.ToFormat α] (arr : Array α) (sep : Format)
   : Format :=
   if h : arr.size = 0 then nil
-  else
-    arr.mapReduce format (· ++ sep ++ ·) $ Nat.zero_lt_of_ne_zero h
+  else arr.toSubarray 1 |>.foldl (· ++ sep ++ format ·) (format arr[0])
 
 def Array.foldr1 [Inhabited α] (f : α -> α -> α) (arr : Array α) : α :=
   let mf x my := some $ match my with | none => x | some y => f x y

@@ -14,7 +14,7 @@ def transMatch (pat : Array Pattern) (e : Expr) : Expr :=
     let (ep, pat', _) :=
       pat.foldl (init := (#[], #[], 0)) fun (ep, pat', i) s =>
         match s with
-        | PVar _ | PWild => (ep, pat', i + 1)
+        | PVar .. | PWild => (ep, pat', i + 1)
         | p => (ep.push (Var $ hole i), pat'.push p, i + 1)
 
     let hd := if ep.isEmpty then e else Match ep #[(pat', e)]
