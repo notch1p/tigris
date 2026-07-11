@@ -187,7 +187,33 @@ def withJoin (k : Cont) (resTy : MLType) (body : Cont -> CompilerM CodePre)
     return .jp ⟨j, "κ", #[⟨p, "v", resTy⟩], resTy, jbody⟩ inner
   | k => body k
 
-/-- emit n-ary application according to the head's arity -/
+/-- emit n-ary application according to the head's arity. Denotational semantics:
+
+```plaintext
+arity  ::= k               syntactic; typal fallback
+         | 0               unknown; handled in codegen
+rawapp ::= fₙ(x₁,..,xₖ)
+         | ◾(x₁,..,xₖ)     pluggable; chained
+funapp ::= fᶠ(a₁,..,aₙ)    app
+         | fᵖ(a₁,..,aₙ)    pap
+
+⟦f₀(a₁,..,aₘ)⟧ = fᶠ(a₁,..,aₘ)                          (EXACT)
+⟦fₙ(a₁,..,aₙ)⟧ = fᶠ(a₁,..,aₙ)     Full                (KNOWNCALL)
+⟦fₖ(a₁,..,aₘ)⟧ = fᵖ(a₁,..,aₘ)     Part; where m < k   (PAP2)
+               | fᶠ(a₁,..,aₖ)     Over; where m > k   (CallK)
+               ; ⟦◾(aₖ₊₁,..,aₘ)⟧
+                 ^^^^^^^^^^^^^^^
+                /
+               /
+Note that this part is also handled in codegen
+through generic apply/curry if the tail arity is unknown
+```
+
+See also:
+> Marlow, Simon, and Simon Peyton Jones.
+> "Making a fast curry: push/enter vs. eval/apply for higher-order languages."
+> ACM SIGPLAN Notices 39.9 (2004): 4-15.
+-/
 partial def emitApp (f : FVarId) (fty : MLType) (args : Array Atom)
   (kont : FVarId -> CompilerM CodePre) : CompilerM CodePre :=
   if args.isEmpty then kont f

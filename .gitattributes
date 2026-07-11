@@ -11,3 +11,8 @@ docs/midterm/tigrisd.tex linguist-vendored
 docs/midterm/listproc.sty linguist-vendored
 docs/midterm/ottalt.sty linguist-vendored
 Tigris/oldcore/* linguist-vendored
+Tigris/core/ftransform.lean linguist-vendored
+Tigris/core/lift.lean linguist-vendored
+Tigris/core/matchAppBT.lean linguist-vendored
+Tigris/core/transform.lean linguist-vendored
+Tigris/core/opt.lean linguist-vendored

@@ -49,6 +49,12 @@ def Array.seq2 (f : α -> β) : Array α -> Array α -> Array β
       else
         a.push $ f bs[i - ass]
 
+def Array.foldr2 (f: α -> β -> γ -> γ) (init : γ) (xs : Array α) (ys : Array β) : γ :=
+  let minSz := Nat.min xs.size ys.size
+  have ⟨h₁, h₂⟩ : minSz <= xs.size ∧ minSz <= ys.size :=
+    ⟨Nat.min_le_left .., Nat.min_le_right ..⟩
+  minSz.foldRev (fun i h a => f xs[i] ys[i] a) init
+
 def Array.foldl2 (f : γ -> α -> β -> γ) (init : γ) (xs : Array α) (ys : Array β) : γ :=
   let minSz := Nat.min xs.size ys.size
   have ⟨h₁, h₂⟩ : minSz <= xs.size ∧ minSz <= ys.size :=

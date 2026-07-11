@@ -1,5 +1,6 @@
-import Tigris.TCNF.nftransform
-open TCNF.Compiler
+import Tigris.TCNF.entrypoint
+
+open TCNF
 
 def cases : List (String × String) :=
   [ ("literal",          "42")
@@ -22,24 +23,72 @@ def cases : List (String × String) :=
   , ("shadowing",        "let x = 1 in let x = 2 in x")
   ]
 
-#eval
-  check1F "let f x y = x in let g = f 10 in g 20"
-
-#eval do
-  let s <- IO.FS.readFile "examples/list.tig"
-  checkModF s |>.toIO .userError
-
-#eval do
-  let s <- IO.FS.readFile "examples/fact.tig"
-  checkModF s |>.toIO .userError
-
-#eval do
-  let s <- IO.FS.readFile "examples/fun.tig"
-  checkModF s |>.toIO .userError
+def check1F (s : String) (E := MLType.defaultE) : IO Unit :=
+  match Parsing.parse s initState with
+  | .error e => println! e
+  | .ok e    =>
+    match runInferConstraintF e E with
+    | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
+    | .ok    (fe, _, l) => do
+      IO.println l
+      let ir <- lowerToCode ∅ fe |>.toIO .userError
+      println! Std.ToFormat.format ir |>.pretty (width := 40)
 
 def main : IO Unit :=
   cases.forM fun (name, src) => do
     IO.println s!"\n══════ {name} :: {src}"
     check1F src MLType.defaultE'
 
-#eval main
+-- #eval
+--   check1F "let f x y = x in let g = f 10 in g 20"
+
+-- #eval do
+--   let s <- IO.FS.readFile "examples/list.tig"
+--   checkModF s |>.toIO .userError
+
+-- #eval do
+--   let s <- IO.FS.readFile "examples/fact.tig"
+--   checkModF s |>.toIO .userError
+
+-- #eval do
+--   let s <- IO.FS.readFile "examples/fun.tig"
+--   checkModF s |>.toIO .userError
+
+-- #eval do
+--   let s <- IO.FS.readFile "examples/fun.tig"
+--   checkCC s |>.toIO .userError
+
+-- #eval do
+--   let s :=
+-- "
+-- let classify n =
+--   let rec ev k =
+--         match k with | 0 => true  | _ => od (k - 1)
+--   and     od k =
+--         match k with | 0 => false | _ => ev (k - 1)
+--   in (ev n, od n)
+
+-- let main = classify 10
+-- "
+--   checkCC s |>.toIO .userError
+
+-- #eval do
+--   let s :=
+-- "
+-- let adder x = let g y = x + y in g
+
+-- let sumTo n =
+--   let rec go acc k =
+--     match k with
+--     | 0 => acc
+--     | _ => go (acc + k) (k - 1)
+--   in go 0 n
+
+-- let main = (adder 10 5, sumTo 100)
+-- "
+--   checkCC s |>.toIO .userError
+--   println! "-------------------------------------"
+--   checkKOC s |>.toIO .userError
+
+
+-- #eval main

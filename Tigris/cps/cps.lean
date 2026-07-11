@@ -49,7 +49,7 @@ deriving Repr, Inhabited, BEq
 
 /-- CPS expression in ANF: pure let1 / letKont / local fun groups, ending with a tail.
 
-`let1` carries the static `Shape` of `x` — set at IR construction time so the
+`let1` carries the static `Shape` of `x` -- set at IR construction time so the
 SBCL backend never needs to guess. `letKont`'s param shape is implicit `.unknown`
 (it's the result of a function call). -/
 inductive CExpr where

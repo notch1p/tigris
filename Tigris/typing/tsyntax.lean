@@ -124,7 +124,7 @@ def alignToScheme (te : TExpr) (sch : Scheme) : TExpr :=
   | .Forall qs _ _ =>
     -- Claude: Only rename free *metavariables* (names starting with `?m.`). Already-
     -- normalized TVars (e.g. `α`, `β`) may leak in here from inner bindings
-    -- whose schemes were already aligned — they must not be touched, and they
+    -- whose schemes were already aligned -- they must not be touched, and they
     -- must not confuse the count-based 1-to-1 mapping with `qs`.
     let vs := (fvTE te).toList.filter tv?
     if vs.length != qs.length then te
