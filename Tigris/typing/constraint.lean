@@ -1,6 +1,7 @@
 import Tigris.typing.ttypes
 import Tigris.typing.tsyntax
 import Tigris.typing.exhaust
+import Tigris.typing.scc
 
 namespace ConstraintInfer open MLType Rewritable Pattern Expr
 
@@ -331,11 +332,24 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
     addEq te ty
     return (.Ascribe e ty, ty, p)
 
-partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
-  : InferC σ (TExpr × MLType × List Pred) := do
+/--
+infers/checks/generalizes a group in topo order from dependency analysis.
+
+Previously we used a overapproximation heuristics that
+transform every non-Fun head RHS to a normal let-binding,
+which is dumb and has a fixed order, leading to problems.
+
+Consider the example in `examples/where.tig`. main and boxedAdd are
+in the same let group, therefore when typechecking main, boxedAdd is
+undefined since `where` group binding are inserted before main.
+And the fact that boxedAdd can reference (^) and (`on`) really is
+because they are Fun-headed, therefore belong in the rec group,
+which, was processed first in the previous version of `inferLet`.
+-/
+partial def inferGroup (Γ : Env) (binds : Array (String × Expr))
+  : InferC σ (Env × Array (String × Scheme × TExpr)) := do
   let startCs <- get <&> (·.cst.length)
   let (recs, nonrecs) := binds.partition $ isRecRhs ∘ Prod.snd
-  dbg_trace repr (recs, nonrecs)
   let (Γrec, recTyVars) <-
     recs.foldlM (init := (Γ, show Std.HashMap String MLType from ∅))
       fun (Γrec, recTyVars) (n, _) => do
@@ -367,22 +381,21 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
     let predsFor evStart evEnd :=
       wants.foldr (init := []) fun (eid, p) acc =>
         if evStart <= eid && eid < evEnd then (applyAll p) :: acc else acc
-    let (Γ, bindsTyped) :=
-      tyRec.foldl (init := (Γ, #[])) fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
+    let gen := fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
       let ty := applyAll ty
-      let ownResidual := predsFor l r
-      let sch := generalize Γ ty (applyAll ps ++ ownResidual)
+      let sch := generalize Γ ty (applyAll ps ++ predsFor l r)
       (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
-    let (Γ, bindsTyped) :=
-      tyNon.foldl (init := (Γ, bindsTyped)) fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
-      let ty := applyAll ty
-      let ownResidual := predsFor l r
-      let sch := generalize Γ ty (applyAll ps ++ ownResidual)
-      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
-    let (tBody, tB, pB) <- inferExpr Γ body
-    let tB := applyAll tB
-    let tBody := applyAll tBody
-    return (.Let bindsTyped tBody tB, tB, pB)
+    return (tyNon.foldl (init := tyRec.foldl (init := (Γ, #[])) gen) gen)
+
+partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
+  : InferC σ (TExpr × MLType × List Pred) := do
+  -- process strongly-connected components in dependency order; flat, topo-ordered
+  let (Γ, bindsTyped) <-
+    (depOrder binds).foldlM (init := (Γ, #[])) fun (Γ, acc) grp => do
+      let (Γ, bt) <- inferGroup Γ grp
+      return (Γ, acc ++ bt)
+  let (tBody, tB, pB) <- inferExpr Γ body
+  return (.Let bindsTyped tBody tB, tB, pB)
 partial def inferMatch (Γ : Env) (discr : Array Expr) (br : Array (Array Pattern × Expr))
   : InferC σ (TExpr × MLType × List Pred) := do
   let (discrTyped, discrTys, predsAll) <-

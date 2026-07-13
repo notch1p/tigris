@@ -67,8 +67,8 @@ def optimizeModule (nt : Std.HashSet String) (m : Module .postCC) : Module .post
   let globals : FVSet := m.decls.push m.main |>.foldl (·.insert ·.fvarId) ∅
   let km₀ := seedKM globals m
   let m := {decls := m.decls.map (cfoldDecl nt km₀), main := cfoldDecl nt km₀ m.main}
-  -- Pass 2: known-call + arity (Decl scoped) + DCE
-  let (ari, gclos) := seedMaps m
+  -- Pass 2: known-call + arity (Decl scoped) + DCE  (globals unchanged by cfold)
+  let (ari, gclos) := seedMaps globals m
   {decls := m.decls.map (kocDecl ari gclos), main := kocDecl ari gclos m.main}
 
 def lowerModuleCCOpt (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)

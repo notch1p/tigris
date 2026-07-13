@@ -1,4 +1,5 @@
--- Bugged in IR lowering, only usable via #load in tigris REPL.
+-- Exercises SCC-ordered let-group typing (main sees the where-bound
+-- boxedAdd) and B passed to `on`.
 data Boxed a = B a
 
 infixr 30 "`on`"

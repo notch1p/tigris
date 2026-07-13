@@ -203,4 +203,31 @@ termination_by e => e
 instance : ToFormat Sexp := ⟨fmtSexp⟩
 end PP
 
+def preludeCL
+  (speed := 1)
+  (safety := 3)
+  (debug := 1)
+  (runtime : Option String := "runtime.lisp") : String :=
+let clos :=
+"(defstruct (clos (:constructor %clos (fn arity)))
+  (fn #'identity :type function)
+  (arity 0 :type fixnum))\n"
+let applySlow :=
+"(defun %apply-slow (c args)
+  (let ((n (length args)) (k (clos-arity c)))
+    (cond
+      ((= n k) (apply (clos-fn c) args))
+      ((< n k) (%clos (lambda (&rest more)
+                        (apply (clos-fn c)
+                               (append args more)))
+                      (- k n)))
+      (t (%apply-slow (apply (clos-fn c)
+                             (subseq args 0 k))
+                      (nthcdr k args))))))\n"
+let pragma := s!"(declaim (optimize (speed {speed}) (safety {safety}) (debug {debug})))\n"
+if let some runtime := runtime then
+  pragma ++ s!"(load \"{runtime}\")" ++ clos ++ applySlow
+else
+  pragma ++ clos ++ applySlow
+
 end TCNF.CL

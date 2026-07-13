@@ -4,6 +4,11 @@ open Lake DSL System
 package "tigris" where
   version := v!"0.6.5"
 
+@[test_driver]
+lean_exe «tigris-test» where
+  root := `«run-tests»
+  srcDir := "tests"
+
 input_file ffi.c where
   path := "c" / "ffi.c"
   text := true

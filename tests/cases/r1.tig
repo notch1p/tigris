@@ -1,0 +1,7 @@
+-- partial applications resolve to direct calls; HOF params stay generic.
+let add x y = x + y
+let inc = add 1
+let applyTwice f x = f (f x)
+let main =
+  let g = add 10 in
+  (inc 41, g 5, applyTwice inc 0)

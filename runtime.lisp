@@ -34,11 +34,15 @@
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (sb-kernel:two-arg-= a b))
 
+(defun %println (x) 
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (format t "~A" x))
+
 (define-condition match-failure (error)
   ((discrminant
-      :initarg :discr
-      :reader discrminant
-      :type string))
+    :initarg :discr
+    :reader discrminant
+    :type string))
   (:report
    (lambda (condition stream)
      (format stream "No branch can be matched against ~A" (discrminant condition)))))

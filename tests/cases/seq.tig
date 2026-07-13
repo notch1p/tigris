@@ -1,0 +1,6 @@
+-- Dependency-ordered let group: a non-recursive binding depends on an
+-- earlier recursive one in the same group.
+let main =
+  let rec dbl x = x + x
+  and six = dbl 3
+  in six

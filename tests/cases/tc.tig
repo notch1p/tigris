@@ -1,0 +1,11 @@
+-- Constant folding 1-ctor 1-field: (=) at a known Int 
+-- instance should become a direct call.
+
+class Eq a = {eq : a -> a -> Bool}
+instance Eq Int = {eq x y = __eqInt x y}
+
+let rec sumTo n acc = 
+  if n = 0 
+  then acc 
+  else sumTo (n - 1) (acc + n)
+let main = sumTo 100 0

@@ -3,26 +3,6 @@ import Tigris.TCNF.entrypoint
 
 namespace TCNF.CL open Std
 
-def preludeCL : String :=
-"\
-(load \"runtime.lisp\")
-(declaim (optimize (speed 1) (safety 3) (debug 1)))
-(defstruct (clos (:constructor %clos (fn arity)))
-  (fn #'identity :type function)
-  (arity 0 :type fixnum))
-(defun %apply-slow (c args)
-  (let ((n (length args)) (k (clos-arity c)))
-    (cond
-      ((= n k) (apply (clos-fn c) args))
-      ((< n k) (%clos (lambda (&rest more)
-                        (apply (clos-fn c)
-                               (append args more)))
-                      (- k n)))
-      (t (%apply-slow (apply (clos-fn c)
-                             (subseq args 0 k))
-                      (nthcdr k args))))))\
-"
-
 def emitLit : TConst -> Sexp
   | .PInt i      => .int i
   | .PBool true  => .sym "t"
@@ -294,12 +274,18 @@ def mkCtx (m : Module .postCC) (tyDecl : TyMap) : Ctx := Id.run do
         ctorInfo := ctorInfo.insert cname (tycon, i, fields.length)
   return {names, declArity, ctorInfo, tys := structTyNames tyDecl}
 
-def compileToCL (m : Module .postCC) (tyDecl : TyMap) : IO Format := do
+def compileToCL
+  (m : Module .postCC)
+  (tyDecl : TyMap)
+  (speed   := 1)
+  (safety  := 3)
+  (debug   := 1)
+  (runtime := some "runtime.lisp") : IO Format := do
   let ({funs, vals, main, tail, declaims}, st) <- emitModule m (mkCtx m tyDecl) |>.run {}
   let structForms := emitStructs tyDecl
   let gapplyForms := st.genArities.toArray.qsort (· < ·) |>.map genGapply
   return joinSep' (sep := line ++ line) $    -- inline ++ for 1 linebreak
-    #[.text "; Prelude\n" ++ .text preludeCL]
+    #[.text "; Prelude\n" ++ .text (preludeCL speed safety debug runtime)]
     ++ sect "; struct" structForms
     ++ sect "; gapply" gapplyForms
     ++ sect "; ftype"  declaims
@@ -308,29 +294,25 @@ where
   sect hdr fs : Array Format := if fs.isEmpty then #[] else #[.text hdr ++ "\n" ++ span fs]
   span fs : Format := joinSep' fs (line ++ line)
 
-def checkCL (s : String) : LowerM Unit := do
-  let (_, topdecl) <- Parsing.parseModuleIR s initState
---liftEIO $ println! repr topdecl
-  let stage₀@(_, E, _) <- inferToplevelC topdecl MLType.defaultE' |>.mapError toString |> EIO.ofExcept
-  let (fdecls, _, ctors) <- inferToplevelF stage₀ |>.mapError toString |> EIO.ofExcept
-  let mod <- lowerModuleCCOpt fdecls ctors E.tyDecl
-  let clmod <- liftEIO $ compileToCL mod E.tyDecl
-  liftEIO <| IO.println <| clmod.pretty 80
-
-/-- Compile a source module to a `.lisp` file (expects `runtime.lisp` in the load path). -/
-def emitToFile (src : String) (path : System.FilePath) : LowerM Unit := do
+/-- source -> CL -/
+def compileSource (src : String) : LowerM Format := do
   let (_, topdecl) <- Parsing.parseModuleIR src initState
   let stage₀@(_, E, _) <- inferToplevelC topdecl MLType.defaultE' |>.mapError toString |> EIO.ofExcept
   let (fdecls, _, ctors) <- inferToplevelF stage₀ |>.mapError toString |> EIO.ofExcept
   let mod <- lowerModuleCCOpt fdecls ctors E.tyDecl
-  let clmod <- liftEIO $ compileToCL mod E.tyDecl
-  liftEIO $ IO.FS.writeFile path (Format.pretty clmod)
+  liftEIO $ compileToCL mod E.tyDecl
+
+def checkCL (s : String) : LowerM Unit := do
+  liftEIO <| IO.println <| (<- compileSource s).pretty 80
+
+/-- source -> CL files -/
+def emitToFile (src : String) (path : System.FilePath) : LowerM Unit := do
+  liftEIO $ IO.FS.writeFile path (Format.pretty (<- compileSource src))
 
 section Test
 private def t (s : String) : IO Unit := (checkCL s).toIO IO.userError
 private def load (s : System.FilePath) : IO Unit := IO.FS.readFile s >>= EIO.toIO .userError ∘ checkCL
 private def ex (f : System.FilePath) : System.FilePath := "examples" / f.addExtension "tig"
-#eval load $ ex "where"
 end Test
 
 end TCNF.CL

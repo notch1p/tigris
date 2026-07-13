@@ -13,6 +13,9 @@ namespace TCNF.Opt open CC
   as well as any `Code.unreach` thus eliminating many fallback branches
   for complete pattern matrices.
 
+- Constant Folding.
+  collapses newtype/projection/single case analysis
+  and folds projections on statically-known constructors.
 -/
 
 
@@ -92,10 +95,29 @@ partial def retValue : CodePost -> Option (LetValue .postCC)
   | .let _ k                => retValue k
   | _                       => none
 
+/-- Get the linear let-spine of a decl body as a binding map. Used to resolve a value-decl's manifest closures. -/
+def declBinds : CodePost -> Std.HashMap FVarId (LetValue .postCC)
+  | .let d k => declBinds k |>.insert d.fvarId d.value
+  | _        => ∅
+
+/--
+Resolve an atom captured by a _shared_ closure to a globally-valid one, or
+none if it escapes as a decl-local. A decl-local empty-env `mkClos code` is just the
+bare code pointer (both box to the same `clos`), so it resolves to `code`.
+-/
+def globalField (globals : FVSet) (binds : Std.HashMap FVarId (LetValue .postCC)) : Atom -> Option Atom
+  | .fvar v =>
+    if globals.contains v then some (.fvar v)
+    else match binds[v]? with
+      | some (.mkClos code env _) => if env.isEmpty then some (.fvar code) else none
+      | _ => none
+  | a => some a
+
 /-- Module-wide seeds: each function decl's arity, plus every *value* decl that
 manifestly returns a partial/closure, entered as a global closure so its uses
-resolve to direct calls (R1). -/
-def seedMaps (m : Module .postCC) : AriMap × ClosMap := Id.run do
+resolve to direct calls (R1). A shared entry's captures are resolved to globals
+(`globalField`); a value decl capturing an unshareable local is left generic. -/
+def seedMaps (globals : FVSet) (m : Module .postCC) : AriMap × ClosMap := Id.run do
   let all := m.decls.push m.main
   let mut ari : AriMap := ∅
   for d in all do
@@ -103,8 +125,9 @@ def seedMaps (m : Module .postCC) : AriMap × ClosMap := Id.run do
   let mut gclos : ClosMap := ∅
   for d in all do
     if d.arity == 0 then
-      if let some e := retValue d.body >>= (rewriteValue ari ∅ · |>.2) then
-        gclos := gclos.insert d.fvarId e
+      if let some (code, cap, rem) := retValue d.body >>= Prod.snd ∘ (rewriteValue ari ∅ ·) then
+        if let some cap := cap.mapM $ globalField globals $ declBinds d.body then
+          gclos := gclos.insert d.fvarId (code, cap, rem)
   return (ari, gclos)
 
 /-!
@@ -134,20 +157,6 @@ abbrev KMap := Std.HashMap FVarId Known
   | a       => a
 @[inline] def sfv (σ : Subst) (x : FVarId) : FVarId :=
   match σ[x]? with | some (.fvar y) => y | _ => x
-
-def declBinds : CodePost -> Std.HashMap FVarId (LetValue .postCC)
-  | .let d k => declBinds k |>.insert d.fvarId d.value
-  | _        => ∅
-
-/-- Resolve a ctor field of a top-level dict to a globally-valid atom, or `none`
-if it captures local state. An empty-env closure is bare code pointer. -/
-def globalField (globals : FVSet) (binds : Std.HashMap FVarId (LetValue .postCC)) : Atom -> Option Atom
-  | .fvar v =>
-    if globals.contains v then some (.fvar v)
-    else match binds[v]? with
-      | some (.mkClos code env _) => if env.isEmpty then some (.fvar code) else none
-      | _ => none
-  | a => some a
 
 def seedKM (globals : FVSet) (m : Module .postCC) : KMap := Id.run do
   let mut km : KMap := ∅

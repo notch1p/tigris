@@ -102,6 +102,17 @@ def isRecBind : FExpr -> Bool
   | .Fix (.Fun ..) _ => true
   | _ => false
 
+/-- Get the end (exclusive) of consecutive recursive bindings, starting from i.
+
+A let group arrives in topo order,
+so an SCC's mutually recursive members are contiguous;
+we use this property to recover each such run for lowerRecGroup.
+-/
+partial def recRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :=
+  if h : i < binds.size then
+    if isRecBind binds[i].2.2 then recRunEnd binds (i+1) else i
+  else i
+
 /-- should be more efficient than xs[0:i] ++ ys ++ xs[i + 1:] -/
 @[inline] def replaceCol (xs : Array α) (i : Nat) (ys : Array α) : Array α :=
   xs[i + 1:].foldl Array.push $ ys.foldl Array.push xs[0:i].copy
@@ -352,17 +363,25 @@ partial def lowerRec (funTy : MLType) (allParams : Array (String × MLType))
 
 partial def lowerLet (binds : Array (String × Scheme × FExpr)) (body : FExpr)
   (ρ : FVarEnv) (k : Cont) : CompilerM CodePre :=
-  let (recs, nonrecs) := binds.partition (isRecBind ∘ Prod.snd ∘ Prod.snd)
-  lowerNonRec nonrecs ρ fun ρ =>
-    if recs.isEmpty then lower body ρ k
-    else lowerRecGroup recs ρ fun ρ => lower body ρ k
+  lowerSeq binds body 0 ρ k
 
-partial def lowerNonRec (ns : Array (String × Scheme × FExpr)) (ρ : FVarEnv)
-  (kont : FVarEnv -> CompilerM CodePre) (i : Nat := 0) : CompilerM CodePre :=
-  if h : i < ns.size then
-    let (x, _, fe) := ns[i]
-    lowerV fe ρ fun v => lowerNonRec ns (ρ.insert x v) kont i.succ
-  else kont ρ
+/-- Lower a binding group **in dependency order**:
+each non-recursive binding is bound sequentially, and a maximal run of recursive bindings
+is lowered together as one mutual group. This lets a non-recursive
+binding depend on an earlier recursive one.
+
+See also Tigris.typing.scc.
+-/
+partial def lowerSeq (binds : Array (String × Scheme × FExpr)) (body : FExpr)
+  (i : Nat) (ρ : FVarEnv) (k : Cont) : CompilerM CodePre :=
+  if h : i < binds.size then
+    if isRecBind binds[i].2.2 then
+      let j := recRunEnd binds (i+1)
+      lowerRecGroup (binds.extract i j) ρ fun ρ => lowerSeq binds body j ρ k
+    else
+      let (x, _, fe) := binds[i]
+      lowerV fe ρ fun v => lowerSeq binds body (i+1) (ρ.insert x v) k
+  else lower body ρ k
 
 partial def lowerRecGroup (recs : Array (String × Scheme × FExpr)) (ρ : FVarEnv)
   (kont : FVarEnv -> CompilerM CodePre) : CompilerM CodePre := do
