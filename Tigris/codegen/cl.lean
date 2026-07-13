@@ -232,7 +232,7 @@ def emitModule (m : Module .postCC) : CGM CLModule := do
 def emitStructs (tyDecl : TyMap) : Array Sexp :=
   let tys := structTyNames tyDecl
   tyDecl.fold (init := #[]) fun acc tycon td =>
-    if isBuiltinTy tycon || td.ctors.isEmpty then acc   -- classes are single-ctor structs; emit them
+    if isBuiltinTy tycon || td.ctors.isEmpty || td.isNewtype then acc   -- newtypes collapse; no struct
     else
       let parent := Sexp.list #[.sym "defstruct",
         .list #[.sym (parentSym tycon),
@@ -256,7 +256,7 @@ def emitStructs (tyDecl : TyMap) : Array Sexp :=
             .list #[.sym ":conc-name", .sym s!"|{cname}/|"],
             .list #[.sym ":constructor", .sym (mkSym cname), .list slotNames],
             .list #[.sym ":predicate", .sym (predSym cname)]]
-        slots.foldl Array.push $ cs.push $ .list $ #[.sym "defstruct", hdr]
+        cs.push $ .list $ #[.sym "defstruct", hdr] ++ slots
       (acc.push parent) ++ children
 
 def genGapply (n : Nat) : Sexp :=

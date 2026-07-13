@@ -16,7 +16,10 @@ import Tigris.TCNF.nf
   We distinguish gapply with %apple-slow because it is more than likely
   generic calls are arity matched instead of the other way; And %apply-slow is
   really _slow_: apply/length/append/subseq/nthcdr/&rest -- SBCL's funcall is
-  just performant as a native call, thus we maximizing on that. See also Tigris.TCNF.
+  just performant as a native call, thus we maximizing on that.
+  See also
+  1. https://cmucl.org/docs/cmu-user/cmu-user.html#Function-Call-1
+  2. Tigris.TCNF.
 
 - Variants.
   Also a CL struct. We emit a abstract parent that carries an integer tag,
@@ -124,9 +127,10 @@ def slotDefault? : String -> Option Sexp
   | "string"           => some (.str "")
   | _                  => none
 
+/-- Filters out builtin/empty/newtypes. see also TyDecl.isNewtype. -/
 def structTyNames (tyDecl : TyMap) : HashSet String :=
   tyDecl.fold (init := ∅) fun acc tycon td =>
-    if isBuiltinTy tycon || td.ctors.isEmpty
+    if isBuiltinTy tycon || td.ctors.isEmpty || td.isNewtype
     then acc else acc.insert tycon
 
 def freshG : CGM String :=

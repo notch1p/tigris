@@ -61,13 +61,19 @@ def checkCC (s : String) : LowerM Unit := do
 end CC
 
 section Opt
-/-- Known-closure-call rewrite + dead-closure elimination over a module. -/
-def optimizeModule (m : Module .postCC) : Module .postCC :=
-  {decls := m.decls.map kocDecl, main := kocDecl m.main}
+/-- KOC + Constant Folding + dead-closure elimination over a module. -/
+def optimizeModule (nt : Std.HashSet String) (m : Module .postCC) : Module .postCC :=
+  -- Pass 1: newtype erasure + constant folding
+  let globals : FVSet := m.decls.push m.main |>.foldl (·.insert ·.fvarId) ∅
+  let km₀ := seedKM globals m
+  let m := {decls := m.decls.map (cfoldDecl nt km₀), main := cfoldDecl nt km₀ m.main}
+  -- Pass 2: known-call + arity (Decl scoped) + DCE
+  let (ari, gclos) := seedMaps m
+  {decls := m.decls.map (kocDecl ari gclos), main := kocDecl ari gclos m.main}
 
 def lowerModuleCCOpt (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)
   : LowerM (Module .postCC) :=
-  optimizeModule <$> lowerModuleCC decls ctors tyDecls
+  optimizeModule (newtypeCtors tyDecls) <$> lowerModuleCC decls ctors tyDecls
 
 def checkKOC (s : String) : LowerM Unit := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState

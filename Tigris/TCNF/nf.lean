@@ -188,6 +188,36 @@ deriving Inhabited
 abbrev CodePre  := Code .preCC
 abbrev CodePost := Code .postCC
 
+/--
+# Newtypes.
+
+A single-ctor, single-field type whose runtime representation collapses to
+the field itself. In turn construction/projection/one-arm `cases` become identity.
+
+Since typeclasses are desugared into structures, which are
+in turn single-ctor inductive types, this applies to them as well.
+
+- `newtypeCtors` retrieves all such occurrences.
+
+See
+1. https://wiki.haskell.org/index.php?title=Performance/Data_types
+2. https://downloads.haskell.org/ghc/latest/docs/users_guide/hints.html
+3. Tigris.TCNF.nfopt
+-/
+def _root_.TyDecl.isNewtype (td : TyDecl) : Bool :=
+  td.ctors.size == 1 &&
+    match td.ctors[0]? with
+    | some (_, fs, _) => fs.length == 1
+    | none => false
+@[inherit_doc TyDecl.isNewtype]
+def newtypeCtors (tyDecl : TyMap) : Std.HashSet String :=
+  tyDecl.fold (init := ∅) fun acc _ td =>
+    match td.ctors[0]? with
+    | some (c, fs, _) =>
+      if fs.length == 1 then acc.insert c
+      else acc
+    | none => acc
+
 section Monads open MLType FExpr
 structure NFState where
   nextId       : Nat := 1
