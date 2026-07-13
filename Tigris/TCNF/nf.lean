@@ -13,6 +13,17 @@ Simliar to Lean's LCNF and GHC's STG.
 We stole the trick of making the spine `Code` dependently-typed,
 indexed by `Phase`, so that we can make any node phase-specific. (CC-or-not)
 
+
+- Function application.
+
+IR node                          Head  Meaning
+============================================================================
+`app c (env++as)` after KOC      K     direct; saturated
+`app f as`, `|args| = arity[f]`  K     saturated call of a known closure
+`app f as`, arity unknown        U     generic call, arg count may not match
+`pap f as`, arity known          K     partial
+`pap f as`, arity unknown        U     partial; unknown arity
+
 See also
 1. Maurer, Luke, et al. "Compiling without continuations." Proceedings of the 38th ACM SIGPLAN Conference on Programming Language Design and Implementation. 2017.
 2. Jones, Simon L. Peyton. "Implementing lazy functional languages on stock hardware: the Spineless Tagless G-machine." Journal of functional programming 2.2 (1992): 127-202.
@@ -59,15 +70,21 @@ deriving BEq, Hashable, Repr, Inhabited
 inductive LetValue (φ : Phase) where
   | lit    (k : TConst)
   | pair   (p q : Atom)
-  /-- pair/ctor projection -/
+  /-- product projection. -/
   | proj   (idx : Nat) (src : FVarId)
+  /-- data-constructor / dictionary field projection.
+  This is an afterthought to make codegen emit the struct accessor directly. -/
+  | field  (tag : Tag) (idx : Nat) (src : FVarId)
   /-- _saturated_ data constructor. Under-applied constructors are
   eta-expanded to a `fun`/`pap` during lowering. -/
   | ctor   (tag : Tag) (args : Array Atom)
   /-- Apply a primitive operation. -/
   | prim   (op : PrimOp) (args : Array Atom)
+  /-- direct call to a foreign function by its raw name; bypasses
+  the clos/eval-apply convention and eta-expanded to a wrapper decl. -/
+  | extern (name : String) (args : Array Atom)
   /-- N-ary application of a function value. When `head` is a known function,
-  `args.size` equals its arity (a direct/saturated call); an unknown head is a
+  `args.size` equals its arity (a direct call); an unknown head is a
   generic eval/apply. Over-application is a chain of `app`s. -/
   | app    (head : FVarId) (args : Array Atom)
   | pap    (head : FVarId) (args : Array Atom)
@@ -92,7 +109,7 @@ structure Param where
   ty         : MLType
 deriving Repr, Inhabited, BEq, Hashable
 
-mutual
+mutual -- can't use with/computed_field in mutual block for some reason
 structure FunDecl (φ : Phase) where
   fvarId     : FVarId
   binderName : String
@@ -275,7 +292,8 @@ section variable {φ : Phase}
 def fmtValue : LetValue φ -> Format
   | .lit k     => format k
   | .pair p q  => bracket "⟨" (format p ++ comma ++ format q) "⟩"
-  | .proj i s  => s!"#{s}" ++ sbracket (format i)                     -- s[i]
+  | .proj i s    => s!"#{s}" ++ sbracket (format i)                   -- s[i]
+  | .field c i s => s!"#{s}@{c}" ++ sbracket (format i)               -- s@c[i]
   | .ctor c as =>
     let as := nestD $ bracket "⟦" (joinSep' as comma) "⟧"    -- c⟦as,*⟧
     group $ c ++ as
@@ -286,6 +304,9 @@ def fmtValue : LetValue φ -> Format
   | .prim f as =>                                                     -- f(as,*)
     let as := paren $ nestD $ joinSep' as comma
     group $ format f ++ as
+  | .extern nm as =>                                                  -- @nm(as,*)
+    let as := paren $ nestD $ joinSep' as comma
+    group $ ("@" ++ nm) ++ as
   | .pap f as =>                                                      -- fᵖ(as,*)
     let f := s!"#{f}ᵖ"
     let as := paren $ nest f.length $ joinSep' as comma

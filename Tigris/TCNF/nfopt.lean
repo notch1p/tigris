@@ -52,7 +52,7 @@ partial def kocAlt (kc : ClosMap) : Alt .postCC -> Alt .postCC
 end
 
 @[inline] def isPureV : LetValue φ -> Bool
-  | .app .. => false
+  | .app .. | .extern .. => false   -- treat all foreign calls as effectful
   | _       => true
 
 /-! Backward dead-pure-`let` (and unreachable join-point) elimination; returns

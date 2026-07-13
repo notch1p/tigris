@@ -49,7 +49,7 @@ def internExtern (x : String) : CompilerM FVarId :=
       let nextId      := nextId + 1
       let externs     := externs.insert x nextId
       let externNames := externNames.insert nextId x
-      (nextId, {s with nextId, externs, h := by omega})
+      (nextId, {s with nextId, externs, externNames, h := by omega})
 
 /-- `let name#(fvar <- fresh) : ty := value in kont fvar` -/
 @[inline] def bindLet (name : String) (ty : MLType) (value : LetValue .preCC)
@@ -132,6 +132,15 @@ def instCtorFields (cname : String) (ar : Nat) (scrutTy : MLType) : CompilerM (A
     let sub : Subst := List.foldl2 Std.TreeMap.insert ∅ params tyArgs
     return declared.map $ Rewritable.applyT sub
 
+/-- The sole constructor of a single-ctor type. used for record/dictionary -/
+def soleCtorOf (ty : MLType) : CompilerM String := do
+  let {tyDecl,..} <- get
+  return tyDecl[tycon]?.bind (·.ctors[0]?)
+      |>.elim tycon Prod.fst
+where tycon := match unwrapTSch ty with
+  | .TApp (.TCon c) _ | .TCon c => c
+  | _ => ""
+
 /-- Resolve a `Sel` to a variable, emitting projections for any
 resolved prefix, that is, fallback as ctor fields / pair splits are usually pre-bound -/
 def resolveSel (sel : Sel) (roots : Array FVarId) (selMap : SelMap)
@@ -197,7 +206,7 @@ rawapp ::= fₙ(x₁,..,xₖ)
 funapp ::= fᶠ(a₁,..,aₙ)    app
          | fᵖ(a₁,..,aₙ)    pap
 
-⟦f₀(a₁,..,aₘ)⟧ = fᶠ(a₁,..,aₘ)                          (EXACT)
+⟦f₀(a₁,..,aₘ)⟧ = fᶠ(a₁,..,aₘ)                         (EXACT)
 ⟦fₙ(a₁,..,aₙ)⟧ = fᶠ(a₁,..,aₙ)     Full                (KNOWNCALL)
 ⟦fₖ(a₁,..,aₘ)⟧ = fᵖ(a₁,..,aₘ)     Part; where m < k   (PAP2)
                | fᶠ(a₁,..,aₖ)     Over; where m > k   (CallK)
@@ -205,7 +214,7 @@ funapp ::= fᶠ(a₁,..,aₙ)    app
                  ^^^^^^^^^^^^^^^
                 /
                /
-Note that this part is also handled in codegen
+Note that this part is also (with EXACT) handled in codegen
 through generic apply/curry if the tail arity is unknown
 ```
 
@@ -260,7 +269,9 @@ partial def lower (e : FExpr) (ρ : FVarEnv) (k : Cont) : CompilerM CodePre := d
         bindLet "p" ty (.pair a b) k.applyFVar
 
     | .Proj src _ idx ty =>
-      lowerV src ρ fun s => bindLet "pr" ty (.proj idx s) k.applyFVar
+      -- always a record/dictionary field access (single-ctor struct).
+      lowerV src ρ fun s => do
+        bindLet "pr" ty (.field (<- soleCtorOf src.getTy) idx s) k.applyFVar
 
     | .App .. =>
       let (head, args) := decomposeApp e
@@ -539,6 +550,23 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
       return some {fvarId := fv, name, params := paramArr, ty := fe.getTy, body, recursive := true}
     else
       let (params, core) := peelLam fe
+      -- `extern id str : sch` lowered to `let id = Var str`, where `str` is a
+      -- foreign name. η-expand to an N-ary wrapper decl
+      -- whose body is a direct saturated foreign call.
+      if let .Var str _ := core then
+        if params.isEmpty && (ρ₀.find? str).isNone then
+          let (argTys, finalTy) := core.getTy.decomposeArr'
+          let mut paramArr   := #[]
+          let mut paramAtoms := #[]
+          for aty in argTys do
+            let pf <- fresh
+            paramArr   := paramArr.push $ Param.mk pf "η" aty
+            paramAtoms := paramAtoms.push $ Atom.fvar pf
+          let r <- fresh
+          let body := .let ⟨r, "ffi", finalTy, .extern str paramAtoms⟩ $ .ret $ .fvar r
+          setArity fv paramArr.size
+          return some {fvarId := fv, name, params := paramArr, ty := fe.getTy, body}
+
       let mut paramArr := #[]
       let mut ρ'       := ρ₀
       let mut length   := 0

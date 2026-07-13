@@ -44,9 +44,11 @@ def fvAtoms (bound : FVSet) (as : Array Atom) : FVSet :=
 def fvValue (bound : FVSet) : LetValue .postCC -> FVSet
   | .lit _          => ∅
   | .pair p q       => fvAtom bound p ∪ fvAtom bound q
-  | .proj _ s       => fvAtom bound $ .fvar s
+  | .proj _ s
+  | .field _ _ s    => fvAtom bound $ .fvar s
   | .ctor _ as
-  | .prim _ as      => fvAtoms bound as
+  | .prim _ as
+  | .extern _ as    => fvAtoms bound as
   | .app h as
   | .pap h as       => fvAtom bound (.fvar h) ∪ fvAtoms bound as
   | .isCtor s _ _   => fvAtom bound (.fvar s)
@@ -105,12 +107,14 @@ unsafe def coerceCC : LetValue .preCC -> LetValue .postCC := unsafeCast
   | .lit k        => .lit k
   | .pair p q     => .pair p q
   | .proj i s     => .proj i s
+  | .field c i s  => .field c i s
   | .ctor t as    => .ctor t as
   | .prim op as   => .prim op as
+  | .extern nm as => .extern nm as
   | .app h as     => .app h as
   | .pap h as     => .pap h as
   | .isCtor s t a => .isCtor s t a
-  | .mkClos _ _ h => nomatch h
+  | .mkClos _ _ h => Phase.noConfusion h -- False
 
 mutual
 partial def ccCode : CodePre -> CCM (CodePost)
