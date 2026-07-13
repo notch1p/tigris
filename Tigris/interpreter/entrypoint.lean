@@ -1,5 +1,5 @@
 import Tigris.parsing.pexp
-import Tigris.typing.typing
+import Tigris.typing.oldtyping
 import Tigris.typing.fexpr
 import Tigris.parsing.ptype
 import Tigris.typing.ttypes

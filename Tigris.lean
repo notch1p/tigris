@@ -4,7 +4,7 @@ import Tigris.parsing.types
 import Tigris.lexing
 import Tigris.utils
 import Tigris.typing.ttypes
-import Tigris.typing.typing
+import Tigris.typing.oldtyping
 import Tigris.typing.constraint
 import Tigris.typing.fexpr
 import Tigris.parsing.ppat

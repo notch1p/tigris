@@ -12,7 +12,7 @@ theorem prod_sizeOf_lt_fst [SizeOf α] [SizeOf β] (a : α) (b : β)
   : sizeOf a < sizeOf (a, b) := Prod.mk.sizeOf_spec a b ▸ by omega
 theorem prod_sizeOf_lt_snd [SizeOf α] [SizeOf β] (a : α) (b : β)
   : sizeOf b < sizeOf (a, b) := Prod.mk.sizeOf_spec a b ▸ by omega
-attribute [simp, grind] prod_sizeOf_lt_fst prod_sizeOf_lt_snd
+attribute [simp, grind <-] prod_sizeOf_lt_fst prod_sizeOf_lt_snd
 
 @[inline, reducible] def Function.on (g : β -> β -> γ) (f : α -> β)
   : α -> α -> γ := fun x y => g (f x) (f y)

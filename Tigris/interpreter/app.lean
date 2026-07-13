@@ -29,7 +29,7 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
             s!"Partial pattern matching, an unmatched candidate is\
              \n  {ex.map (·.render)}\n"
 
-        let v <- evalC VE e |>.adaptExcept toString
+        let v <- evalC VE e |>.adapt toString
         match evalPat1 v VE #[] pat with
         | some (VE, vacc) =>
           for ty in tyacc, (sym, val) in vacc do
@@ -40,10 +40,10 @@ def parseModule (s : String) (PE : PEnv) (E : Env) (VE : VEnv)
         let (ty, E, l) <- ofExcept $ inferGroup group E "" |>.mapError toString
         liftEIO (print l)
         let (recBinds, nonrecBinds) := group.partition $ MLType.isRecRhs ∘ Prod.snd
-        let recVal <- recBinds.mapM fun (id, expr) => (id, ·) <$> (evalC VE expr |>.adaptExcept toString)
+        let recVal <- recBinds.mapM fun (id, expr) => (id, ·) <$> (evalC VE expr |>.adapt toString)
         let VE := recVal.foldl (init := VE.env) fun acc (id, v) => acc.insert id v
         let (nonrecVal, VE) <- nonrecBinds.foldlM (init := (#[], VE)) fun (acc, VE) (id, expr) => do
-          let v <- evalC ⟨VE⟩ expr |>.adaptExcept toString
+          let v <- evalC ⟨VE⟩ expr |>.adapt toString
           return (acc.push (id, v), VE.insert id v)
         for (id, ty) in ty, (_, v) in nonrecVal ++ recVal do
           liftEIO $ println $ templateREPL id (format v) (format ty)

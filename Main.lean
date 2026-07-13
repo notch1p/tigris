@@ -59,8 +59,8 @@ def main : IO Unit := do
 
     let input <- stdin.getLine --readTtyLine
     if input.isEmpty then IO.Process.exit 0
-    buf := buf ++ input |>.trimLeft
-    if !input.trimRight.endsWith ";;" then continue
+    buf := buf ++ input |>.trimAsciiStart |>.toString
+    if !input.trimAsciiStart.endsWith ";;" then continue
     if input.startsWith "\n" then continue
 
     /- help -/
@@ -72,7 +72,7 @@ def main : IO Unit := do
       println! Logging.note "REPL environment has been flushed"
     /- call $EDITOR/VISUAL -/
     else if buf.startsWith "#e" then
-      let fp := buf.dropRightWhile (fun c => c.isWhitespace || c == ';') |>.splitOn " " |>.tail
+      let fp := buf.dropEndWhile (fun c => c.isWhitespace || c == ';') |>.split " " |>.toStringList |>.tail
       try
         let some editor <- (· <|> ·) <$> getEnv "VISUAL" <*> getEnv "EDITOR"
                         | throwServerError "env $EDITOR has not been set"
@@ -148,7 +148,7 @@ def main : IO Unit := do
       (buf.splitOn " ").tail |>.forM fun path => do
         if !path.isEmpty then
           try
-            let fs <- FS.readFile $ path.dropRightWhile fun c => c.isWhitespace || c == ';'
+            let fs <- FS.readFile $ path.dropEndWhile (fun c => c.isWhitespace || c == ';') |>.toString
             let t <- asTask (interpret pe e ve fs ctorE) 5
             EVS.set $ some t
             let (ctorE, PE', E', VE') <- IO.ofExcept =<< (wait t |>.toIO)

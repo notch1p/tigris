@@ -8,11 +8,11 @@ def List.isSubsingleton : List α -> Bool
   | _ => true
 
 def String.isUpperInit (s : String) : Bool :=
-  if h : s.atEnd 0 = true then false
-  else (s.get' 0 h) >= 'A' && (s.get' 0 h) <= 'Z'
+  if h : String.Pos.Raw.atEnd s 0 = true then false
+  else (String.Pos.Raw.get' s 0 h) >= 'A' && (String.Pos.Raw.get' s 0 h) <= 'Z'
 def String.isLowerInit (s : String) : Bool :=
-  if h : s.atEnd 0 = true then false
-  else (s.get' 0 h) >= 'a' && (s.get' 0 h) <= 'z'
+  if h : String.Pos.Raw.atEnd s 0 = true then false
+  else (String.Pos.Raw.get' s 0 h) >= 'a' && (String.Pos.Raw.get' s 0 h) <= 'z'
 
 namespace Lexing open Parser Parser.Char
 
