@@ -310,6 +310,7 @@ where
 
 def checkCL (s : String) : LowerM Unit := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState
+--liftEIO $ println! repr topdecl
   let stage₀@(_, E, _) <- inferToplevelC topdecl MLType.defaultE' |>.mapError toString |> EIO.ofExcept
   let (fdecls, _, ctors) <- inferToplevelF stage₀ |>.mapError toString |> EIO.ofExcept
   let mod <- lowerModuleCCOpt fdecls ctors E.tyDecl
@@ -329,7 +330,7 @@ section Test
 private def t (s : String) : IO Unit := (checkCL s).toIO IO.userError
 private def load (s : System.FilePath) : IO Unit := IO.FS.readFile s >>= EIO.toIO .userError ∘ checkCL
 private def ex (f : System.FilePath) : System.FilePath := "examples" / f.addExtension "tig"
-
+#eval load $ ex "where"
 end Test
 
 end TCNF.CL

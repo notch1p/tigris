@@ -1,4 +1,4 @@
-import Tigris.core.lam
+import Tigris.oldcore2.lam
 
 
 /-!

@@ -1,4 +1,4 @@
-import Tigris.cps.cps
+import Tigris.oldcps.cps
 
 namespace CPS
 def occursVarCRhs (x : CName) : CRhs -> Bool

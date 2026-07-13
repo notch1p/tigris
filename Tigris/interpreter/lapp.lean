@@ -1,6 +1,6 @@
 import Tigris.interpreter.entrypoint
 import Tigris.interpreter.leval
-import Tigris.core.ftransform
+import Tigris.oldcore2.ftransform
 
 namespace LApp
 
@@ -100,5 +100,3 @@ def interpretL (s : String) (PE : PEnv) (E : Env) : IO (PEnv × Env × LInterpre
   println! IR.fmtModule cc
   let val <- LInterpreter.evalModule cc |>.toIO $ .userError ∘ toString
   return (PE', E', val)
-
-

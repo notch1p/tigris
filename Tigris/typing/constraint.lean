@@ -335,7 +335,7 @@ partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
   : InferC σ (TExpr × MLType × List Pred) := do
   let startCs <- get <&> (·.cst.length)
   let (recs, nonrecs) := binds.partition $ isRecRhs ∘ Prod.snd
-
+  dbg_trace repr (recs, nonrecs)
   let (Γrec, recTyVars) <-
     recs.foldlM (init := (Γ, show Std.HashMap String MLType from ∅))
       fun (Γrec, recTyVars) (n, _) => do

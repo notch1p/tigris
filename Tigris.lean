@@ -22,11 +22,11 @@ import Tigris.oldcore.matchApp
 --import Tigris.oldcore.transform
 --import Tigris.oldcore.ir
 --import Tigris.oldcore.opt
-import Tigris.core.lam
-import Tigris.core.transform
-import Tigris.core.ftransform
-import Tigris.core.opt
-import Tigris.core.lift
-import Tigris.cps.ctransform
+import Tigris.oldcore2.lam
+import Tigris.oldcore2.transform
+import Tigris.oldcore2.ftransform
+import Tigris.oldcore2.opt
+import Tigris.oldcore2.lift
+import Tigris.oldcps.ctransform
 import Tigris.codegen.sbcl
 import PP

@@ -1,4 +1,4 @@
-import Tigris.cps.cps
+import Tigris.oldcps.cps
 
 /-!
 Simple codegen from CPS IR to SBCL (w/ labels + funcall).

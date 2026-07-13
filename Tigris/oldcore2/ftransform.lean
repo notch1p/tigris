@@ -1,6 +1,6 @@
-import Tigris.core.lift
+import Tigris.oldcore2.lift
 import Tigris.typing.fexpr
-import Tigris.core.matchAppF
+import Tigris.oldcore2.matchAppF
 import PP
 
 namespace IRf open IR MLType open FExpr open SysF.Helper (pvs) open Helper

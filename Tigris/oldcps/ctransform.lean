@@ -1,6 +1,6 @@
-import Tigris.cps.cps
-import Tigris.core.transform
-import Tigris.cps.copt
+import Tigris.oldcps.cps
+import Tigris.oldcore2.transform
+import Tigris.oldcps.copt
 
 namespace CPS open IR (M Rhs LExpr Stmt Tail LFun LModule)
 variable {σ}

@@ -1,5 +1,5 @@
-import Tigris.core.lam
-import Tigris.core.opt
+import Tigris.oldcore2.lam
+import Tigris.oldcore2.opt
 namespace IR
 
 /-!

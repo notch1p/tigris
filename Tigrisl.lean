@@ -1,7 +1,7 @@
-import Tigris.cps.ctransform
+import Tigris.oldcps.ctransform
 import Tigris.codegen.sbcl
 import Tigris.table
-import Tigris.core.ftransform
+import Tigris.oldcore2.ftransform
 import runtime
 
 open IO

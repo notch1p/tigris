@@ -1,6 +1,6 @@
-import Tigris.core.lam
-import Tigris.core.opt
-import Tigris.core.lift
+import Tigris.oldcore2.lam
+import Tigris.oldcore2.opt
+import Tigris.oldcore2.lift
 import Tigris.interpreter.entrypoint
 import Tigris.oldcore.matchApp
 import PP
