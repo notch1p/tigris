@@ -212,11 +212,9 @@ def _root_.TyDecl.isNewtype (td : TyDecl) : Bool :=
 @[inherit_doc TyDecl.isNewtype]
 def newtypeCtors (tyDecl : TyMap) : Std.HashSet String :=
   tyDecl.fold (init := ∅) fun acc _ td =>
-    match td.ctors[0]? with
-    | some (c, fs, _) =>
-      if fs.length == 1 then acc.insert c
-      else acc
-    | none => acc
+    if td.isNewtype then
+      match td.ctors[0]? with | some (c, _, _) => acc.insert c | none => acc
+    else acc
 
 section Monads open MLType FExpr
 structure NFState where

@@ -213,7 +213,7 @@ def main (fp : List String) : IO Unit := do
               print s!"{i}: "
               print logger
 
-              if not $ sysf? && tcnf? && tcnfcc? && tcnfopt? then
+              if not $ sysf? || tcnf? || tcnfcc? || tcnfopt? then
                 -- for RC reasons we branch here.
                 -- if no IR is requested (which is common),
                 -- there's a higher chance that module transformations be linear,
@@ -221,6 +221,11 @@ def main (fp : List String) : IO Unit := do
                 let clmod <- compileToCL (tyDecl := tyDecl) (speed := speed)
                                          (safety := safety) (debug := debug) (entry? := entry?)
                   =<< lowerIO! lowerModuleCCOpt decls ctors tyDecl
+
+                objs.forM fun obj =>
+                  h.putStrLn ";; == Linked Lisp Source ==" *>
+                  h.putStrLn s!"(load \"{obj}\")\n"
+
                 h.putStrLn $ clmod.pretty 80
               else
                 let (preCC , s) <- lowerIO! lowerModule decls ctors tyDecl |>.run {}

@@ -165,7 +165,7 @@ def joinSep'' [Std.ToFormat α] (arr : Subarray α) (sep : Format) : Format :=
 
 def callForm (op : String) (args : Subarray Format) : Format :=
   if args.isEmpty then paren op
-  else paren $ op <+> nest (op.length + 2) (joinSep'' args line)
+  else paren' $ op <> nest 2 (joinSep'' args line)
 
 def blockForm (op : String) (dist body : Subarray Format) : Format :=
   let hdr := dist.foldl (fun a d => a ++ text " " ++ d) (text op)

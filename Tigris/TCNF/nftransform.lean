@@ -622,7 +622,16 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
         exhaustive
         ρp .ret
       return ({fvarId := xfv, name := x, params := #[], ty := xty, body} : Decl .preCC)
-    return #[scrutDecl] ++ varDecls
+    -- A refutable pattern that binds nothing (e.g. let 3860 = e) still asserts
+    -- the match at run time; when it binds variables each extraction already does.
+    let checkDecls : Array (Decl .preCC) <-
+      if exhaustive || !varDecls.isEmpty then pure #[]
+      else do
+        let cfv <- fresh
+        let body <- lowerMatch
+          #[.Var pbName fe.getTy] #[(#[pat], .Var pbName fe.getTy)] fe.getTy exhaustive ρp .ret
+        pure #[{fvarId := cfv, name := s!"{pbName}-chk", params := #[], ty := fe.getTy, body}]
+    return #[scrutDecl] ++ varDecls ++ checkDecls
 
 /-- ctor ↦ (its param types, tyctor TVs) -/
 def ctorTypeInfo (tyDecls : TyMap)

@@ -37,10 +37,6 @@ r###"
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (sb-kernel:two-arg-= a b))
 
-(defun %println (x) 
-  (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (format t "~A" x))
-
 (define-condition match-failure (error)
   ((discrminant
     :initarg :discr

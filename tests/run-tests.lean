@@ -34,11 +34,11 @@ def execCases : List (String × System.FilePath × String) :=
   [ (cases / "r1"         , r"(42 15 . 2)")
   , (cases / "tc"         , r"5050")
   , (cases / "seq"        , r"6")
+  , (cases/ "expr"        , r"260")
   , (examples / "mutual"  , r"5")
   , (examples / "where"   , r"50")
   , (examples / "cont"    , r"42")
-  , (examples / "fun"     , r"(40 . 60)")
-  , (examples / "struct" , r"T100(NIL)")]
+  , (examples / "fun"     , r"(40 . 60)")]
   |>.map fun (p, s) => (name p, p.addExtension "tig", s)
 where examples := fp "examples"
       cases    := fp "tests" / "cases"

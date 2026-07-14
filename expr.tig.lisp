@@ -1,442 +1,142 @@
-;; == System F IR ==
-
-let rec eval : Expr Int → Int =
-  fun ?x₀ : Expr Int =>
-    match ?x₀ with
-    | Atom a => a
-    | Add e1 e2 => add (eval e1) (eval e2)
-    | Sub e1 e2 => sub (eval e1) (eval e2)
-    | Mul e1 e2 => mul (eval e1) (eval e2)
-    | Div e1 e2 => div (eval e1) (eval e2)
-
-let prog : Expr Int =
-  Mul@Int
-    (Atom@Int
-       20)
-    (Sub@Int
-       (Mul@Int
-          (Atom@Int
-             10)
-          (Atom@Int
-             20))
-       (Div@Int
-          (Atom@Int
-             2400)
-          (Add@Int
-             (Atom@Int
-                120)
-             (Add@Int (Mul@Int (Atom@Int 10) (Atom@Int 20)) (Atom@Int 0)))))
-
-let 3860 =
-  eval prog
-;; == Optimized IR ==
-
-main (arg) {
-  letω 
-    label eval(args0):
-      let _pL#?x₀ = args0[0]
-      case _pL#?x₀ of
-        «Add/2» →
-          let p1 = _pL#?x₀[0]
-          let p2 = _pL#?x₀[1]
-          letι u3 = ()
-          let pair4 = ⟨p1, u3⟩
-          let call5 = eval(pair4)
-          letι u6 = ()
-          let pair7 = ⟨p2, u6⟩
-          let call8 = eval(pair7)
-          let p9 = ADD(call5, call8)
-          RET p9
-        «Div/2» →
-          let p10 = _pL#?x₀[0]
-          let p11 = _pL#?x₀[1]
-          letι u12 = ()
-          let pair13 = ⟨p10, u12⟩
-          let call14 = eval(pair13)
-          letι u15 = ()
-          let pair16 = ⟨p11, u15⟩
-          let call17 = eval(pair16)
-          let p18 = DIV(call14, call17)
-          RET p18
-        «Mul/2» →
-          let p19 = _pL#?x₀[0]
-          let p20 = _pL#?x₀[1]
-          letι u21 = ()
-          let pair22 = ⟨p19, u21⟩
-          let call23 = eval(pair22)
-          letι u24 = ()
-          let pair25 = ⟨p20, u24⟩
-          let call26 = eval(pair25)
-          let p27 = MUL(call23, call26)
-          RET p27
-        «Atom/1» →
-          let p28 = _pL#?x₀[0]
-          RET p28
-        «Sub/2» →
-          let p29 = _pL#?x₀[0]
-          let p30 = _pL#?x₀[1]
-          letι u31 = ()
-          let pair32 = ⟨p29, u31⟩
-          let call33 = eval(pair32)
-          letι u34 = ()
-          let pair35 = ⟨p30, u34⟩
-          let call36 = eval(pair35)
-          let p37 = SUB(call33, call36)
-          RET p37
-  in
-  letι c38 = 20
-  let con39 = Atom⟦c38⟧
-  letι c40 = 10
-  let con41 = Atom⟦c40⟧
-  letι c42 = 20
-  let con43 = Atom⟦c42⟧
-  let con44 = Mul⟦con41, con43⟧
-  letι c45 = 2400
-  let con46 = Atom⟦c45⟧
-  letι c47 = 120
-  let con48 = Atom⟦c47⟧
-  letι c49 = 10
-  let con50 = Atom⟦c49⟧
-  letι c51 = 20
-  let con52 = Atom⟦c51⟧
-  let con53 = Mul⟦con50, con52⟧
-  letι c54 = 0
-  let con55 = Atom⟦c54⟧
-  let con56 = Add⟦con53, con55⟧
-  let con57 = Add⟦con48, con56⟧
-  let con58 = Div⟦con46, con57⟧
-  let con59 = Sub⟦con44, con58⟧
-  let con60 = Mul⟦con39, con59⟧
-  letι u61 = ()
-  let pair62 = ⟨con60, u61⟩
-  let call63 = eval(pair62)
-  letι c64 = 3860
-  let cmp65 = EQⁱ(call63, c64)
-  if cmp65 then RET con60 else MATCHFAILURE
-}
-;; == Optimized IR CC'd ==
-
-eval (payload) {
-  let α = payload[0]
-  let Γ = payload[1]
-  let _pL#?x₀ = α[0]
-  case _pL#?x₀ of
-    «Add/2» →
-      let p1 = _pL#?x₀[0]
-      let p2 = _pL#?x₀[1]
-      letι u3 = ()
-      let pair4 = ⟨p1, u3⟩
-      let ρ1001 = ⟨pair4, Γ⟩
-      let call5 = eval(ρ1001)
-      letι u6 = ()
-      let pair7 = ⟨p2, u6⟩
-      let ρ1000 = ⟨pair7, Γ⟩
-      let call8 = eval(ρ1000)
-      let p9 = ADD(call5, call8)
-      RET p9
-    «Div/2» →
-      let p10 = _pL#?x₀[0]
-      let p11 = _pL#?x₀[1]
-      letι u12 = ()
-      let pair13 = ⟨p10, u12⟩
-      let ρ1003 = ⟨pair13, Γ⟩
-      let call14 = eval(ρ1003)
-      letι u15 = ()
-      let pair16 = ⟨p11, u15⟩
-      let ρ1002 = ⟨pair16, Γ⟩
-      let call17 = eval(ρ1002)
-      let p18 = DIV(call14, call17)
-      RET p18
-    «Mul/2» →
-      let p19 = _pL#?x₀[0]
-      let p20 = _pL#?x₀[1]
-      letι u21 = ()
-      let pair22 = ⟨p19, u21⟩
-      let ρ1005 = ⟨pair22, Γ⟩
-      let call23 = eval(ρ1005)
-      letι u24 = ()
-      let pair25 = ⟨p20, u24⟩
-      let ρ1004 = ⟨pair25, Γ⟩
-      let call26 = eval(ρ1004)
-      let p27 = MUL(call23, call26)
-      RET p27
-    «Atom/1» →
-      let p28 = _pL#?x₀[0]
-      RET p28
-    «Sub/2» →
-      let p29 = _pL#?x₀[0]
-      let p30 = _pL#?x₀[1]
-      letι u31 = ()
-      let pair32 = ⟨p29, u31⟩
-      let ρ1007 = ⟨pair32, Γ⟩
-      let call33 = eval(ρ1007)
-      letι u34 = ()
-      let pair35 = ⟨p30, u34⟩
-      let ρ1006 = ⟨pair35, Γ⟩
-      let call36 = eval(ρ1006)
-      let p37 = SUB(call33, call36)
-      RET p37
-}
-
-main (payload) {
-  let Γ = 𝐄⟦⟧
-  letι c38 = 20
-  let con39 = Atom⟦c38⟧
-  letι c40 = 10
-  let con41 = Atom⟦c40⟧
-  letι c42 = 20
-  let con43 = Atom⟦c42⟧
-  let con44 = Mul⟦con41, con43⟧
-  letι c45 = 2400
-  let con46 = Atom⟦c45⟧
-  letι c47 = 120
-  let con48 = Atom⟦c47⟧
-  letι c49 = 10
-  let con50 = Atom⟦c49⟧
-  letι c51 = 20
-  let con52 = Atom⟦c51⟧
-  let con53 = Mul⟦con50, con52⟧
-  letι c54 = 0
-  let con55 = Atom⟦c54⟧
-  let con56 = Add⟦con53, con55⟧
-  let con57 = Add⟦con48, con56⟧
-  let con58 = Div⟦con46, con57⟧
-  let con59 = Sub⟦con44, con58⟧
-  let con60 = Mul⟦con39, con59⟧
-  letι u61 = ()
-  let pair62 = ⟨con60, u61⟩
-  let ρc1010 = ⟨pair62, Γ⟩
-  let call63 = eval(ρc1010)
-  letι c64 = 3860
-  let cmp65 = EQⁱ(call63, c64)
-  if cmp65 then RET con60 else MATCHFAILURE
-}
-;; == CPS IR ==
-
-eval (payload, k) {
-  let α = payload[0]
-  let Γ = payload[1]
-  let _pL#?x₀ = α[0]
-  case _pL#?x₀ of
-    «Add/2» →
-      let p1 = _pL#?x₀[0]
-      let p2 = _pL#?x₀[1]
-      let u3 = ()
-      let pair4 = ⟨p1, u3⟩
-      let ρ1001 = ⟨pair4, Γ⟩
-      letκ k1 v0 =
-        let u6 = ()
-        let pair7 = ⟨p2, u6⟩
-        let ρ1000 = ⟨pair7, Γ⟩
-        letκ k3 v2 =
-          let p9 = ADD(v0, v2)
-          APPLY k(p9)
-        eval(ρ1000, k3)
-      eval(ρ1001, k1)
-    «Div/2» →
-      let p10 = _pL#?x₀[0]
-      let p11 = _pL#?x₀[1]
-      let u12 = ()
-      let pair13 = ⟨p10, u12⟩
-      let ρ1003 = ⟨pair13, Γ⟩
-      letκ k5 v4 =
-        let u15 = ()
-        let pair16 = ⟨p11, u15⟩
-        let ρ1002 = ⟨pair16, Γ⟩
-        letκ k7 v6 =
-          let p18 = DIV(v4, v6)
-          APPLY k(p18)
-        eval(ρ1002, k7)
-      eval(ρ1003, k5)
-    «Mul/2» →
-      let p19 = _pL#?x₀[0]
-      let p20 = _pL#?x₀[1]
-      let u21 = ()
-      let pair22 = ⟨p19, u21⟩
-      let ρ1005 = ⟨pair22, Γ⟩
-      letκ k9 v8 =
-        let u24 = ()
-        let pair25 = ⟨p20, u24⟩
-        let ρ1004 = ⟨pair25, Γ⟩
-        letκ k11 v10 =
-          let p27 = MUL(v8, v10)
-          APPLY k(p27)
-        eval(ρ1004, k11)
-      eval(ρ1005, k9)
-    «Atom/1» →
-      let p28 = _pL#?x₀[0]
-      APPLY k(p28)
-    «Sub/2» →
-      let p29 = _pL#?x₀[0]
-      let p30 = _pL#?x₀[1]
-      let u31 = ()
-      let pair32 = ⟨p29, u31⟩
-      let ρ1007 = ⟨pair32, Γ⟩
-      letκ k13 v12 =
-        let u34 = ()
-        let pair35 = ⟨p30, u34⟩
-        let ρ1006 = ⟨pair35, Γ⟩
-        letκ k15 v14 =
-          let p37 = SUB(v12, v14)
-          APPLY k(p37)
-        eval(ρ1006, k15)
-      eval(ρ1007, k13)
-}
-
-main (payload, k) {
-  let Γ = 𝐄⟦⟧
-  let c38 = 20
-  let con39 = Atom⟦c38⟧
-  let c40 = 10
-  let con41 = Atom⟦c40⟧
-  let c42 = 20
-  let con43 = Atom⟦c42⟧
-  let con44 = Mul⟦con41, con43⟧
-  let c45 = 2400
-  let con46 = Atom⟦c45⟧
-  let c47 = 120
-  let con48 = Atom⟦c47⟧
-  let c49 = 10
-  let con50 = Atom⟦c49⟧
-  let c51 = 20
-  let con52 = Atom⟦c51⟧
-  let con53 = Mul⟦con50, con52⟧
-  let c54 = 0
-  let con55 = Atom⟦c54⟧
-  let con56 = Add⟦con53, con55⟧
-  let con57 = Add⟦con48, con56⟧
-  let con58 = Div⟦con46, con57⟧
-  let con59 = Sub⟦con44, con58⟧
-  let con60 = Mul⟦con39, con59⟧
-  let u61 = ()
-  let pair62 = ⟨con60, u61⟩
-  let ρc1010 = ⟨pair62, Γ⟩
-  letκ k17 v16 =
-    let c64 = 3860
-    let cmp65 = EQⁱ(v16, c64)
-    if cmp65 then APPLY k(con60) else MATCHFAILURE
-  eval(ρc1010, k17)
-}
-;; == Runtime ==
-(load "runtime.lisp")
-
 ;; == Linked Lisp Source ==
 (load "ffi.lisp")
 
-;; == Common Lisp ==
+; Prelude
+(declaim (optimize (speed 3) (safety 0) (debug 0)))
+(load "runtime.lisp")
+(defstruct (clos (:constructor %clos (fn arity)))
+  (fn #'identity :type function)
+  (arity 0 :type fixnum))
+(defun %apply-slow (c args)
+  (let ((n (length args)) (k (clos-arity c)))
+    (cond
+      ((= n k) (apply (clos-fn c) args))
+      ((< n k) (%clos (lambda (&rest more)
+                        (apply (clos-fn c)
+                               (append args more)))
+                      (- k n)))
+      (t (%apply-slow (apply (clos-fn c)
+                             (subseq args 0 k))
+                      (nthcdr k args))))))
 
-; hoisted functions
 
-(defun |eval| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
-  (let ((|α| (car |payload|)))
-    (let ((|Γ| (cdr |payload|)))
-      (let ((|_pL#?x₀| (car |α|)))
-        (cond
-          ((eq (car |_pL#?x₀|) '|Add|)
-            (let ((|p1| (svref (cdr |_pL#?x₀|) 0)))
-              (let ((|p2| (svref (cdr |_pL#?x₀|) 1)))
-                (let ((|u3| nil))
-                  (let ((|pair4| (cons |p1| |u3|)))
-                    (let ((|ρ1001| (cons |pair4| |Γ|)))
-                      (labels ((|k1| (|v0|)
-                        (let ((|u6| nil))
-                          (let ((|pair7| (cons |p2| |u6|)))
-                            (let ((|ρ1000| (cons |pair7| |Γ|)))
-                              (labels ((|k3| (|v2|)
-                                (let ((|p9| (%int+ |v0| |v2|)))
-                                  (funcall (the function |k|) |p9|))))
-                                (funcall #'|eval| |ρ1000| #'|k3|)))))))
-                        (funcall #'|eval| |ρ1001| #'|k1|))))))))
-          ((eq (car |_pL#?x₀|) '|Div|)
-            (let ((|p10| (svref (cdr |_pL#?x₀|) 0)))
-              (let ((|p11| (svref (cdr |_pL#?x₀|) 1)))
-                (let ((|u12| nil))
-                  (let ((|pair13| (cons |p10| |u12|)))
-                    (let ((|ρ1003| (cons |pair13| |Γ|)))
-                      (labels ((|k5| (|v4|)
-                        (let ((|u15| nil))
-                          (let ((|pair16| (cons |p11| |u15|)))
-                            (let ((|ρ1002| (cons |pair16| |Γ|)))
-                              (labels ((|k7| (|v6|)
-                                (let ((|p18| (%int/ |v4| |v6|)))
-                                  (funcall (the function |k|) |p18|))))
-                                (funcall #'|eval| |ρ1002| #'|k7|)))))))
-                        (funcall #'|eval| |ρ1003| #'|k5|))))))))
-          ((eq (car |_pL#?x₀|) '|Mul|)
-            (let ((|p19| (svref (cdr |_pL#?x₀|) 0)))
-              (let ((|p20| (svref (cdr |_pL#?x₀|) 1)))
-                (let ((|u21| nil))
-                  (let ((|pair22| (cons |p19| |u21|)))
-                    (let ((|ρ1005| (cons |pair22| |Γ|)))
-                      (labels ((|k9| (|v8|)
-                        (let ((|u24| nil))
-                          (let ((|pair25| (cons |p20| |u24|)))
-                            (let ((|ρ1004| (cons |pair25| |Γ|)))
-                              (labels ((|k11| (|v10|)
-                                (let ((|p27| (%int* |v8| |v10|)))
-                                  (funcall (the function |k|) |p27|))))
-                                (funcall #'|eval| |ρ1004| #'|k11|)))))))
-                        (funcall #'|eval| |ρ1005| #'|k9|))))))))
-          ((eq (car |_pL#?x₀|) '|Atom|)
-            (let ((|p28| (svref (cdr |_pL#?x₀|) 0)))
-              (funcall (the function |k|) |p28|)))
-          ((eq (car |_pL#?x₀|) '|Sub|)
-            (let ((|p29| (svref (cdr |_pL#?x₀|) 0)))
-              (let ((|p30| (svref (cdr |_pL#?x₀|) 1)))
-                (let ((|u31| nil))
-                  (let ((|pair32| (cons |p29| |u31|)))
-                    (let ((|ρ1007| (cons |pair32| |Γ|)))
-                      (labels ((|k13| (|v12|)
-                        (let ((|u34| nil))
-                          (let ((|pair35| (cons |p30| |u34|)))
-                            (let ((|ρ1006| (cons |pair35| |Γ|)))
-                              (labels ((|k15| (|v14|)
-                                (let ((|p37| (%int- |v12| |v14|)))
-                                  (funcall (the function |k|) |p37|))))
-                                (funcall #'|eval| |ρ1006| #'|k15|)))))))
-                        (funcall #'|eval| |ρ1007| #'|k13|)))))))))))))
+; struct
+(defstruct (|Expr| (:conc-name |Expr/|) (:constructor nil) (:predicate nil))
+  (|tag| 0 :type (unsigned-byte 8)))
 
-; entrypoint
-(defun |main| (|payload| |k|)
-  (declare (optimize (speed 3) (safety 0) (debug 0)) (ignorable |payload|))
-  (let ((|Γ| (cons '|𝐄| (vector))))
-    (let ((|c38| 20))
-      (let ((|con39| (cons '|Atom| (vector |c38|))))
-        (let ((|c40| 10))
-          (let ((|con41| (cons '|Atom| (vector |c40|))))
-            (let ((|c42| 20))
-              (let ((|con43| (cons '|Atom| (vector |c42|))))
-                (let ((|con44| (cons '|Mul| (vector |con41| |con43|))))
-                  (let ((|c45| 2400))
-                    (let ((|con46| (cons '|Atom| (vector |c45|))))
-                      (let ((|c47| 120))
-                        (let ((|con48| (cons '|Atom| (vector |c47|))))
-                          (let ((|c49| 10))
-                            (let ((|con50| (cons '|Atom| (vector |c49|))))
-                              (let ((|c51| 20))
-                                (let ((|con52| (cons '|Atom| (vector |c51|))))
-                                  (let ((|con53| (cons '|Mul| (vector |con50| |con52|))))
-                                    (let ((|c54| 0))
-                                      (let ((|con55| (cons '|Atom| (vector |c54|))))
-                                        (let ((|con56| (cons '|Add| (vector |con53| |con55|))))
-                                          (let ((|con57| (cons '|Add| (vector |con48| |con56|))))
-                                            (let ((|con58| (cons '|Div| (vector |con46| |con57|))))
-                                              (let ((|con59| (cons '|Sub| (vector |con44| |con58|))))
-                                                (let ((|con60| (cons '|Mul| (vector |con39| |con59|))))
-                                                  (let ((|u61| nil))
-                                                    (let ((|pair62| (cons |con60| |u61|)))
-                                                      (let ((|ρc1010| (cons |pair62| |Γ|)))
-                                                        (labels ((|k17| (|v16|)
-                                                          (let ((|c64| 3860))
-                                                            (let ((|cmp65| (%int= |v16| |c64|)))
-                                                              (if |cmp65|
-                                                                (funcall (the function |k|) |con60|)
-                                                                (error +NOMATCH+ :discr "#[Toplevel]"))))))
-                                                          (funcall #'|eval| |ρc1010| #'|k17|))))))))))))))))))))))))))))))
+(defstruct (|c/Atom| (:include |Expr| (|tag| 0))
+  (:conc-name |Atom/|)
+  (:constructor |mk/Atom| (|f0|))
+  (:predicate |Atom?|))
+  (|f0| nil))
 
-; driver
-(defun |__start| ()
-  (format t "~A"
-    (funcall #'|main| nil #'identity)))
+(defstruct (|c/Add| (:include |Expr| (|tag| 1))
+  (:conc-name |Add/|)
+  (:constructor |mk/Add| (|f0| |f1|))
+  (:predicate |Add?|))
+  (|f0| nil)
+  (|f1| nil))
 
+(defstruct (|c/Sub| (:include |Expr| (|tag| 2))
+  (:conc-name |Sub/|)
+  (:constructor |mk/Sub| (|f0| |f1|))
+  (:predicate |Sub?|))
+  (|f0| nil)
+  (|f1| nil))
+
+(defstruct (|c/Mul| (:include |Expr| (|tag| 3))
+  (:conc-name |Mul/|)
+  (:constructor |mk/Mul| (|f0| |f1|))
+  (:predicate |Mul?|))
+  (|f0| nil)
+  (|f1| nil))
+
+(defstruct (|c/Div| (:include |Expr| (|tag| 4))
+  (:conc-name |Div/|)
+  (:constructor |mk/Div| (|f0| |f1|))
+  (:predicate |Div?|))
+  (|f0| nil)
+  (|f1| nil))
+
+; ftype
+(declaim (ftype (function (|Expr|) integer) |eval-2|))
+
+(declaim (type |Expr| |prog-3|))
+
+(declaim (type integer |pb#41-42|))
+
+(declaim (type integer |pb#41-chk-44|))
+
+(declaim (type null |main-47|))
+
+; body
+(defun |eval-2| (|?x₀-4|)
+  (case (|Expr/tag| |?x₀-4|)
+    (1
+      (let* ((|f-5| (|Add/f0| |?x₀-4|))
+             (|f-6| (|Add/f1| |?x₀-4|)))
+         (let* ((|app-7| (|eval-2| |f-5|))
+                (|app-8| (|eval-2| |f-6|))
+                (|π-9| (%int+ |app-7| |app-8|)))
+            |π-9|)))
+    (4
+      (let* ((|f-10| (|Div/f0| |?x₀-4|))
+             (|f-11| (|Div/f1| |?x₀-4|)))
+         (let* ((|app-12| (|eval-2| |f-10|))
+                (|app-13| (|eval-2| |f-11|))
+                (|π-14| (%int/ |app-12| |app-13|)))
+            |π-14|)))
+    (3
+      (let* ((|f-15| (|Mul/f0| |?x₀-4|))
+             (|f-16| (|Mul/f1| |?x₀-4|)))
+         (let* ((|app-17| (|eval-2| |f-15|))
+                (|app-18| (|eval-2| |f-16|))
+                (|π-19| (%int* |app-17| |app-18|)))
+            |π-19|)))
+    (0
+      (let* ((|f-20| (|Atom/f0| |?x₀-4|))) |f-20|))
+    (2
+      (let* ((|f-21| (|Sub/f0| |?x₀-4|))
+             (|f-22| (|Sub/f1| |?x₀-4|)))
+         (let* ((|app-23| (|eval-2| |f-21|))
+                (|app-24| (|eval-2| |f-22|))
+                (|π-25| (%int- |app-23| |app-24|)))
+            |π-25|)))
+    (t (error "unreachable"))))
+
+(defparameter |prog-3|
+  (let* ((|con-26| (|mk/Atom| 20))
+         (|con-27| (|mk/Atom| 10))
+         (|con-28| (|mk/Atom| 20))
+         (|con-29| (|mk/Mul| |con-27| |con-28|))
+         (|con-30| (|mk/Atom| 2400))
+         (|con-31| (|mk/Atom| 120))
+         (|con-32| (|mk/Atom| 10))
+         (|con-33| (|mk/Atom| 20))
+         (|con-34| (|mk/Mul| |con-32| |con-33|))
+         (|con-35| (|mk/Atom| 0))
+         (|con-36| (|mk/Add| |con-34| |con-35|))
+         (|con-37| (|mk/Add| |con-31| |con-36|))
+         (|con-38| (|mk/Div| |con-30| |con-37|))
+         (|con-39| (|mk/Sub| |con-29| |con-38|))
+         (|con-40| (|mk/Mul| |con-26| |con-39|)))
+     |con-40|))
+
+(defparameter |pb#41-42|
+  (let* ((|app-43| (|eval-2| |prog-3|))) |app-43|))
+
+(defparameter |pb#41-chk-44|
+  (labels ((|fail-45| ()
+             (let* ((|fail-46| (error 'match-failure
+                        :discr
+                        "no matching clause")))
+                |fail-46|)))
+     (case |pb#41-42|
+       (3860
+         |pb#41-42|)
+       (t (|fail-45|)))))
+
+(defparameter |main-47|
+  nil)
+
+(format t "~S~%" |main-47|)

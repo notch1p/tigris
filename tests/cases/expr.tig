@@ -1,0 +1,11 @@
+type Expr a =
+  | Atom a
+  | Add (Expr a) (Expr a)
+  | Mul (Expr a) (Expr a)
+
+let rec eval
+  | Atom a    => a
+  | Add e1 e2 => eval e1 + eval e2
+  | Mul e1 e2 => eval e1 * eval e2
+
+let main = eval (Mul (Atom 20) (Add (Atom 10) (Atom 3)))
