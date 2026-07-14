@@ -433,7 +433,7 @@ partial def lowerCtorApp (cname : String) (args : Array FExpr) (ar : Nat)
       setArity fv missing
       .fun ⟨fv, cname, paramArr, resTy, body⟩ <$> k.apply (.fvar fv)
   else
-    panic! s!"over-applied constructor {cname}"
+    throw s!"over-applied constructor {cname}"
 
 partial def lowerMatch (scrs : Array FExpr) (rows : Array (Array Pattern × FExpr))
   (resTy : MLType) (exhaustive : Bool) (ρ : FVarEnv) (k : Cont) : CompilerM CodePre :=

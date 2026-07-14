@@ -226,7 +226,7 @@ let applySlow :=
                       (nthcdr k args))))))\n"
 let pragma := s!"(declaim (optimize (speed {speed}) (safety {safety}) (debug {debug})))\n"
 if let some runtime := runtime then
-  pragma ++ s!"(load \"{runtime}\")" ++ clos ++ applySlow
+  pragma ++ s!"(load \"{runtime}\")\n" ++ clos ++ applySlow
 else
   pragma ++ clos ++ applySlow
 

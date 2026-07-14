@@ -195,7 +195,7 @@ def emitDeclaims (m : Module .postCC) : CGM (Array Sexp) := do
   return out
 
 /-- functions first, then values, then `main` -/
-def emitModule (m : Module .postCC) : CGM CLModule := do
+def emitModule (m : Module .postCC) (entry? := true) : CGM CLModule := do
   let mut funs : Array Sexp := #[]
   let mut vals : Array Sexp := #[]
   for d in m.decls do
@@ -204,8 +204,9 @@ def emitModule (m : Module .postCC) : CGM CLModule := do
     else vals <- vals.push <$> emitDecl d
   let main <- emitDecl m.main
   let tail : Array Sexp <-
-    if m.main.arity >= 1 then pure #[]
-    else pure #[Sexp.list #[.sym "format", .sym "t", .str "~S~%", .sym (<- valSym m.main.fvarId)]]
+    if m.main.arity == 0 && entry? then
+      pure #[.list #[.sym "format", .sym "t", .str "~S~%", .sym (<- valSym m.main.fvarId)]]
+    else pure #[]
   let declaims <- emitDeclaims m
   return {funs, vals, main, tail, declaims}
 
@@ -280,8 +281,9 @@ def compileToCL
   (speed   := 1)
   (safety  := 3)
   (debug   := 1)
+  (entry?  := true)
   (runtime := some "runtime.lisp") : IO Format := do
-  let ({funs, vals, main, tail, declaims}, st) <- emitModule m (mkCtx m tyDecl) |>.run {}
+  let ({funs, vals, main, tail, declaims}, st) <- emitModule m entry? (mkCtx m tyDecl) |>.run {}
   let structForms := emitStructs tyDecl
   let gapplyForms := st.genArities.toArray.qsort (· < ·) |>.map genGapply
   return joinSep' (sep := line ++ line) $    -- inline ++ for 1 linebreak
