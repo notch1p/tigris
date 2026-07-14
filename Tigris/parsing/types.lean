@@ -302,7 +302,7 @@ structure PEnv where
   lastEol : Nat := 0
 
 --abbrev TParser := SimpleParserT Substring.Raw Char $ StateRefT String $ StateT PEnv $ ST α
-abbrev TParser σ := SimpleParserT Substring.Raw Char
+abbrev TParser σ := SimpleParserT String.Slice Char
                   $ StateRefT (PEnv × String) (ST σ)
 
 def warn (s : String) : TParser σ Unit :=

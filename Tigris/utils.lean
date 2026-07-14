@@ -168,9 +168,9 @@ def Simple.rebuild
 end Parser.Error
 section open Error
 private def dedupMsgsAt
-  (pos : Stream.Position Substring.Raw)
-  (msgs : Array (Stream.Position Substring.Raw × String))
-  : Array (Stream.Position Substring.Raw × String) :=
+  (pos : Stream.Position String.Slice)
+  (msgs : Array (Stream.Position String.Slice × String))
+  : Array (Stream.Position String.Slice × String) :=
   let seen : Std.HashSet String := ∅
   (·.1) <| msgs.foldl (init := (#[], seen)) fun (out, seen) (p, m) =>
     if p == pos then
@@ -178,7 +178,7 @@ private def dedupMsgsAt
         (out.push (p, m), seen)
       else (out, seen)
     else (out, seen)
-def simpErrorCombine (e₁ : Simple Substring.Raw Char) (e₂ : Simple Substring.Raw Char) : Simple Substring.Raw Char :=
+def simpErrorCombine (e₁ : Simple String.Slice Char) (e₂ : Simple String.Slice Char) : Simple String.Slice Char :=
   let (p₁, f₁, m₁) := e₁.flatten
   let (p₂, f₂, m₂) := e₂.flatten
   if p₁ < p₂ then e₂ else if p₂ < p₁ then e₁ else
