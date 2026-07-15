@@ -214,6 +214,7 @@ let clos :=
   (arity 0 :type fixnum))\n"
 let applySlow :=
 "(defun %apply-slow (c args)
+  (declare (type list args))
   (let ((n (length args)) (k (clos-arity c)))
     (cond
       ((= n k) (apply (clos-fn c) args))

@@ -60,7 +60,7 @@ def main : IO Unit := do
     let input <- stdin.getLine --readTtyLine
     if input.isEmpty then IO.Process.exit 0
     buf := buf ++ input |>.trimAsciiStart |>.toString
-    if !input.trimAsciiStart.endsWith ";;" then continue
+    if !input.trimAsciiEnd.endsWith ";;" then continue
     if input.startsWith "\n" then continue
 
     /- help -/

@@ -1,13 +1,16 @@
-(defun %println (x) 
+(require 'uiop)
+(defun %println (x)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (format t "~A~%" x))
 
-(defun %string-append (s1 s2) 
-  (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (concatenate 'string s1 s2))
+(defun %string-append (s1 s2)
+  (declare (optimize (speed 3) (debug 0) (safety 0))
+           (type string s1 s2))
+  (uiop:strcat s1 s2))
 
-(defun %to-string (s) 
+(defun %to-string (s)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
   (format nil "~A" s))
 
-(defun %read (_) (declare (ignore _)) (read))
+(defun %read (_) 
+  (declare (ignore _)) (read))

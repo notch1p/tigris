@@ -8,6 +8,7 @@
   (fn #'identity :type function)
   (arity 0 :type fixnum))
 (defun %apply-slow (c args)
+  (declare (type list args))
   (let ((n (length args)) (k (clos-arity c)))
     (cond
       ((= n k) (apply (clos-fn c) args))
@@ -55,23 +56,20 @@
   (case |?x₀-20|
     (0
       |acc-19|)
-    (t
-     (let* ((|π-21| (%int* |acc-19| |?x₀-20|))
-               (|π-22| (%int- |n-17| |?x₀-20|))
-               (|app-23| (|toString-4| |π-22|))
-               (|app-24| (|append-3| "fact " |app-23|))
-               (|app-25| (|append-3| |app-24| " = "))
-               (|app-26| (|toString-4| |π-21|))
-               (|app-27| (|append-3| |app-25| |app-26|))
-               (|app-28| (|println-2| |app-27|))
-               (|π-29| (%int- |?x₀-20| 1))
-               (|app-30| (|go-35| |n-17| |π-21| |π-29|)))
-           |app-30|))))
+    (t (let* ((|π-21| (%int* |acc-19| |?x₀-20|))
+             (|π-22| (%int- |n-17| |?x₀-20|))
+             (|app-23| (|toString-4| |π-22|))
+             (|app-24| (|append-3| "fact " |app-23|))
+             (|app-25| (|append-3| |app-24| " = "))
+             (|app-26| (|toString-4| |π-21|))
+             (|app-27| (|append-3| |app-25| |app-26|))
+             (|app-28| (|println-2| |app-27|))
+             (|π-29| (%int- |?x₀-20| 1))
+             (|app-30| (|go-35| |n-17| |π-21| |π-29|)))
+         |app-30|))))
 
 (defparameter |main-7|
   (let* ((|app-32| (|println-2| "Enter a number:"))
          (|app-33| (|read-5| nil))
          (|app-34| (|fact-6| |app-33|)))
      |app-34|))
-
-(format t "~S~%" |main-7|)

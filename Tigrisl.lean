@@ -11,39 +11,43 @@ open TCNF.CL (compileToCL)
 open Std.ToFormat (format)
 
 structure ArgParserFlag where
-  lam?     : Bool := false
-  lamcc?   : Bool := false
-  tcnf?    : Bool := false
-  tcnfcc?  : Bool := false
-  tcnfopt? : Bool := false
-  speed    : Nat  := 3
-  debug    : Nat  := 0
-  safety   : Nat  := 0
-  entry?   : Bool := true
-  lamcps?  : Bool := false
-  legacy?  : Bool := false
-  lambda?  : Bool := false
-  sysf?    : Bool := false
-  cl?      : Bool := true
-  fasl?    : Bool := false
-  objs     : Array String := #["ffi.lisp"]
+  lam?          : Bool := false
+  lamcc?        : Bool := false
+  tcnf?         : Bool := false
+  tcnfcc?       : Bool := false
+  tcnfopt?      : Bool := false
+  speed         : Nat  := 3
+  debug         : Nat  := 0
+  safety        : Nat  := 0
+  entry?        : Bool := true
+  lamcps?       : Bool := false
+  legacy?       : Bool := false
+  lambda?       : Bool := false
+  sysf?         : Bool := false
+  cl?           : Bool := true
+  fasl?         : Bool := false
+  blockCompile? : Bool := false
+  objs          : Array String := #["ffi.lisp"]
 
 def lowerIO : EIO String α -> IO α := EIO.toIO .userError
 local macro "lowerIO!" act:term : term => ``(lowerIO $act)
 
-def mkSBCL (ifile ofile sbcl : String) : Process.SpawnArgs where
+def mkSBCL (ifile ofile sbcl : String) (blockCompile? : Bool) : Process.SpawnArgs where
   cmd := sbcl
   args := #[ "--noinform"
            , "--non-interactive"
            , "--eval"
            , s!"(compile-file {repr ifile} \
-                  :block-compile t \
-                  :output-file {repr ofile} \
+                  :block-compile {toCLbool blockCompile?} \
+                  :output-file {repr ofile} 
                   :verbose t)"]
+where toCLbool
+      | true => "t"
+      | false => "nil"
 
-def spawnSBCL (ifile ofile : String) : IO Process.Output :=
+def spawnSBCL (ifile ofile : String) (blockCompile? : Bool) : IO Process.Output :=
   Option.getD (dflt := "sbcl") <$> getEnv "SBCL"
-  >>= Process.output ∘ mkSBCL ifile ofile
+  >>= Process.output ∘ mkSBCL ifile ofile (blockCompile? := blockCompile?)
 def validate args := do
   if let some (spec, is, os) <- argParser {} [] [] args then
     if is.size = 0 then return none
@@ -71,6 +75,7 @@ where argParser (spec : ArgParserFlag) (is : List String) (os : List String)
   | "--lamcc" :: xs => argParser {spec with lamcc? := true} is os xs
   | "--lamcps" :: xs => argParser {spec with lamcps? := true} is os xs
   | "--fasl" :: xs => argParser {spec with fasl? := true} is os xs
+  | "--block-comp" :: xs => argParser {spec with blockCompile? := true} is os xs
   | "-ne" :: xs | "--no-entry" :: xs => argParser {spec with entry? := false} is os xs
   | "-l" :: x :: xs | "--link" :: x :: xs => argParser {spec with objs := spec.objs.push x} is os xs
   | "-nl" :: xs | "--no-lisp" :: xs => argParser {spec with cl? := false} is os xs
@@ -90,6 +95,7 @@ def main (fp : List String) : IO Unit := do
   let PE := initState
   if let some ( { lam?, lamcc?, lambda?, lamcps?
                 , tcnf?, tcnfcc?, tcnfopt?
+                , blockCompile?
                 , speed, debug, safety
                 , entry?
                 , objs
@@ -153,7 +159,7 @@ def main (fp : List String) : IO Unit := do
 
             FS.writeBinFile ⟨o⟩ ∅
             let os <- toString <$> FS.realPath (System.FilePath.mk o)
-            let {exitCode, stdout, stderr} <- spawnSBCL temp.toString os
+            let {exitCode, stdout, stderr} <- spawnSBCL temp.toString os blockCompile?
             print stderr
             print stdout
             unless exitCode == 0 do throwServerError s!"Process exited with {exitCode}"

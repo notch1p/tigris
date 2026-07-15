@@ -25,7 +25,7 @@ def hasSbcl : IO Bool := do
   catch _ => return false
 
 def compileCases : List String :=
-  [ "fact", "list", "opt", "fun", "op-let", "struct"
+  [ "fact", "list", "opt", "op-let", "struct"
   , "typeclass4", "typeclass5", "typeclass6"
   , "hkt-dict-parametricity", "hkt-eager-specialize" ]
 

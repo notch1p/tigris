@@ -3,6 +3,7 @@ open Lake DSL System
 
 package "tigris" where
   version := v!"0.6.5"
+  lintDriver := "batteries/runLinter"
 
 @[test_driver]
 lean_exe «tigris-test» where

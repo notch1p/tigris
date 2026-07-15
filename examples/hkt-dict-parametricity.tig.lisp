@@ -37,6 +37,7 @@ let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
   (fn #'identity :type function)
   (arity 0 :type fixnum))
 (defun %apply-slow (c args)
+  (declare (type list args))
   (let ((n (length args)) (k (clos-arity c)))
     (cond
       ((= n k) (apply (clos-fn c) args))
@@ -121,5 +122,3 @@ let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
 
 (defparameter |main-3|
   (let* ((|fn-13| (%clos (function |fn-29|) 1))) |fn-13|))
-
-(format t "~S~%" |main-3|)

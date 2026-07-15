@@ -8,6 +8,7 @@
   (fn #'identity :type function)
   (arity 0 :type fixnum))
 (defun %apply-slow (c args)
+  (declare (type list args))
   (let ((n (length args)) (k (clos-arity c)))
     (cond
       ((= n k) (apply (clos-fn c) args))
@@ -83,5 +84,3 @@
          (|app-20| (|mapOp-3| |fn-17| |con-15|))
          (|p-21| (cons |app-16| |app-20|)))
      |p-21|))
-
-(format t "~S~%" |main-4|)
