@@ -84,7 +84,7 @@ def postfixDecl : TParser σ Binding := do
     return (s!"({op})ₚ", e)
   | _, _ => return ("_", CUnit)
 
-def letBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
+def letBody (floorCol : Nat) : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
   fun id pre ann? => do
     match <- test (lookAhead BAR) with
     | true =>
@@ -92,7 +92,7 @@ def letBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
       let core := transMatch pre $ pointedExp a
       return (id, unwrapAnn ann? core)
     | false =>
-      EQ; let a <- parseExpr
+      let a <- eqRhs floorCol
       let core := transMatch pre a
       return (id, unwrapAnn ann? core)
 
@@ -130,7 +130,7 @@ def let1Common
         return (op', e)
       else throwUnexpected
 
-def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
+def letrecBody (floorCol : Nat) : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=
   fun id pre ann? => do
     match <- test (lookAhead BAR) with
     | true =>
@@ -138,7 +138,7 @@ def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding 
       let core := Fix $ Fun id $ transMatch pre $ pointedExp a
       return (id, unwrapAnn ann? core)
     | false =>
-      EQ let a <- parseExpr
+      let a <- eqRhs floorCol
       if pre.isEmpty && !a matches Fun .. then
         let core := transMatch pre a
         return (id, unwrapAnn ann? core)
@@ -147,19 +147,19 @@ def letrecBody : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding 
         return (id, unwrapAnn ann? core)
 
 def letDeclDispatch : TParser σ $ Array Binding := do
-  LET
+  let letCol <- kwCol "let"
   let bs <-
     match <- test REC with
-    | false => sepBy1 AND $ let1Common letBody
+    | false => sepBy1 AND $ let1Common (letBody letCol)
     | true =>
-      let b <- sepBy1 AND $ let1Common letrecBody
+      let b <- sepBy1 AND $ let1Common (letrecBody letCol)
       let some b' <- option? $ whereBindings whereRec | pure b
       pure $ b' ++ b
   match <- option? (IN *> parseExpr) with
   | some body => return #[("_", Let bs body)]
   | none => return bs
 where
-  whereRec := let1Common letrecBody
+  whereRec (whereCol : Nat) := let1Common (letrecBody whereCol)
 
 def letPatDecl : TParser σ (Pattern × Expr) := do
   LET;
@@ -176,7 +176,7 @@ def externDecl : TParser σ TopDecl := do
   COLON let sch <- PType.tyScheme
   return .extBind id name sch
 
-def instanceBinder : TParser σ Binding := do
+def instanceBinder (floorCol : Nat) : TParser σ Binding := do
   let f <- ID
   let pre <- takeMany funBinderID
   match <- test (lookAhead BAR) with
@@ -184,7 +184,7 @@ def instanceBinder : TParser σ Binding := do
     let a <- barBranches matchDiscr
     return (f, transMatch pre $ pointedExp a)
   | false =>
-    EQ; let a <- parseExpr
+    let a <- eqRhs floorCol
     return (f, transMatch pre a)
 
 def instanceExp (ctor : Symbol) (fs : Array Binding)
@@ -214,7 +214,7 @@ def instanceDecl : TParser σ TopDecl := do
     | _ => error "not a valid class" *> throwUnexpected
   let (cname, args) := head
   let fs <- first
-    [ EQ *> braced (sepBy COMMA instanceBinder)
+    [ EQ *> braced (sepBy COMMA (instanceBinder 0))
     , whereBindings instanceBinder ]
   let methods <- instanceExp cname fs
   return .instBind {ctxPreds, cname, args, methods}

@@ -5,5 +5,5 @@ let get! (Some a) = a
 let mapOp f | None => None | Some x => Some (f x)
 
 let main = 
-  let op = Some 20 in
+  let op = Some 20
   (get! op, (mapOp (1 + _) op))

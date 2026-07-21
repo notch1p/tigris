@@ -111,10 +111,45 @@ partial def atom : TParser σ Expr := spaces *>
           , strExp      , varExp]
          simpErrorCombine
 
+/--
+Funapp but respects crossLine called from `spaces`.
+
+- spaces may or may not consume vspaces, depending on crossLine.
+  - if it does, then cursor skips directly to
+    the next token (across multiple lines), which is the original funapp behavior;
+  - otherwise, spaces consumes blanks up to the first vspace, that is, the cursor
+    must sit at a vspace. In this case we escape with throwUnexpected.
+
+This makes consecutive (sequential) letexps parse correctly so that
+
+```lean
+let x = 1
+let y = 2
+x + y
+```
+
+is what you thought it would be instead of `let x = App 1 (let y = 2 in x + y)`.
+
+Note: We may test `atEol` and escape directly in `atom` as well, but that is too strong
+and blocks the valid form of
+
+```lean
+let x =
+  atom
+```
+
+since in the case we would like to parse the atom starting at a newline.
+
+-/
+partial def appSep : TParser σ (Expr -> Expr -> Expr) := do
+  spaces
+  if <- atEol then throwUnexpected
+  pure App
+
 partial def ascription : TParser σ Expr := parenthesized do
-    let e <- parseExpr
-    COLON
-    Ascribe e <$> PType.tyForall false ∅
+  let e <- parseExpr
+  COLON
+  Ascribe e <$> PType.tyForall false ∅
 
 partial def prodExp : TParser σ Expr := do
   let es <- sepBy COMMA (parsePratt 0)
@@ -131,11 +166,9 @@ partial def varExp      : TParser σ Expr :=
          | "false"               => CB false
          | v                     => Var v
 
-partial def appAtom     : TParser σ Expr :=
-  chainl1 primaryAtom (pure App)
+partial def appAtom     : TParser σ Expr := chainl1 primaryAtom appSep
 
-partial def bareAtom     : TParser σ Expr :=
-  chainl1 atom (pure App)
+partial def bareAtom    : TParser σ Expr := chainl1 atom appSep
 
 partial def parsePratt (minPrec := 0) : TParser σ Expr := loop =<< appAtom where
   loop lhs := do
@@ -162,7 +195,56 @@ partial def matchExp    : TParser σ Expr := do
   let br <- barBranches matchDiscr
                                   return Match e br
 
-partial def let1 : TParser σ (Symbol × Expr) := do
+/--
+Local column overriding for `= <indented-rhs>` form. Applies to let/where block.
+
+Consider (1) GHC's aligned binding and (2) Lean's indent-n form
+
+```lean
+let x = 1 -- (1) let...and... replacement
+    y = 2
+ in ...
+
+let x =
+  expr    -- (2) indent 2 (or n), common for big expr.
+```
+
+Tigris supports both (1) and (2) yet they do NOT mix well.
+The wrapper `alignedBindings` achieves (1), requiring RHS to indent past bound symbol (GHC behavior);
+Thus, to additionally parse (2), we must locally override baseline -- we determine this by checking
+whether the next token (judging by how `eqRhs` is called, RHS in this case)
+starts after a newline so that (1) still parses.
+
+Though, it is worth noting that because of this override subsequent bindings are consumed together
+as a whole under the first one (Lean behavior). Which, since (=) is simultaneously
+a kw and the eq operator, may still parse successfully but doesn't make sense
+or straight up a parse error if (:=) is used instead.
+
+Note that toplevel letdecl does not even supports aligned bindings
+(mandatory AND-separated) so it is not a problem there.
+
+See also Parsing.barBranches from Tigris.lexing: same logic but specialized for Lean-style
+pointed functions.
+
+NB. crossline funapp does not work for indent-n pattern for the same reason, e.g.
+
+```lean
+let prog = f -- whether ($) or not does not matter.
+  x
+```
+
+Do this instead:
+```lean
+let prog = f   ..or..   let prog = f
+         $ x                       x
+```
+
+-/
+partial def eqRhs (letCol : Nat) : TParser σ Expr := do
+  EQ; hspaces
+  if <- atEol then withInlineBlock letCol parseExpr else parseExpr
+
+partial def let1 (letCol : Nat) : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
   let ann? <- option? (COLON *> PType.tyForall false ∅)
   match <- test (lookAhead BAR) with
@@ -173,12 +255,12 @@ partial def let1 : TParser σ (Symbol × Expr) := do
                                | none => core
     return Prod.mk id rhs
   | false =>
-    EQ; let e₁ <- parseExpr;
+    let e₁ <- eqRhs letCol
     let core := transMatch pre e₁
     let rhs := match ann? with | some ty => .Ascribe core ty | none => core
     return Prod.mk id rhs
 
-partial def letrec1 : TParser σ (Symbol × Expr) := do
+partial def letrec1 (letCol : Nat) : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
   let ann? <- option? (COLON *> PType.tyForall false ∅)
   match <- test (lookAhead BAR) with
@@ -188,7 +270,7 @@ partial def letrec1 : TParser σ (Symbol × Expr) := do
     let rhs := match ann? with | some ty => .Ascribe core ty | none => core
     return Prod.mk id rhs
   | false =>
-    EQ; let e₁ <- parseExpr
+    let e₁ <- eqRhs letCol
     if pre.isEmpty && !e₁ matches Fun .. then
       warn s!"Use let instead of letrec for nonrecursive definition of '{id}'\n"
       let core := transMatch pre e₁
@@ -199,29 +281,42 @@ partial def letrec1 : TParser σ (Symbol × Expr) := do
       let rhs := match ann? with | some ty => .Ascribe core ty | none => core
       return Prod.mk id rhs
 
+/--
+The body of a letexp, in one of the two forms:
+
+1. prefixed by a explicit IN, or
+2. a newline followed by an expression aligned to LET
+
+Behaviors should be similar to Lean's do-notation.
+-/
+partial def letBodyOrIn (letCol : Nat) : TParser σ Expr :=
+  (IN *> parseExpr) <|> (vspaces *> colEq letCol *> parseExpr)
+
 partial def letDispatch : TParser σ Expr := do
-  LET
+  let letCol <- kwCol "let"
   match <- test REC with
   | false =>
     match <- option? funBinder with
     | some pat =>
-      EQ let e₁ <- parseExpr; IN let e₂ <- parseExpr
+      EQ let e₁ <- withInlineBlock letCol parseExpr
+      let e₂ <- letBodyOrIn letCol
       return Match #[e₁] #[(#[pat], e₂)]
     | none =>
       -- let grp <- sepBy1 AND let1
-      let grp <- alignedBindings let1
-      IN; let e₂ <- parseExpr
+      let grp <- alignedBindings (let1 letCol)
+      let e₂ <- letBodyOrIn letCol
       return Let grp e₂
   | true =>
     match <- option? funBinder with
     | some pat =>
-      EQ let e₁ <- parseExpr; IN let e₂ <- parseExpr
+      EQ let e₁ <- withInlineBlock letCol parseExpr
+      let e₂ <- letBodyOrIn letCol
       warn "found non-variable pattern on the left hand side,\nThis expression will be treated as a letexp\n"
       return Match #[e₁] #[(#[pat], e₂)]
     | none =>
       --let grp <- sepBy1 AND letrec1
-      let grp <- alignedBindings letrec1
-      IN; let e₂ <- parseExpr
+      let grp <- alignedBindings (letrec1 letCol)
+      let e₂ <- letBodyOrIn letCol
       return Let grp e₂
 partial def fixpointExp : TParser σ Expr := do
   REC;

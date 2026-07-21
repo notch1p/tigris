@@ -57,6 +57,10 @@ def hspaces : TParser σ Unit :=
 
 def eol1 : TParser σ Unit := void eol
 
+/-- Check if cursor is at eol. Non-consuming. -/
+def atEol : TParser σ Bool :=
+  test $ lookAhead $ char '\n' <|> char '\r'
+
 partial def vspaces : TParser σ Unit :=
   hspaces *> eol *> go where go := do if <- test (hspaces *> eol1) then go
 
@@ -115,7 +119,7 @@ helper combinator used by `spaces`.
 Parses consecutive blank lines conditionally (described below).
 Consider
 
-```lean4
+```lean
 let rec x = y where
   y = f a
   z = g b
@@ -126,7 +130,7 @@ parse as two items,
   only consume a line if `col > base` (i.e. indented).
   This permits (but not w/o the indentation)
 
-```lean4
+```lean
     where
       y = f
         a
@@ -264,6 +268,13 @@ def kw (s : String) : TParser σ Unit := dumbspaces *>
                                     $ string s
                                     *> notFollowedBy alphanum')
 
+/-- like `kw`, but also returns the column (relative to line start) of the keyword. -/
+def kwCol (s : String) : TParser σ Nat := do
+  dumbspaces
+  let col <- currentColAbs
+  withBacktracking (withErrorMessage s!"kw '{s}'" $ string s *> notFollowedBy alphanum')
+  return col
+
 def kwOpExact (s : String) : TParser σ Unit := dumbspaces *>
   ( withBacktracking
   $ withErrorMessage s!"kwOp '{s}'"
@@ -362,9 +373,15 @@ def alignedBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
                 -- inline block/ sepBy `;`/`and` (same semantics)
     | none   => withInlineBlock (p := aligned1 bindingParser) =<< currentColAbs
 
+/--
+`where`-block bindings. The `where` column is captured and passed to
+`bindingParser` so a binding's RHS may begin on the next line indented merely
+past `where` (rather than past the binding's own column) — see `eqRhs`.
+-/
 @[inline]
-def whereBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
-  WHERE *> alignedBindings bindingParser
+def whereBindings (bindingParser : Nat -> TParser σ α) : TParser σ $ Array α := do
+  let col <- kwCol "where"
+  alignedBindings (bindingParser col)
 
 /--
 - Parse 1+ BARs
@@ -380,7 +397,7 @@ being parsed as an layout block ending.
 A practical problem this addresses is when mixing
 matching branches with `Lexing.crossLine`. Consider (applies to let block aswell)
 
-```lean4
+```lean
 let rec x = 1
 where f -- this style of not aligning BARs to `f` is common for large codes
   | 0 => e
@@ -388,7 +405,7 @@ where f -- this style of not aligning BARs to `f` is common for large codes
     e -- must be indented past `f` if not for the local baseline override.
       -- this it expected because of the restriction `crossLine` imposes.
 
-      g := ... -- more bindings
+      g := ... -- more bindings, but fails (only works) if BARs are indented >= f/g
 ```
 
 If there were more bindings after `f`,
@@ -398,6 +415,18 @@ This should match Lean's behavior and `f`'s body must be
 aligned or indented past `f` for `g` to be parsed.
 
 - Note that BARs aren't required to align nor relevant here, currently.
+  Thus we can trick subsequent binding to parse with something like
+
+```lean
+let rec x = 1
+where f
+| 0 => e -- no alignment restrictions as long as the last branch is indent >= subsequent bindings
+      | 1 => e
+
+      g := ... -- now parses
+```
+
+See also Parsing.eqRhs from Tigris.pexpSimple.
 -/
 def barBranches (branchParser : TParser σ α) : TParser σ $ Array α :=
   takeMany1 do
