@@ -51,7 +51,9 @@ private def popUntil : List Nat -> Nat -> Array Nat -> List Nat × Array Nat
   | [],      _, acc => ([], acc)
   | x :: xs, v, acc => if x == v then (xs, acc.push x) else popUntil xs v (acc.push x)
 
-/-- Strongly-connected components of adj, **dependencies first**. -/
+/-- Strongly-connected components of adj, **dependencies first**, Tarjan over Kosaraju. See
+> Tarjan, Robert. "Depth-first search and linear graph algorithms." SIAM journal on computing 1.2 (1972): 146-160.
+-/
 partial def sccsOf (adj : Array (Array Nat)) : ST σ $ Array $ Array Nat := do
   let ref : ST.Ref σ TjS <- ST.mkRef ({} : TjS)
   let rec strongconnect (adj : Array (Array Nat)) (v : Nat) : ST σ Unit := do
