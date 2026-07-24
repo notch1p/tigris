@@ -60,7 +60,7 @@ def main : IO Unit := do
       | .ok _ =>
         pass.modify .succ *> println s!"  ok\t{name}"
       | .error e =>
-        fail.modify .succ *> eprintln s!"  X\t{name}: {e.take 160}"
+        fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
 
   if <- hasSbcl then
     println! "== exec =="
@@ -68,12 +68,12 @@ def main : IO Unit := do
       .asTask $ compileFile path >>=
         fun
         | .error e =>
-          fail.modify .succ *> eprintln s!"  X\t{name}: compile: {e.take 160}"
+          fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
         | .ok cl =>
           runSbcl cl >>=
             fun
             | .error e =>
-              fail.modify .succ *> eprintln s!"  X\t{name}: {e.take 160}"
+              fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
             | .ok got =>
               if got == expected then pass.modify .succ *> println s!"  ok\t{name} = {got}"
               else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {got}"

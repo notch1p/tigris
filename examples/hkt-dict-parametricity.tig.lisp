@@ -1,27 +1,88 @@
 ;; == TCNF IR ==
 
 let i_Functor_0#2/0 : Functor (Sum a) =
-  let fn#4 (f5 : a → b, ?x₀6 : Sum a a) : (a → b) → Sum a a → Sum a b =
+  let fn#4 (f#5 : a → b, ?x₀#6 : Sum a a) : (a → b) → Sum a a → Sum a b =
     case #6 of
-      Inl⟦f7 : a⟧ => let con#8 : Sum a b = Inl⟦#7⟧; ret #8;
-      Inr⟦f9 : a⟧ =>
+      Inl⟦f#7 : a⟧ => let con#8 : Sum a b = Inl⟦#7⟧; ret #8;
+      Inr⟦f#9 : a⟧ =>
         let app#10 : b = #5(#9); let con#11 : Sum a b = Inr⟦#10⟧; ret #11;
       _ => (⊥ : Sum a b);
   let con#12 : Functor (Sum a) = Functor⟦#4⟧; ret #12
 
 let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
-  let fn#13 (d_Functor_014 : Functor (Sum α))
+  let fn#13 (d_Functor_0#14 : Functor (Sum α))
     : Functor (Sum α) → Sum Int Int × Sum α Int =
     let con#15 : Sum Int α = Inl⟦2⟧;
     let con#16 : Sum α Int = Inr⟦1⟧;
     let pr#17 : (a → b) → Sum Int a → Sum Int b = #2@Functor[0];
-    let fn#18 (?x₀19 : Int) : Int → Int = let π#20 : Int = MUL(2, #19); ret #20;
+    let fn#18 (?x₀#19 : Int) : Int → Int =
+      let π#20 : Int = MUL(2, #19); ret #20;
     let app#21 : Sum Int b = #17(#18, #15);
     let pr#22 : (a → b) → Sum α a → Sum α b = #14@Functor[0];
-    let fn#23 (?x₀24 : Int) : Int → Int = let π#25 : Int = ADD(1, #24); ret #25;
+    let fn#23 (?x₀#24 : Int) : Int → Int =
+      let π#25 : Int = ADD(1, #24); ret #25;
     let app#26 : Sum α b = #22(#23, #16);
     let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩; ret #27;
   ret #13
+;; == TCNF CC'd ==
+
+let fn#28/2 (f#5 : a → b, ?x₀#6 : Sum a a) : (a → b) → Sum a a → Sum a b =
+  case #6 of
+    Inl⟦f#7 : a⟧ => let con#8 : Sum a b = Inl⟦#7⟧; ret #8;
+    Inr⟦f#9 : a⟧ =>
+      let app#10 : b = #5(#9); let con#11 : Sum a b = Inr⟦#10⟧; ret #11;
+    _ => (⊥ : Sum a b)
+
+let fn#30/1 (?x₀#19 : Int) : Int → Int = let π#20 : Int = MUL(2, #19); ret #20
+
+let fn#31/1 (?x₀#24 : Int) : Int → Int = let π#25 : Int = ADD(1, #24); ret #25
+
+let fn#29/1 (d_Functor_0#14 : Functor (Sum α))
+  : Functor (Sum α) → Sum Int Int × Sum α Int =
+  let con#15 : Sum Int α = Inl⟦2⟧;
+  let con#16 : Sum α Int = Inr⟦1⟧;
+  let pr#17 : (a → b) → Sum Int a → Sum Int b = #2@Functor[0];
+  let fn#18 : Int → Int = 𝐂⟦30⟧;
+  let app#21 : Sum Int b = #17(#18, #15);
+  let pr#22 : (a → b) → Sum α a → Sum α b = #14@Functor[0];
+  let fn#23 : Int → Int = 𝐂⟦31⟧;
+  let app#26 : Sum α b = #22(#23, #16);
+  let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩; ret #27
+
+let i_Functor_0#2/0 : Functor (Sum a) =
+  let fn#4 : (a → b) → Sum a a → Sum a b = 𝐂⟦28⟧;
+  let con#12 : Functor (Sum a) = Functor⟦#4⟧; ret #12
+
+let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
+  let fn#13 : Functor (Sum α) → Sum Int Int × Sum α Int = 𝐂⟦29⟧; ret #13
+;; == TCNF CC & Optimize'd ==
+
+let fn#28/2 (f#5 : a → b, ?x₀#6 : Sum a a) : (a → b) → Sum a a → Sum a b =
+  case #6 of
+    Inl⟦f#7 : a⟧ => let con#8 : Sum a b = Inl⟦#7⟧; ret #8;
+    Inr⟦f#9 : a⟧ =>
+      let app#10 : b = #5(#9); let con#11 : Sum a b = Inr⟦#10⟧; ret #11;
+    _ => (⊥ : Sum a b)
+
+let fn#30/1 (?x₀#19 : Int) : Int → Int = let π#20 : Int = MUL(2, #19); ret #20
+
+let fn#31/1 (?x₀#24 : Int) : Int → Int = let π#25 : Int = ADD(1, #24); ret #25
+
+let fn#29/1 (d_Functor_0#14 : Functor (Sum α))
+  : Functor (Sum α) → Sum Int Int × Sum α Int =
+  let con#15 : Sum Int α = Inl⟦2⟧;
+  let con#16 : Sum α Int = Inr⟦1⟧;
+  let fn#18 : Int → Int = 𝐂⟦30⟧;
+  let app#21 : Sum Int b = #28(#18, #15);
+  let fn#23 : Int → Int = 𝐂⟦31⟧;
+  let app#26 : Sum α b = #14(#23, #16);
+  let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩; ret #27
+
+let i_Functor_0#2/0 : Functor (Sum a) =
+  let fn#4 : (a → b) → Sum a a → Sum a b = 𝐂⟦28⟧; ret #4
+
+let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
+  let fn#13 : Functor (Sum α) → Sum Int Int × Sum α Int = 𝐂⟦29⟧; ret #13
 ;; == Runtime ==
 (load "runtime.lisp")
 

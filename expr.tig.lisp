@@ -8,6 +8,7 @@
   (fn #'identity :type function)
   (arity 0 :type fixnum))
 (defun %apply-slow (c args)
+  (declare (type list args))
   (let ((n (length args)) (k (clos-arity c)))
     (cond
       ((= n k) (apply (clos-fn c) args))
@@ -127,12 +128,10 @@
 
 (defparameter |pb#41-chk-44|
   (labels ((|fail-45| ()
-             (let* ((|fail-46| (error 'match-failure
-                        :discr
-                        "no matching clause")))
+             (let* ((|fail-46| (error 'match-failure :discr (list |pb#41-42|))))
                 |fail-46|)))
      (case |pb#41-42|
-       (3860
+       (3850
          |pb#41-42|)
        (t (|fail-45|)))))
 

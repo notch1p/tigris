@@ -63,15 +63,29 @@
     (%apply-slow c (list a1 a2))))
 
 ; ftype
-(declaim (ftype (function (clos |List|) |List|) |listMap-3|))
-
 (declaim (ftype (function (clos |Option|) |Option|) |fn-40|))
 
 (declaim (ftype (function (integer) integer) |fn-41|))
 
+(declaim (ftype (function (clos |List|) |List|) |listMap-3|))
+
 (declaim (type cons |main-6|))
 
 ; body
+(defun |fn-40| (|f-8| |?x₀-9|)
+  (case (|Option/tag| |?x₀-9|)
+    (0
+      (let* ((|con-10| (|mk/None|))) |con-10|))
+    (1
+      (let* ((|f-11| (|Some/f0| |?x₀-9|)))
+         (let* ((|app-12| (gapply1 |f-8| |f-11|))
+                (|con-13| (|mk/Some| |app-12|)))
+            |con-13|)))
+    (t (error "unreachable"))))
+
+(defun |fn-41| (|?x₀-28|)
+  (let* ((|π-29| (%int+ 2 |?x₀-28|))) |π-29|))
+
 (defun |listMap-3| (|f-15| |?x₀-16|)
   (case (|List/tag| |?x₀-16|)
     (0
@@ -87,20 +101,6 @@
 
 (defun |const-5| (|x-24| |_-25|)
   |x-24|)
-
-(defun |fn-40| (|f-8| |?x₀-9|)
-  (case (|Option/tag| |?x₀-9|)
-    (0
-      (let* ((|con-10| (|mk/None|))) |con-10|))
-    (1
-      (let* ((|f-11| (|Some/f0| |?x₀-9|)))
-         (let* ((|app-12| (gapply1 |f-8| |f-11|))
-                (|con-13| (|mk/Some| |app-12|)))
-            |con-13|)))
-    (t (error "unreachable"))))
-
-(defun |fn-41| (|?x₀-28|)
-  (let* ((|π-29| (%int+ 2 |?x₀-28|))) |π-29|))
 
 (defparameter |i_Functor_0-2|
   (let* ((|fn-7| (%clos (function |fn-40|) 2))) |fn-7|))

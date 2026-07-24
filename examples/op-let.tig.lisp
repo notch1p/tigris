@@ -84,7 +84,7 @@
   (labels ((|fail-16| ()
              (let* ((|fail-17| (error 'match-failure
                         :discr
-                        "no matching clause")))
+                        (list |?x₀-14| |?x₁-15|))))
                 |fail-17|)))
      (case (|Option/tag| |?x₀-14|)
        (1

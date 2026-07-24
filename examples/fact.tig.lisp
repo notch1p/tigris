@@ -22,6 +22,8 @@
 
 
 ; ftype
+(declaim (ftype (function (integer integer integer) integer) |go-35|))
+
 (declaim (ftype (function (t) null) |println-2|))
 
 (declaim (ftype (function (string string) string) |append-3|))
@@ -32,26 +34,9 @@
 
 (declaim (ftype (function (integer) integer) |fact-6|))
 
-(declaim (ftype (function (integer integer integer) integer) |go-35|))
-
 (declaim (type integer |main-7|))
 
 ; body
-(defun |println-2| (|η-8|)
-  (let* ((|ffi-9| (%println |η-8|))) |ffi-9|))
-
-(defun |append-3| (|η-10| |η-11|)
-  (let* ((|ffi-12| (%string-append |η-10| |η-11|))) |ffi-12|))
-
-(defun |toString-4| (|η-13|)
-  (let* ((|ffi-14| (%to-string |η-13|))) |ffi-14|))
-
-(defun |read-5| (|η-15|)
-  (let* ((|ffi-16| (%read |η-15|))) |ffi-16|))
-
-(defun |fact-6| (|n-17|)
-  (let* ((|app-31| (|go-35| |n-17| 1 |n-17|))) |app-31|))
-
 (defun |go-35| (|n-17| |acc-19| |?x₀-20|)
   (case |?x₀-20|
     (0
@@ -67,6 +52,21 @@
              (|π-29| (%int- |?x₀-20| 1))
              (|app-30| (|go-35| |n-17| |π-21| |π-29|)))
          |app-30|))))
+
+(defun |println-2| (|η-8|)
+  (let* ((|ffi-9| (%println |η-8|))) |ffi-9|))
+
+(defun |append-3| (|η-10| |η-11|)
+  (let* ((|ffi-12| (%string-append |η-10| |η-11|))) |ffi-12|))
+
+(defun |toString-4| (|η-13|)
+  (let* ((|ffi-14| (%to-string |η-13|))) |ffi-14|))
+
+(defun |read-5| (|η-15|)
+  (let* ((|ffi-16| (%read |η-15|))) |ffi-16|))
+
+(defun |fact-6| (|n-17|)
+  (let* ((|app-31| (|go-35| |n-17| 1 |n-17|))) |app-31|))
 
 (defparameter |main-7|
   (let* ((|app-32| (|println-2| "Enter a number:"))

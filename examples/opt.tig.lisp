@@ -43,20 +43,21 @@
     (%apply-slow c (list a1))))
 
 ; ftype
+(declaim (ftype (function (integer) integer) |fn-22|))
+
 (declaim (ftype (function (|Option|) t) |get!-2|))
 
 (declaim (ftype (function (clos |Option|) |Option|) |mapOp-3|))
 
-(declaim (ftype (function (integer) integer) |fn-22|))
-
 (declaim (type cons |main-4|))
 
 ; body
+(defun |fn-22| (|?x₀-18|)
+  (let* ((|π-19| (%int+ 1 |?x₀-18|))) |π-19|))
+
 (defun |get!-2| (|?x₀-5|)
   (labels ((|fail-6| ()
-             (let* ((|fail-7| (error 'match-failure
-                        :discr
-                        "no matching clause")))
+             (let* ((|fail-7| (error 'match-failure :discr (list |?x₀-5|))))
                 |fail-7|)))
      (case (|Option/tag| |?x₀-5|)
        (1
@@ -73,9 +74,6 @@
                 (|con-14| (|mk/Some| |app-13|)))
             |con-14|)))
     (t (error "unreachable"))))
-
-(defun |fn-22| (|?x₀-18|)
-  (let* ((|π-19| (%int+ 1 |?x₀-18|))) |π-19|))
 
 (defparameter |main-4|
   (let* ((|con-15| (|mk/Some| 20))

@@ -33,17 +33,20 @@
     (%apply-slow c (list a1 a2))))
 
 ; ftype
+(declaim (ftype (function (integer) t) |B-25|))
+
 (declaim (ftype (function (clos clos t t) t) |«`on`»-2|))
 
 (declaim (ftype (function (t t) integer) |«^»-3|))
 
 (declaim (type clos |boxedAdd-4|))
 
-(declaim (ftype (function (integer) t) |B-25|))
-
 (declaim (type integer |main-5|))
 
 ; body
+(defun |B-25| (|η-19|)
+  |η-19|)
+
 (defun |«`on`»-2| (|f-6| |g-7| |x-8| |y-9|)
   (let* ((|app-10| (gapply1 |g-7| |x-8|))
          (|app-11| (gapply1 |g-7| |y-9|))
@@ -52,9 +55,6 @@
 
 (defun |«^»-3| (|?x₀-13| |?x₁-14|)
   (let* ((|π-17| (%int+ |?x₀-13| |?x₁-14|))) |π-17|))
-
-(defun |B-25| (|η-19|)
-  |η-19|)
 
 (defparameter |boxedAdd-4|
   (let* ((|B-18| (%clos (function |B-25|) 1))

@@ -24,6 +24,8 @@ def emitAtom (a : Atom) : CGM Sexp := do
       else return symx
     | none => .sym <$> valSym x
 
+def mkApply : Sexp -> Array Sexp -> Sexp := (.list $ #[·] ++ ·)
+
 @[inline] def atoms (as : Array Atom) : CGM (Array Sexp) := as.mapM emitAtom
 
 /--
@@ -35,7 +37,7 @@ def mkClosureV (headSym : String) (fixed : Array Sexp) (m : Nat) : CGM Sexp := d
     return .list #[.sym "%clos", .list #[.sym "function", .sym headSym], .int m]
   else
     let gs <- m.foldM (fun _ _ a => a.push <$> Sexp.sym <$> freshG) #[]
-    let call := .list $ #[.sym headSym] ++ fixed ++ gs
+    let call := mkApply (.sym headSym) (fixed ++ gs)
     return .list #[.sym "%clos", .list #[.sym "lambda", .list gs, call], .int m]
 
 /-- `(gapply<n> h as*)`. -/
@@ -59,33 +61,31 @@ def emitValue (v : LetValue .postCC) : CGM Sexp := do
     | 1 => return .list #[.sym "cdr", .sym ss]
     | i => return .list #[.sym "nth", .int i, .sym ss]        -- pairs nest; >=2 unexpected
   | .field c i s  => return .list #[.sym (fieldAcc c i), .sym (<- valSym s)]  -- struct/dict accessor
-  | .ctor t as    => return .list $ #[.sym (mkSym t)] ++ (<- atoms as)
-  | .prim op as   => return .list $ #[.sym (primFn op)] ++ (<- atoms as)
+  | .ctor t as    => mkApply (.sym (mkSym t)) <$> atoms as
+  | .prim op as   => mkApply (.sym (primFn op)) <$> atoms as
   | .extern nm as =>                                                          -- direct foreign call
     if as.isEmpty then return .sym nm                                         -- 0-ary: foreign value
-    else return .list $ #[.sym nm] ++ (<- atoms as)
+    else mkApply (.sym nm) <$> atoms as
   | .isCtor s t _ => return .list $ #[.sym (predSym t), .sym (<- valSym s)]
   | .app h as =>
     if h == matchFailFVar then
-      return .list #[.sym "error", .sym "'match-failure", .sym ":discr", .str "no matching clause"]
-    match (<- declArity? h) with
+      return .list #[.sym "error", .sym "'match-failure", .sym ":discr", mkApply (.sym "list") (<- atoms as)]
+    declArity? h >>= fun
     | some ar => if ar >= 1 && ar == as.size
-                 then return .list (#[.sym (<- valSym h)] ++ (<- atoms as))   -- direct call
+                 then mkApply <$> .sym <$> valSym h <*> atoms as -- direct call
                  else emitGeneric h as
     | none    => emitGeneric h as
   | .pap h as =>
-    match (<- declArity? h) with
+    match <- declArity? h with
     | some ar => mkClosureV (<- valSym h) (<- atoms as) (ar - as.size)         -- known partial
     | none    => emitGeneric h as                                            -- unknown -> curry via %apply-slow
   | .mkClos code env _ =>
     let full := (<- declArity? code).getD env.size
     mkClosureV (<- valSym code) (<- atoms env) (full - env.size)
 
-/-! ## Code / control flow -/
-
-def peelLets : Code .postCC -> Array (LetDecl .postCC) × Code .postCC
-  | .let d k => let (bs, r) := peelLets k; (#[d] ++ bs, r)
-  | c        => (#[], c)
+def peelLets : Code .postCC -> List (LetDecl .postCC) × Code .postCC
+  | .let d k => let (ds, r) := peelLets k; (d :: ds, r)
+  | c        => ([], c)
 
 mutual
 partial def emitCode (c : Code .postCC) : CGM Sexp := do
@@ -93,13 +93,13 @@ partial def emitCode (c : Code .postCC) : CGM Sexp := do
   | .let .. =>
     let (binds, rest) := peelLets c
     let bs <- binds.mapM fun d => do return Sexp.list #[.sym (<- valSym d.fvarId), <- emitValue d.value]
-    return .list #[.sym "let*", .list bs, <- emitCode rest]
+    return .list #[.sym "let*", .list bs.toArray, <- emitCode rest]
   | .jp d k =>
     let ps <- d.params.mapM fun p => Sexp.sym <$> valSym p.fvarId
     let bodyS <- emitCode d.body
     let lf := Sexp.list #[.sym (<- valSym d.fvarId), .list ps, bodyS]
     return .list #[.sym "labels", .list #[lf], <- emitCode k]
-  | .jmp j as => return .list (#[.sym (<- valSym j)] ++ (<- atoms as))
+  | .jmp j as => mkApply <$> .sym <$> valSym j <*> atoms as
   | .cases discr _ alts => emitCases discr alts
   | .ret v => emitAtom v
   | .unreach _ => return .list #[.sym "error", .str "unreachable"]
@@ -128,7 +128,7 @@ partial def emitCases (discr : FVarId) (alts : Array (Alt .postCC)) : CGM Sexp :
       | none    => clauses
     return .list (#[.sym "case", .list #[.sym (tagAcc tycon), .sym d]] ++ clauses)
   else
-    match (constAlts[0]?.map Prod.fst : Option TConst) with
+    match constAlts[0]?.map Prod.fst with
     | some (.PBool _) =>
       let mut tB? : Option Sexp := none
       let mut fB? : Option Sexp := none

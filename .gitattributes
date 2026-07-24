@@ -15,3 +15,4 @@ docs/midterm/ottalt.sty linguist-vendored
 Tigris/oldcore/* linguist-vendored
 Tigris/oldcore2/* linguist-vendored
 Tigris/oldcore2/matchAppF.lean -linguist-vendored
+tests/cases/* linguist-vendored

@@ -39,17 +39,20 @@
     (%apply-slow c (list a1 a2))))
 
 ; ftype
+(declaim (ftype (function (integer integer) boolean) |fn-29|))
+
 (declaim (ftype (function (t) null) |println-2|))
 
 (declaim (ftype (function (|Point|) integer) |distancePow-3|))
 
 (declaim (ftype (function (t) clos) |getEq-5|))
 
-(declaim (ftype (function (integer integer) boolean) |fn-29|))
-
 (declaim (type cons |main-6|))
 
 ; body
+(defun |fn-29| (|x-16| |y-17|)
+  (let* ((|π-18| (%int= |x-16| |y-17|))) |π-18|))
+
 (defun |println-2| (|η-7|)
   (let* ((|ffi-8| (%println |η-7|))) |ffi-8|))
 
@@ -66,9 +69,6 @@
 
 (defun |getEq-5| (|?x₀-20|)
   |?x₀-20|)
-
-(defun |fn-29| (|x-16| |y-17|)
-  (let* ((|π-18| (%int= |x-16| |y-17|))) |π-18|))
 
 (defparameter |i_Eq_0-4|
   (let* ((|fn-15| (%clos (function |fn-29|) 2))) |fn-15|))

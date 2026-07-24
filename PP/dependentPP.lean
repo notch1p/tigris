@@ -45,6 +45,7 @@ instance : ToString SString := ⟨(·.s)⟩
 
 namespace SString
 def str : String -> SString := fun s => ⟨s, ∅⟩
+def bold str := SString.mk str {style := [.bold]}
 def byl str := SString.mk str {style := [.bold], fg := .yellow}
 def blu str := SString.mk str {fg := .blue}
 def length : SString -> Nat := fun {s,..} => s.length

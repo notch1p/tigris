@@ -40,11 +40,9 @@ r###"
 (define-condition match-failure (error)
   ((discrminant
     :initarg :discr
-    :reader discrminant
-    :type string))
+    :reader discrminant))
   (:report
    (lambda (condition stream)
-     (format stream "No branch can be matched against ~A" (discrminant condition)))))
+     (format stream "All branches failed to match against~%;; ~{~<~%;; ~1:; ~A~>~^,~}~%" (discrminant condition)))))
 
-(defconstant +NOMATCH+ 'match-failure)
-"###
+(defconstant +NOMATCH+ 'match-failure)"###

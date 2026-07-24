@@ -49,6 +49,12 @@
     (%apply-slow c (list a1 a2))))
 
 ; ftype
+(declaim (ftype (function (integer) integer) |fn-55|))
+
+(declaim (ftype (function (integer integer) integer) |fn-56|))
+
+(declaim (ftype (function (integer integer) integer) |fn-57|))
+
 (declaim (ftype (function (clos |List|) |List|) |map-2|))
 
 (declaim (ftype (function (clos t |List|) t) |foldl-3|))
@@ -57,15 +63,18 @@
 
 (declaim (ftype (function (|List|) |List|) |tl-5|))
 
-(declaim (ftype (function (integer) integer) |fn-55|))
-
-(declaim (ftype (function (integer integer) integer) |fn-56|))
-
-(declaim (ftype (function (integer integer) integer) |fn-57|))
-
 (declaim (type cons |main-6|))
 
 ; body
+(defun |fn-55| (|?x₀-38|)
+  (let* ((|π-39| (%int+ 1 |?x₀-38|))) |π-39|))
+
+(defun |fn-56| (|?x₀-42| |?x₁-43|)
+  (let* ((|π-44| (%int+ |?x₀-42| |?x₁-43|))) |π-44|))
+
+(defun |fn-57| (|?x₀-47| |?x₁-48|)
+  (let* ((|π-49| (%int+ |?x₀-47| |?x₁-48|))) |π-49|))
+
 (defun |map-2| (|f-7| |?x₀-8|)
   (case (|List/tag| |?x₀-8|)
     (0
@@ -93,9 +102,7 @@
 
 (defun |hd-4| (|?x₀-22|)
   (labels ((|fail-23| ()
-             (let* ((|fail-24| (error 'match-failure
-                        :discr
-                        "no matching clause")))
+             (let* ((|fail-24| (error 'match-failure :discr (list |?x₀-22|))))
                 |fail-24|)))
      (case (|List/tag| |?x₀-22|)
        (1
@@ -106,9 +113,7 @@
 
 (defun |tl-5| (|?x₀-27|)
   (labels ((|fail-28| ()
-             (let* ((|fail-29| (error 'match-failure
-                        :discr
-                        "no matching clause")))
+             (let* ((|fail-29| (error 'match-failure :discr (list |?x₀-27|))))
                 |fail-29|)))
      (case (|List/tag| |?x₀-27|)
        (1
@@ -116,15 +121,6 @@
                 (|f-31| (|Cons/f1| |?x₀-27|)))
             |f-31|))
        (t (|fail-28|)))))
-
-(defun |fn-55| (|?x₀-38|)
-  (let* ((|π-39| (%int+ 1 |?x₀-38|))) |π-39|))
-
-(defun |fn-56| (|?x₀-42| |?x₁-43|)
-  (let* ((|π-44| (%int+ |?x₀-42| |?x₁-43|))) |π-44|))
-
-(defun |fn-57| (|?x₀-47| |?x₁-48|)
-  (let* ((|π-49| (%int+ |?x₀-47| |?x₁-48|))) |π-49|))
 
 (defparameter |main-6|
   (let* ((|con-32| (|mk/Nil|))

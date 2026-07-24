@@ -116,8 +116,8 @@ def main (fp : List String) : IO Unit := do
                 let (_, cc) <- do
                   let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
                   let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-                  print s!"{i}: "
-                  print logger
+                  let fni := PrettyPrint.Text.SString.bold i |>.render
+                  unless logger.isEmpty do println! "{fni}:\n{logger}"
                   pure $ IR.toLamModuleF decls ctors
                 let mod := CPS.toCPS cc
 
@@ -142,8 +142,8 @@ def main (fp : List String) : IO Unit := do
                 let cl <- do
                   let res@(_, {tyDecl,..}, _) <- inferToplevelC decls MLType.defaultE' |> ofExcept
                   let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-                  print s!"{i}: "
-                  print logger
+                  let fni := PrettyPrint.Text.SString.bold i |>.render
+                  unless logger.isEmpty do println! "{fni}:\n{logger}"
                   let mod <- lowerIO! lowerModuleCCOpt decls ctors tyDecl
                   compileToCL mod tyDecl (speed   := speed)
                                          (safety  := safety)
@@ -216,8 +216,8 @@ def main (fp : List String) : IO Unit := do
             else -- TCNF
               let res@(_, {tyDecl,..}, _) <- inferToplevelC decls MLType.defaultE' |> ofExcept
               let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-              print s!"{i}: "
-              print logger
+              let fni := PrettyPrint.Text.SString.bold i |>.render
+              unless logger.isEmpty do println! "{fni}:\n{logger}"
 
               if not $ sysf? || tcnf? || tcnfcc? || tcnfopt? then
                 -- for RC reasons we branch here.

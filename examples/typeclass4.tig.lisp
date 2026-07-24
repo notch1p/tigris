@@ -58,32 +58,17 @@
     (%apply-slow c (list a1 a2))))
 
 ; ftype
-(declaim (ftype (function (t) clos) |listEq-3|))
-
 (declaim (ftype (function (integer integer) boolean) |fn-76|))
 
 (declaim (ftype (function (t |List| |List|) boolean) |listEq-77|))
 
 (declaim (ftype (function (t |Option| |Option|) boolean) |fn-78|))
 
+(declaim (ftype (function (t) clos) |listEq-3|))
+
 (declaim (type cons |main-6|))
 
 ; body
-(defun |listEq-3| (|d_Eq_0-12|)
-  (let* ((|listEq-13| (%clos (lambda (|g0| |g1|)
-               (|listEq-77| |d_Eq_0-12| |g0| |g1|))
-             2)))
-     |listEq-13|))
-
-(defun |i_Eq_1-4| (|d_Eq_0-23|)
-  (let* ((|fn-24| (%clos (lambda (|g2| |g3|)
-               (|fn-78| |d_Eq_0-23| |g2| |g3|))
-             2)))
-     |fn-24|))
-
-(defun |i_Eq_2-5| (|d_Eq_0-32|)
-  (let* ((|app-33| (|listEq-3| |d_Eq_0-32|))) |app-33|))
-
 (defun |fn-76| (|x-8| |y-9|)
   (let* ((|π-10| (%int= |x-8| |y-9|))) |π-10|))
 
@@ -125,6 +110,21 @@
                    |app-30|)))
            (t nil))))
     (t nil)))
+
+(defun |listEq-3| (|d_Eq_0-12|)
+  (let* ((|listEq-13| (%clos (lambda (|g0| |g1|)
+               (|listEq-77| |d_Eq_0-12| |g0| |g1|))
+             2)))
+     |listEq-13|))
+
+(defun |i_Eq_1-4| (|d_Eq_0-23|)
+  (let* ((|fn-24| (%clos (lambda (|g2| |g3|)
+               (|fn-78| |d_Eq_0-23| |g2| |g3|))
+             2)))
+     |fn-24|))
+
+(defun |i_Eq_2-5| (|d_Eq_0-32|)
+  (let* ((|app-33| (|listEq-3| |d_Eq_0-32|))) |app-33|))
 
 (defparameter |i_Eq_0-2|
   (let* ((|fn-7| (%clos (function |fn-76|) 2))) |fn-7|))

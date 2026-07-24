@@ -53,33 +53,21 @@
     (%apply-slow c (list a1))))
 
 ; ftype
-(declaim (ftype (function (t) |Option|) |optPure-2|))
-
-(declaim (ftype (function (|Option| clos) |Option|) |optBind-3|))
-
-(declaim (type |Monad| |i_Monad_0-4|))
-
 (declaim (ftype (function (integer integer integer) |Option|) |fn-37|))
 
 (declaim (ftype (function (integer integer) |Option|) |fn-36|))
 
 (declaim (ftype (function (integer) |Option|) |fn-35|))
 
+(declaim (ftype (function (t) |Option|) |optPure-2|))
+
+(declaim (ftype (function (|Option| clos) |Option|) |optBind-3|))
+
+(declaim (type |Monad| |i_Monad_0-4|))
+
 (declaim (type |Option| |main-5|))
 
 ; body
-(defun |optPure-2| (|x-6|)
-  (let* ((|con-7| (|mk/Some| |x-6|))) |con-7|))
-
-(defun |optBind-3| (|x-8| |f-9|)
-  (case (|Option/tag| |x-8|)
-    (0
-      (let* ((|con-10| (|mk/None|))) |con-10|))
-    (1
-      (let* ((|f-11| (|Some/f0| |x-8|)))
-         (let* ((|app-12| (gapply1 |f-9| |f-11|))) |app-12|)))
-    (t (error "unreachable"))))
-
 (defun |fn-37| (|x-18| |y-22| |z-27|)
   (let* ((|π-29| (%int+ |x-18| |y-22|))
          (|π-30| (%int+ |π-29| |z-27|))
@@ -101,6 +89,18 @@
              1))
          (|app-33| (|optBind-3| |con-20| |fn-21|)))
      |app-33|))
+
+(defun |optPure-2| (|x-6|)
+  (let* ((|con-7| (|mk/Some| |x-6|))) |con-7|))
+
+(defun |optBind-3| (|x-8| |f-9|)
+  (case (|Option/tag| |x-8|)
+    (0
+      (let* ((|con-10| (|mk/None|))) |con-10|))
+    (1
+      (let* ((|f-11| (|Some/f0| |x-8|)))
+         (let* ((|app-12| (gapply1 |f-9| |f-11|))) |app-12|)))
+    (t (error "unreachable"))))
 
 (defparameter |i_Monad_0-4|
   (let* ((|con-13| (|mk/Monad| (%clos (function |optPure-2|) 1)
