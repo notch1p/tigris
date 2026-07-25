@@ -90,11 +90,11 @@ abbrev CCM := ReaderT CCCtx
     {c with scope :=
       ps.foldl (fun m {fvarId, binderName, ty} => m.insert fvarId (binderName, ty)) c.scope}
 
-def gatherFuns : CodePre -> Array (FunDecl .preCC) × CodePre
+def gatherFuns : CodePre -> List (FunDecl .preCC) × CodePre
   | .fun d k _ =>
     let (ds, r) := gatherFuns k
-    (#[d] ++ ds, r)
-  | c => (#[], c)
+    (d :: ds, r)
+  | c => ([], c)
 
 
 @[inline, always_inline]
@@ -124,7 +124,7 @@ partial def ccCode : CodePre -> CCM (CodePost)
     return .let ⟨d.fvarId, d.binderName, d.ty, v⟩ k
   | .fun d k _ =>
     let (funs, rest) := gatherFuns k
-    ccFunGroup (#[d] ++ funs) rest
+    ccFunGroup (d :: funs).toArray rest
   | .jp d k => do
     let body <- withBinders d.params (ccCode d.body)
     let k <- withBinder d.fvarId d.binderName d.ty (ccCode k)

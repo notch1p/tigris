@@ -204,17 +204,18 @@ See
 2. https://downloads.haskell.org/ghc/latest/docs/users_guide/hints.html
 3. Tigris.TCNF.nfopt
 -/
-def _root_.TyDecl.isNewtype (td : TyDecl) : Bool :=
-  td.ctors.size == 1 &&
-    match td.ctors[0]? with
-    | some (_, fs, _) => fs.length == 1
-    | none => false
-@[inherit_doc TyDecl.isNewtype]
+def _root_.TyDecl.getNewtype : (x : TyDecl) -> Option String
+  | {ctors,..} =>
+    if h : ctors.size = 1 then
+      match ctors[0] with
+      | (c, _ :: [], _) => some c
+      | _ => none
+    else none
+@[inherit_doc TyDecl.getNewtype]
+def _root_.TyDecl.isNewtype := Option.isSome ∘ TyDecl.getNewtype
+@[inherit_doc TyDecl.getNewtype]
 def newtypeCtors (tyDecl : TyMap) : Std.HashSet String :=
-  tyDecl.fold (init := ∅) fun acc _ td =>
-    if td.isNewtype then
-      match td.ctors[0]? with | some (c, _, _) => acc.insert c | none => acc
-    else acc
+  tyDecl.fold (fun acc _ td => td.getNewtype.elim acc acc.insert) ∅
 
 section Monads open MLType FExpr
 structure NFState where
@@ -355,7 +356,7 @@ def fmtLetDecl : LetDecl φ -> Format -> Format
 
 def fmtParam : Param -> Format
   | {fvarId, binderName, ty} =>
-    fill $ binderName ++ format fvarId <> nestD (colon ++ format ty)
+    fill $ s!"{binderName}#{fvarId}" <> nestD (colon ++ format ty)
 
 instance : ToFormat $ LetValue φ := ⟨fmtValue⟩
 instance : ToFormat Param := ⟨fmtParam⟩
@@ -408,7 +409,7 @@ instance : ToFormat $ Decl φ where
     group $ "let" ++ (if recursive then .text " rec " else .text " ")
       ++ fill (s!"{name}#{fvarId}/{arity}" ++ pf
         ++ nestD (line ++ ":" <> format ty <> "=" <+> fmtCode body))
-
+instance : ToFormat $ Array $ Decl φ := ⟨joinSep' (sep := line ++ line)⟩
 instance : ToFormat $ Module φ where
   format
   | {decls, main} => joinSep' decls (line ++ line) ++ line ++ line ++ format main

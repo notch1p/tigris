@@ -1,5 +1,4 @@
 *.tig linguist-language=ocaml
-expr.tig.lisp linguist-vendored
 expr.tig.old.lisp linguist-vendored
 examples/typeclass*.tig linguist-language=haskell
 examples/where.tig linguist-language=haskell
@@ -13,6 +12,7 @@ docs/midterm/tigrisd.tex linguist-vendored
 docs/midterm/listproc.sty linguist-vendored
 docs/midterm/ottalt.sty linguist-vendored
 Tigris/oldcore/* linguist-vendored
+Tigris/oldcps/* linguist-vendored
 Tigris/oldcore2/* linguist-vendored
 Tigris/oldcore2/matchAppF.lean -linguist-vendored
 tests/cases/* linguist-vendored

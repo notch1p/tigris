@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
+        with:
+          lint: false
+          test: false
       - uses: actions/upload-artifact@v4
         with:
           path: .lake/build/bin

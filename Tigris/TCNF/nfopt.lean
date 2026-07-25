@@ -120,15 +120,18 @@ resolve to direct calls (R1). A shared entry's captures are resolved to globals
 def seedMaps (globals : FVSet) (m : Module .postCC) : AriMap × ClosMap := Id.run do
   let all := m.decls.push m.main
   let mut ari : AriMap := ∅
-  for d in all do
-    if d.arity >= 1 then ari := ari.insert d.fvarId d.arity
+  for d in all do ari := seedAri ari d
   let mut gclos : ClosMap := ∅
-  for d in all do
-    if d.arity == 0 then
-      if let some (code, cap, rem) := retValue d.body >>= Prod.snd ∘ (rewriteValue ari ∅ ·) then
-        if let some cap := cap.mapM $ globalField globals $ declBinds d.body then
-          gclos := gclos.insert d.fvarId (code, cap, rem)
+  for d in all do gclos := seedClos gclos ari d
   return (ari, gclos)
+where
+  seedAri ari d := if d.arity >= 1 then ari.insert d.fvarId d.arity else ari
+  seedClos gclos ari d :=
+    if d.arity == 0 then Option.getD (dflt := gclos) do
+      let (code, cap, rem) <- retValue d.body >>= Prod.snd ∘ rewriteValue ari ∅
+      let cap <- cap.mapM $ globalField globals $ declBinds d.body
+      some $ gclos.insert d.fvarId (code, cap, rem)
+    else gclos
 
 /-!
 # Constant folding.
@@ -158,18 +161,17 @@ abbrev KMap := Std.HashMap FVarId Known
 @[inline] def sfv (σ : Subst) (x : FVarId) : FVarId :=
   match σ[x]? with | some (.fvar y) => y | _ => x
 
-def seedKM (globals : FVSet) (m : Module .postCC) : KMap := Id.run do
-  let mut km : KMap := ∅
-  for d in m.decls.push m.main do
-    if d.arity == 0 then
-      let binds := declBinds d.body
-      match retValue d.body with
-      | some (.ctor c as) =>
-        km := km.insert d.fvarId $ .ctor c $ as.map $ globalField globals binds
-      | some (.pair a b)  =>
-        km := km.insert d.fvarId $ .pair (globalField globals binds a) (globalField globals binds b)
-      | _ => pure ()
-  return km
+def seedKM (globals : FVSet) (m : Module .postCC) : KMap :=
+  m.decls.foldl (seed1 globals) ∅ |> (seed1 globals · m.main)
+where seed1 (globals : FVSet) (km : KMap) : Decl .postCC -> KMap
+  | {arity, body, fvarId,..} =>
+    let binds := declBinds body
+    match retValue body, arity with
+    | some (.ctor c as), 0 =>
+      km.insert fvarId $ .ctor c $ as.map $ globalField globals binds
+    | some (.pair a b), 0 =>
+      km.insert fvarId $ Known.pair.on (globalField globals binds) a b
+    | _, _ => km
 
 mutual
 partial def cfold (nt : Std.HashSet String) (σ : Subst) (km : KMap) : CodePost -> CodePost
@@ -276,4 +278,6 @@ end
 @[inline] def kocDecl (ari : AriMap) (gclos : ClosMap) (d : Decl .postCC) : Decl .postCC :=
   {d with body := dceCode (koc ari gclos d.body) |>.1}
 
+def applyPass : (Decl .postCC -> Decl .postCC) -> Module .postCC -> Module .postCC
+  | f, {decls, main} => ⟨decls.map f, f main⟩
 end Opt

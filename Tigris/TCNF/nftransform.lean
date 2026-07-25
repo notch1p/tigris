@@ -130,7 +130,7 @@ instance : BEq Sel := ⟨Sel.beq⟩
 abbrev SelMap := Std.HashMap Sel (FVarId × MLType)
 
 /-- monotype recorded for a projection path -/
-def selTyOf (sel : Sel) (m : SelMap) : MLType := m[sel]?.map (·.2) |>.getD dummyTy
+def selTyOf (sel : Sel) (m : SelMap) : MLType := m[sel]?.elim dummyTy Prod.snd
 
 /-- Instantiate a ctor's param types at the scrutinee's type args -/
 def instCtorFields (cname : String) (ar : Nat) (scrutTy : MLType) : CompilerM (Array MLType) := do
@@ -177,8 +177,8 @@ def bindPatVars (binds : List (String × Sel)) (roots : Array FVarId)
       bindPatVars rest roots selMap (ρ.insert x v) kont
 
 /-- `let r = matchFailure (); ret r`. -/
-def mkMatchFail (resTy : MLType) : CompilerM CodePre :=
-  fresh <&> fun r => .let ⟨r, "fail", resTy, .app matchFailFVar #[]⟩ $ .ret $ .fvar r
+def mkMatchFail (resTy : MLType) (args : Array FVarId) : CompilerM CodePre :=
+  fresh <&> fun r => .let ⟨r, "fail", resTy, .app matchFailFVar $ args.map .fvar⟩ $ .ret $ .fvar r
 
 inductive Cont where
   | ret
@@ -348,7 +348,7 @@ partial def lowerFun (name : String) (params : Array (String × MLType))
 partial def lowerRec (funTy : MLType) (allParams : Array (String × MLType))
   (core : FExpr) (ρ : FVarEnv) (kont : FVarId -> CompilerM CodePre) : CompilerM CodePre := do
   let fv <- fresh
-  let selfN := allParams[0]?.map Prod.fst |>.getD "self"
+  let selfN := allParams[0]?.elim "self" Prod.fst
   let mut paramArr := #[]
   let mut ρ'       := ρ.insert selfN fv
 
@@ -390,7 +390,7 @@ partial def lowerRecGroup (recs : Array (String × Scheme × FExpr)) (ρ : FVarE
   let decls <- Array.zipWithM (as := recs) (bs := fvs) fun (name, _, fe) fv => do
     let inner := match fe with | .Fix i _ => i | _ => fe
     let (allParams, core) := peelLam inner
-    let selfN := allParams.head?.map Prod.fst |>.getD name
+    let selfN := allParams.head?.elim name Prod.fst
     let mut paramArr := #[]
     let mut ρ' := ρg.insert selfN fv
     let mut length := 0
@@ -449,7 +449,7 @@ partial def lowerMatch (scrs : Array FExpr) (rows : Array (Array Pattern × FExp
         lowerDT dt cols roots selMap ρ k' resTy $ .unreach resTy
       else
         let jf <- fresh
-        let failBody <- mkMatchFail resTy
+        let failBody <- mkMatchFail resTy roots
         let cases <- lowerDT dt cols roots selMap ρ k' resTy $ .jmp jf #[]
         return .jp ⟨jf, "fail", #[], resTy, failBody⟩ cases
 
@@ -535,7 +535,8 @@ partial def patVarTys (scrutTy : MLType) (pat : Pattern) : CompilerM (Array (Str
       #[] args ftys
 
 def collectTopNames (decls : Array TopDeclF) : Array String :=
-  decls.flatMap fun
+  decls.flatMap collect1
+where collect1 : TopDeclF -> Array String
   | .idBind binds =>
     binds.filterMap fun (x, _, _) => if x.startsWith "(" then none else some x
   | .patBind (pat, _) => pat.vars
@@ -553,7 +554,7 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
     if isRecBind fe then
       let inner := match fe with | .Fix i _ => i | _ => fe
       let (allP, core) := peelLam inner
-      let selfN := allP.head?.map Prod.fst |>.getD name
+      let selfN := allP.head?.elim name Prod.fst
       let mut paramArr := #[]
       let mut ρ'       := ρ₀.insert selfN fv
       let mut length   := 0
