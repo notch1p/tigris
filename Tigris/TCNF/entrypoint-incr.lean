@@ -25,7 +25,7 @@ def lowerTop1 (decl : TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMa
   let {topNames,..} <- get
   let topNames <- collectTopNames.collect1 decl |>.foldlM (fun ρ nm => (ρ.insert nm ·) <$> internExtern nm) topNames
   let allDecls <- (lowerTopDecl topNames) decl
-  modify fun s => {s with topNames}
+  modify ({· with topNames})
   return allDecls
 
 def lowerTop (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)

@@ -146,8 +146,16 @@ def letrecBody (floorCol : Nat) : Symbol -> Array Pattern -> Option Scheme -> TP
         let core := Fix $ Fun id $ transMatch pre a
         return (id, unwrapAnn ann? core)
 
+/--
+Note that toplevel let has relaxed layout requirement and may not be _syntactically toplevel_
+thus the parser is heavier due to letdecl/letexp backtracking.
+
+Without suffering toplevel syntactic flexibility we
+provide alternative kw to avoid letdecl/letexp backtracking.
+Besides, using OCaml-style `;;/end` is much welcomed as it does the same thing.
+-/
 def letDeclDispatch : TParser σ $ Array Binding := do
-  let letCol <- kwCol "let"
+  let letCol <- kwCol "def" <|> kwCol "let"
   let bs <-
     match <- test REC with
     | false => sepBy1 AND $ let1Common (letBody letCol)

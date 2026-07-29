@@ -215,10 +215,13 @@ Thus, to additionally parse (2), we must locally override baseline -- we determi
 whether the next token (judging by how `eqRhs` is called, RHS in this case)
 starts after a newline so that (1) still parses.
 
-Though, it is worth noting that because of this override subsequent bindings are consumed together
-as a whole under the first one (Lean behavior). Which, since (=) is simultaneously
-a kw and the eq operator, may still parse successfully but doesn't make sense
-or straight up a parse error if (:=) is used instead.
+> Though, it is worth noting that because of this override subsequent bindings are consumed together
+> as a whole under the first one (Lean behavior). Which, since (=) is simultaneously
+> a kw and the eq operator, may still parse successfully but doesn't make sense
+> or straight up a parse error if (:=) is used instead.
+
+- The quoted paragraph is no longer true as the problem is solved.
+  See withInlineBlock's docstring.
 
 Note that toplevel letdecl does not even supports aligned bindings
 (mandatory AND-separated) so it is not a problem there.
@@ -240,9 +243,11 @@ let prog = f   ..or..   let prog = f
 ```
 
 -/
-partial def eqRhs (letCol : Nat) : TParser σ Expr := do
-  EQ; hspaces
-  if <- atEol then withInlineBlock letCol parseExpr else parseExpr
+partial def eqRhs (letCol : Nat) : TParser σ Expr :=
+  EQ *> hspaces *> atEol >>=
+    fun
+    | true  => withInlineBlock letCol parseExpr
+    | false => parseExpr
 
 partial def let1 (letCol : Nat) : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
@@ -290,7 +295,7 @@ The body of a letexp, in one of the two forms:
 Behaviors should be similar to Lean's do-notation.
 -/
 partial def letBodyOrIn (letCol : Nat) : TParser σ Expr :=
-  (IN *> parseExpr) <|> (vspaces *> colEq letCol *> parseExpr)
+  (IN *> dumbspaces *> parseExpr) <|> (vspaces *> colEq letCol *> parseExpr)
 
 partial def letDispatch : TParser σ Expr := do
   let letCol <- kwCol "let"

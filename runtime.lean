@@ -28,8 +28,7 @@ r###"
          (inline %int/))
 (defun %int/ (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (if (zerop b) 0
-      (floor a b)))
+  (floor a b))
 
 (declaim (ftype (function (integer integer) boolean) %int=)
          (inline %int=))

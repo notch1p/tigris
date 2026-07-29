@@ -1,26 +1,26 @@
 NB. Church encoding of some coproduct and their eliminator
 
-let inl a l r = l a
-let inr b l r = r b
-let case s l r = s l r
-let none = inl ()
-let some x = inr x
-let option_case o onNone onSome = case o onNone onSome
-let const a _ = a
-let isNone o = option_case o (const true) (const false)
-let isSome o = option_case o (const false) (const true)
-let nil z c = z
-let cons x xs z c = c x (xs z c)
-let foldr f z xs = xs z (fun x acc => f x acc)
-let sx = inl 1
-let sy = inr 2
+def inl a l r = l a
+def inr b l r = r b
+def case s l r = s l r
+def none = inl ()
+def some x = inr x
+def option_case o onNone onSome = case o onNone onSome
+def const a _ = a
+def isNone o = option_case o (const true) (const false)
+def isSome o = option_case o (const false) (const true)
+def nil z c = z
+def cons x xs z c = c x (xs z c)
+def foldr f z xs = xs z (fun x acc => f x acc)
+def sx = inl 1
+def sy = inr 2
 
 infixr 67 " :: " => cons
 
-let sum_plus1 = case sx (1 + _) (10 + _)
-let ox = some 41
-let oy = none
+def sum_plus1 = case sx (1 + _) (10 + _)
+def ox = some 41
+def oy = none
 
-let getOrElse o d = option_case o (const d) id
-let l123 = 1 :: 2 :: 3 :: nil
-let sumList = foldr (_ + _) 0 l123
+def getOrElse o d = option_case o (const d) id
+def l123 = 1 :: 2 :: 3 :: nil
+def sumList = foldr (_ + _) 0 l123

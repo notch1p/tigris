@@ -200,14 +200,30 @@ def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
 Enter a layout block whose baseline is `col`, without consuming a linebreak.
 Use when the first item already sits on the current line and its column
 should be the alignment baseline for any continuation lines.
+
+Previously, making (1) GHC's aligned binding and (2) Lean's indent-n form coexist
+makes the former to be swallowed (greedily parsed) when it is preceded by (2),
+results in a parse error. This problem (see docstring of eqRhs for details)
+is fixed. The reasoning is simple, and described below.
+
+Consider the three types of column arising from layout parsing:
+1. `col` i.e. the column of the expr's head, in this case, the column of kw LET;
+2. `actualCol` i.e. the actual indentation of the item, computed (non-consuming) in-place, or same as `cur` if can't parse linebreak;
+3. `cur` i.e. the current baseline.
+
+we then simply calculate the maximum and use it as the block's actual baseline.
 -/
 def withInlineBlock (col : Nat) (p : TParser σ α) : TParser σ α := do
+  let actualCol <- optionD (vspaces *> indentCol) col
+  let cur <- currentCol
+  let col := max cur $ max actualCol col
   pushCol col
   try
     let r <- p
     popCol
     return r
-  catch e => popCol; throw e
+  catch e =>
+    popCol; throw e
 
 abbrev ws (t : TParser σ α) := spaces *> t <* spaces
 
@@ -222,11 +238,11 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
   , ("∀", "∀")]
 
 def reserved :=
-  #[ "mutual"  ,"infixl" , "infixr", "match", "extern"
+  #[ "mutual"  ,"infixl" , "infixr", "match" , "extern"
    , "class"   , "forall", "data"  , "type"  , "with"
-   , "instance", "else"  , "then"  , "let", "prefix", "postfix"
-   , "and"     , "rec"   , "fun"
-   , "fn"      , "in"    , "if"    , "where"]
+   , "instance", "else"  , "then"  , "let"   , "prefix"
+   , "postfix" , "and"   , "rec"   , "fun"   , "end"
+   , "def"     , "fn"    , "in"    , "if"    , "where"]
 
 open ASCII in private def ID' : TParser σ String :=
   withErrorMessage "identifier" do
@@ -347,7 +363,7 @@ abbrev ARROW: TParser σ Unit := spaces *>
   $ (void $ string "=>") <|> (void $ string "->"))
 abbrev COMMA: TParser σ Unit := kwOpExact ","
 abbrev EQ   : TParser σ Unit := kwOpExact ":=" <|> kwOpNoExtend "=" (fun c => c == '>' || c == '=')
-abbrev END  : TParser σ Unit := kwOpExact ";;"
+abbrev END  : TParser σ Unit := kwOpExact ";;" <|> kw "END"
 abbrev COLON: TParser σ Unit := kwOpExact ":"
 abbrev UNDERSCORE : TParser σ Unit := kwOpExact "_"
 

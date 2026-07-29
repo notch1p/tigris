@@ -1,26 +1,25 @@
-let rec fact n = if n = 0 then 1 else n * fact (n - 1)
+def rec fact n = if n = 0 then 1 else n * fact (n - 1)
 
-let fib n =
+def fib n =
   let rec fib' n i j =
     if n = 0 then i
     else fib' (n - 1) j (i + j)
   in
   fib' n 0 1
 
-
 let rec ack m n =
   match m, n with
   | 0, _ => n + 1
   | _, 0 => ack (m - 1) $ 1
   | _, _ => ack (m - 1) $ ack m (n - 1)
-
+;;
 let rec ack'
   | 0, n => n + 1
   | m, 0 => ack' (m - 1) $ 1
   | m, n => ack' (m - 1) $ ack' m (n - 1)
 
 
-let compose f g x = f @@ g x
+def compose f g x = f @@ g x
 
 infixr 90 " . " => fun f g x => f (g x)    NB. This is a not comment in OCaml, but
                                            NB. it is in Tigris.
@@ -29,7 +28,7 @@ infixr 90 " . " => fun f g x => f (g x)    NB. This is a not comment in OCaml, b
                                            NB.                   Int  String
 infixr 90 " ∘ " => compose
 
-let expt n base =
+def expt n base =
   let rec go n =
     if n = 0 then 1
     else base * go (n - 1)
@@ -37,7 +36,7 @@ let expt n base =
   go n
 
 
-let flip f x y = f y x
+def flip f x y = f y x
 
 infixr 80 " ^ " => flip expt
 
