@@ -207,16 +207,39 @@ results in a parse error. This problem (see docstring of eqRhs for details)
 is fixed. The reasoning is simple, and described below.
 
 Consider the three types of column arising from layout parsing:
+
 1. `col` i.e. the column of the expr's head, in this case, the column of kw LET;
-2. `actualCol` i.e. the actual indentation of the item, computed (non-consuming) in-place, or same as `cur` if can't parse linebreak;
+2. `actualCol` i.e. the actual indentation of the item, computed (non-consuming) in-place,
+   or same as `cur` if can't parse linebreak;
 3. `cur` i.e. the current baseline.
 
-we then simply calculate the maximum and use it as the block's actual baseline.
+we then simply calculate the maximum (but prefer actualCol/col to cur)
+and use it as the block's actual baseline. This preference makes sure an
+inline aligned block's alignment does not interfere with a succeeding indent-n form
+
+```lean
+let foldl1 f xs =
+--        ↓ letexp starts (i.e. pushes (*) to the indentation stack)
+--          an inline aligned block here, denoted (* = 10)
+  let rec go xs =
+    match xs with
+    | x :: Nil => x
+--  ↓ both actualCol/col measures up to here (** = 4)
+    | x :: y :: xs =>
+  -- the naive maximum requires this call to indent past (*)
+  -- because that column is recorded by cur i.e. currentCol,
+  -- which is greater (but now we don't use it) than both
+  -- actualCol and col (**), in this case, the correct one.
+      go (f x y :: xs)
+  in go xs
+```
 -/
 def withInlineBlock (col : Nat) (p : TParser σ α) : TParser σ α := do
   let actualCol <- optionD (vspaces *> indentCol) col
   let cur <- currentCol
-  let col := max cur $ max actualCol col
+  let col :=
+    if actualCol > col then max actualCol cur
+    else col
   pushCol col
   try
     let r <- p
