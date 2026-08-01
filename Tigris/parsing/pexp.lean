@@ -147,34 +147,57 @@ def letrecBody (floorCol : Nat) : Symbol -> Array Pattern -> Option Scheme -> TP
         return (id, unwrapAnn ann? core)
 
 /--
-Note that toplevel let has relaxed layout requirement and may not be _syntactically toplevel_
-thus the parser is heavier due to letdecl/letexp backtracking.
+> Note that toplevel let has relaxed layout requirement and may not be _syntactically toplevel_
+> thus the parser is heavier due to letdecl/letexp backtracking.
+> Without suffering toplevel syntactic flexibility we
+> provide alternative kw to avoid letdecl/letexp backtracking.
+> Besides, using OCaml-style `;;/end` is much welcomed as it does the same thing.
 
-Without suffering toplevel syntactic flexibility we
-provide alternative kw to avoid letdecl/letexp backtracking.
-Besides, using OCaml-style `;;/end` is much welcomed as it does the same thing.
+To further address the performance issue above we fence the binding group at letCol.
+Toplevel has no aligned bindings (*) and has a subsingleton indent stack `[0]`,
+where crossLine may cross freely; the fence requires an inline RHS's continuation
+indent pass letCol, so a following col-letCol line (another toplevel decl) is not
+greedily eaten as an application argument only to backtrack for lack of an letexp body.
+
+Meanwhile, toplevel letdecls can still be indented and parsed but then it's just
+the same old situation where backtracking is unavoidable. There's a reason Haskell
+prohibits it (indented toplevel must align), we just don't enforce it.
+
+(*) because of this we permit indent-n form in the middle of a application at toplevel i.e.
+```lean
+(letdecl)  ...whereas...  (letexp)
+let x = f                 let x = f
+  a -- correct                 a -- correct
+```
 -/
 def letDeclDispatch : TParser σ $ Array Binding := do
   let letCol <- kwCol "def" <|> kwCol "let"
-  let bs <-
-    match <- test REC with
-    | false => sepBy1 AND $ let1Common (letBody letCol)
-    | true =>
-      let b <- sepBy1 AND $ let1Common (letrecBody letCol)
-      let some b' <- option? $ whereBindings whereRec | pure b
-      pure $ b' ++ b
-  match <- option? (IN *> parseExpr) with
+  let bs <- match <- test REC with
+            | false => withInlineBlock letCol
+                     $ sepBy1 AND
+                     $ let1Common
+                     $ letBody letCol
+            | true =>
+              let b <- withInlineBlock letCol
+                    $ sepBy1 AND
+                    $ let1Common
+                    $ letrecBody letCol
+              let some b' <- option? $ whereBindings whereRec
+                           | pure b
+              pure $ b' ++ b
+
+  option? (IN *> parseExpr) >>= fun -- only for REPL, avoids backtracking. not "true" letexp
   | some body => return #[("_", Let bs body)]
   | none => return bs
 where
   whereRec (whereCol : Nat) := let1Common (letrecBody whereCol)
 
 def letPatDecl : TParser σ (Pattern × Expr) := do
-  LET;
+  let letCol <- kwCol "def" <|> kwCol "let"
   if <- test REC then
     warn "found non-variable pattern on the left hand side,\nThis declaration will be treated as a letdecl\n"
   let pat <- Parsing.funBinder'
-  EQ; let exp <- parseExpr
+  EQ; let exp <- withInlineBlock letCol parseExpr
   return (pat, exp)
 
 def value p := show TParser σ Binding from ("_", ·) <$> p

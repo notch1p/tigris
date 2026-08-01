@@ -244,10 +244,9 @@ let prog = f   ..or..   let prog = f
 
 -/
 partial def eqRhs (letCol : Nat) : TParser σ Expr :=
-  EQ *> hspaces *> atEol >>=
-    fun
-    | true  => withInlineBlock letCol parseExpr
-    | false => parseExpr
+  EQ *> hspaces *> atEol >>= fun
+  | true  => withInlineBlock letCol parseExpr
+  | false => parseExpr
 
 partial def let1 (letCol : Nat) : TParser σ (Symbol × Expr) := do
   let id <- ID; let pre <- takeMany funBinderID
