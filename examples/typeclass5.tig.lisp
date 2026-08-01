@@ -75,35 +75,32 @@
 (defun |fn-40| (|f-8| |?x₀-9|)
   (case (|Option/tag| |?x₀-9|)
     (0
-      (let* ((|con-10| (|mk/None|))) |con-10|))
+      (|mk/None|))
     (1
       (let* ((|f-11| (|Some/f0| |?x₀-9|)))
-         (let* ((|app-12| (gapply1 |f-8| |f-11|))
-                (|con-13| (|mk/Some| |app-12|)))
-            |con-13|)))
+         (let* ((|app-12| (gapply1 |f-8| |f-11|))) (|mk/Some| |app-12|))))
     (t (error "unreachable"))))
 
 (defun |fn-41| (|?x₀-28|)
-  (let* ((|π-29| (%int+ 2 |?x₀-28|))) |π-29|))
+  (%int+ 2 |?x₀-28|))
 
 (defun |listMap-3| (|f-15| |?x₀-16|)
   (case (|List/tag| |?x₀-16|)
     (0
-      (let* ((|con-17| (|mk/Nil|))) |con-17|))
+      (|mk/Nil|))
     (1
       (let* ((|f-18| (|Cons/f0| |?x₀-16|))
              (|f-19| (|Cons/f1| |?x₀-16|)))
          (let* ((|app-20| (gapply1 |f-15| |f-18|))
-                (|app-21| (|listMap-3| |f-15| |f-19|))
-                (|con-22| (|mk/Cons| |app-20| |app-21|)))
-            |con-22|)))
+                (|app-21| (|listMap-3| |f-15| |f-19|)))
+            (|mk/Cons| |app-20| |app-21|))))
     (t (error "unreachable"))))
 
 (defun |const-5| (|x-24| |_-25|)
   |x-24|)
 
 (defparameter |i_Functor_0-2|
-  (let* ((|fn-7| (%clos (function |fn-40|) 2))) |fn-7|))
+  (%clos (function |fn-40|) 2))
 
 (defparameter |i_Functor_1-4|
   (%clos (function |listMap-3|) 2))
@@ -119,6 +116,5 @@
          (|con-35| (|mk/Cons| 3 |con-34|))
          (|con-36| (|mk/Cons| 2 |con-35|))
          (|con-37| (|mk/Cons| 1 |con-36|))
-         (|app-38| (gapply2 |i_Functor_1-4| |app-33| |con-37|))
-         (|p-39| (cons |app-31| |app-38|)))
-     |p-39|))
+         (|app-38| (gapply2 |i_Functor_1-4| |app-33| |con-37|)))
+     (cons |app-31| |app-38|)))

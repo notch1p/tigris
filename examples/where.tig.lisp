@@ -49,23 +49,17 @@
 
 (defun |«`on`»-2| (|f-6| |g-7| |x-8| |y-9|)
   (let* ((|app-10| (gapply1 |g-7| |x-8|))
-         (|app-11| (gapply1 |g-7| |y-9|))
-         (|app-12| (gapply2 |f-6| |app-10| |app-11|)))
-     |app-12|))
+         (|app-11| (gapply1 |g-7| |y-9|)))
+     (gapply2 |f-6| |app-10| |app-11|)))
 
 (defun |«^»-3| (|?x₀-13| |?x₁-14|)
-  (let* ((|π-17| (%int+ |?x₀-13| |?x₁-14|))) |π-17|))
+  (%int+ |?x₀-13| |?x₁-14|))
 
 (defparameter |boxedAdd-4|
-  (let* ((|B-18| (%clos (function |B-25|) 1))
-         (|app-21| (%clos (lambda (|g0| |g1|)
-               (|«`on`»-2| (%clos (function |«^»-3|) 2) |B-18| |g0| |g1|))
-             2)))
-     |app-21|))
+  (let* ((|B-18| (%clos (function |B-25|) 1)))
+     (%clos (lambda (|g0| |g1|)
+         (|«`on`»-2| (%clos (function |«^»-3|) 2) |B-18| |g0| |g1|))
+       2)))
 
 (defparameter |main-5|
-  (let* ((|app-24| (|«`on`»-2| (%clos (function |«^»-3|) 2)
-             (%clos (function |B-25|) 1)
-             20
-             30)))
-     |app-24|))
+  (|«`on`»-2| (%clos (function |«^»-3|) 2) (%clos (function |B-25|) 1) 20 30))

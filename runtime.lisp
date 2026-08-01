@@ -7,19 +7,19 @@
          (inline %int+))
 (defun %int+ (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (sb-kernel:two-arg-+ a b))
+  (+ a b))
 
 (declaim (ftype (function (integer integer) integer) %int-)
          (inline %int-))
 (defun %int- (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (sb-kernel:two-arg-- a b))
+  (- a b))
 
 (declaim (ftype (function (integer integer) integer) %int*)
          (inline %int*))
 (defun %int* (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (sb-kernel:two-arg-* a b))
+  (* a b))
 
 (declaim (ftype (function (integer fixnum) integer) %int/)
          (inline %int/))
@@ -31,7 +31,7 @@
          (inline %int=))
 (defun %int= (a b)
   (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (sb-kernel:two-arg-= a b))
+  (eql a b))
 
 (define-condition match-failure (error)
   ((discrminant

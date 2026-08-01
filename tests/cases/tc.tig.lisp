@@ -51,19 +51,18 @@ let main#4/0 : Int = let app#17 : Int = #3(100, 0); ret #17
 
 ; body
 (defun |fn-18| (|x-6| |y-7|)
-  (let* ((|π-8| (%int= |x-6| |y-7|))) |π-8|))
+  (%int= |x-6| |y-7|))
 
 (defun |sumTo-3| (|n-10| |acc-11|)
   (let* ((|app-13| (|fn-18| |n-10| 0)))
      (if |app-13|
        |acc-11|
        (let* ((|π-14| (%int- |n-10| 1))
-              (|π-15| (%int+ |acc-11| |n-10|))
-              (|app-16| (|sumTo-3| |π-14| |π-15|)))
-          |app-16|))))
+              (|π-15| (%int+ |acc-11| |n-10|)))
+          (|sumTo-3| |π-14| |π-15|)))))
 
 (defparameter |i_Eq_0-2|
-  (let* ((|fn-5| (%clos (function |fn-18|) 2))) |fn-5|))
+  (%clos (function |fn-18|) 2))
 
 (defparameter |main-4|
-  (let* ((|app-17| (|sumTo-3| 100 0))) |app-17|))
+  (|sumTo-3| 100 0))

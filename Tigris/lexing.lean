@@ -386,7 +386,7 @@ abbrev ARROW: TParser σ Unit := spaces *>
   $ (void $ string "=>") <|> (void $ string "->"))
 abbrev COMMA: TParser σ Unit := kwOpExact ","
 abbrev EQ   : TParser σ Unit := kwOpExact ":=" <|> kwOpNoExtend "=" (fun c => c == '>' || c == '=')
-abbrev END  : TParser σ Unit := kwOpExact ";;" <|> kw "END"
+abbrev END  : TParser σ Unit := kwOpExact ";;" <|> kw "end"
 abbrev COLON: TParser σ Unit := kwOpExact ":"
 abbrev UNDERSCORE : TParser σ Unit := kwOpExact "_"
 

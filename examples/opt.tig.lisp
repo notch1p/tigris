@@ -53,12 +53,10 @@
 
 ; body
 (defun |fn-22| (|?x₀-18|)
-  (let* ((|π-19| (%int+ 1 |?x₀-18|))) |π-19|))
+  (%int+ 1 |?x₀-18|))
 
 (defun |get!-2| (|?x₀-5|)
-  (labels ((|fail-6| ()
-             (let* ((|fail-7| (error 'match-failure :discr (list |?x₀-5|))))
-                |fail-7|)))
+  (labels ((|fail-6| () (error 'match-failure :discr (list |?x₀-5|))))
      (case (|Option/tag| |?x₀-5|)
        (1
          (let* ((|f-8| (|Some/f0| |?x₀-5|))) |f-8|))
@@ -67,18 +65,15 @@
 (defun |mapOp-3| (|f-9| |?x₀-10|)
   (case (|Option/tag| |?x₀-10|)
     (0
-      (let* ((|con-11| (|mk/None|))) |con-11|))
+      (|mk/None|))
     (1
       (let* ((|f-12| (|Some/f0| |?x₀-10|)))
-         (let* ((|app-13| (gapply1 |f-9| |f-12|))
-                (|con-14| (|mk/Some| |app-13|)))
-            |con-14|)))
+         (let* ((|app-13| (gapply1 |f-9| |f-12|))) (|mk/Some| |app-13|))))
     (t (error "unreachable"))))
 
 (defparameter |main-4|
   (let* ((|con-15| (|mk/Some| 20))
          (|app-16| (|get!-2| |con-15|))
          (|fn-17| (%clos (function |fn-22|) 1))
-         (|app-20| (|mapOp-3| |fn-17| |con-15|))
-         (|p-21| (cons |app-16| |app-20|)))
-     |p-21|))
+         (|app-20| (|mapOp-3| |fn-17| |con-15|)))
+     (cons |app-16| |app-20|)))

@@ -16,5 +16,4 @@ let main =
       , fmap (1 + _) b)
 
 NB. yields
--- (𝐂 . #(#<FUNCTION |fn1009|>
---       (𝐄 . #((𝐂 . #(#<FUNCTION |fn1003|> (𝐄 . #())))))))
+--  #S(CLOS :FN #<FUNCTION ..> :ARITY 1)

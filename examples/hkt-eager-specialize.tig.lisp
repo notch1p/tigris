@@ -56,23 +56,20 @@
 (defun |fn-26| (|f-5| |?x₀-6|)
   (case (|Sum/tag| |?x₀-6|)
     (0
-      (let* ((|f-7| (|Inl/f0| |?x₀-6|)))
-         (let* ((|con-8| (|mk/Inl| |f-7|))) |con-8|)))
+      (let* ((|f-7| (|Inl/f0| |?x₀-6|))) (|mk/Inl| |f-7|)))
     (1
       (let* ((|f-9| (|Inr/f0| |?x₀-6|)))
-         (let* ((|app-10| (gapply1 |f-5| |f-9|))
-                (|con-11| (|mk/Inr| |app-10|)))
-            |con-11|)))
+         (let* ((|app-10| (gapply1 |f-5| |f-9|))) (|mk/Inr| |app-10|))))
     (t (error "unreachable"))))
 
 (defun |fn-27| (|?x₀-17|)
-  (let* ((|π-18| (%int* 2 |?x₀-17|))) |π-18|))
+  (%int* 2 |?x₀-17|))
 
 (defun |fn-28| (|?x₀-22|)
-  (let* ((|π-23| (%int+ 1 |?x₀-22|))) |π-23|))
+  (%int+ 1 |?x₀-22|))
 
 (defparameter |i_Functor_0-2|
-  (let* ((|fn-4| (%clos (function |fn-26|) 2))) |fn-4|))
+  (%clos (function |fn-26|) 2))
 
 (defparameter |main-3|
   (let* ((|con-13| (|mk/Inl| 2))
@@ -80,6 +77,5 @@
          (|fn-16| (%clos (function |fn-27|) 1))
          (|app-19| (|fn-26| |fn-16| |con-13|))
          (|fn-21| (%clos (function |fn-28|) 1))
-         (|app-24| (|fn-26| |fn-21| |con-14|))
-         (|p-25| (cons |app-19| |app-24|)))
-     |p-25|))
+         (|app-24| (|fn-26| |fn-21| |con-14|)))
+     (cons |app-19| |app-24|)))

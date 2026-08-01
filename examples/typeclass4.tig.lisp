@@ -70,7 +70,7 @@
 
 ; body
 (defun |fn-76| (|x-8| |y-9|)
-  (let* ((|π-10| (%int= |x-8| |y-9|))) |π-10|))
+  (%int= |x-8| |y-9|))
 
 (defun |listEq-77| (|d_Eq_0-12| |?x₀-14| |?x₁-15|)
   (case (|List/tag| |?x₀-14|)
@@ -88,8 +88,7 @@
                     (|f-19| (|Cons/f1| |?x₁-15|)))
                 (let* ((|app-21| (gapply2 |d_Eq_0-12| |f-16| |f-18|)))
                    (if |app-21|
-                     (let* ((|app-22| (|listEq-77| |d_Eq_0-12| |f-17| |f-19|)))
-                        |app-22|)
+                     (|listEq-77| |d_Eq_0-12| |f-17| |f-19|)
                      nil))))
            (t nil))))
     (t nil)))
@@ -106,28 +105,25 @@
          (case (|Option/tag| |?x₁-26|)
            (1
              (let* ((|f-28| (|Some/f0| |?x₁-26|)))
-                (let* ((|app-30| (gapply2 |d_Eq_0-23| |f-27| |f-28|)))
-                   |app-30|)))
+                (gapply2 |d_Eq_0-23| |f-27| |f-28|)))
            (t nil))))
     (t nil)))
 
 (defun |listEq-3| (|d_Eq_0-12|)
-  (let* ((|listEq-13| (%clos (lambda (|g0| |g1|)
-               (|listEq-77| |d_Eq_0-12| |g0| |g1|))
-             2)))
-     |listEq-13|))
+  (%clos (lambda (|g0| |g1|)
+      (|listEq-77| |d_Eq_0-12| |g0| |g1|))
+    2))
 
 (defun |i_Eq_1-4| (|d_Eq_0-23|)
-  (let* ((|fn-24| (%clos (lambda (|g2| |g3|)
-               (|fn-78| |d_Eq_0-23| |g2| |g3|))
-             2)))
-     |fn-24|))
+  (%clos (lambda (|g2| |g3|)
+      (|fn-78| |d_Eq_0-23| |g2| |g3|))
+    2))
 
 (defun |i_Eq_2-5| (|d_Eq_0-32|)
-  (let* ((|app-33| (|listEq-3| |d_Eq_0-32|))) |app-33|))
+  (|listEq-3| |d_Eq_0-32|))
 
 (defparameter |i_Eq_0-2|
-  (let* ((|fn-7| (%clos (function |fn-76|) 2))) |fn-7|))
+  (%clos (function |fn-76|) 2))
 
 (defparameter |main-6|
   (let* ((|app-35| (|i_Eq_2-5| |i_Eq_0-2|))
@@ -164,6 +160,5 @@
          (|p-71| (cons |app-67| |p-70|))
          (|p-72| (cons |app-63| |p-71|))
          (|p-73| (cons |app-59| |p-72|))
-         (|p-74| (cons |app-55| |p-73|))
-         (|p-75| (cons |app-45| |p-74|)))
-     |p-75|))
+         (|p-74| (cons |app-55| |p-73|)))
+     (cons |app-45| |p-74|)))

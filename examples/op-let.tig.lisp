@@ -74,27 +74,21 @@
              (let* ((|f-9| (|Cons/f0| |ys-6|))
                     (|f-10| (|Cons/f1| |ys-6|)))
                 (let* ((|π-11| (%int+ |f-7| |f-9|))
-                       (|app-12| (|«<+>»-2| |f-8| |f-10|))
-                       (|π-13| (%int+ |π-11| |app-12|)))
-                   |π-13|)))
+                       (|app-12| (|«<+>»-2| |f-8| |f-10|)))
+                   (%int+ |π-11| |app-12|))))
            (t 0))))
     (t 0)))
 
 (defun |«<*>»-3| (|?x₀-14| |?x₁-15|)
   (labels ((|fail-16| ()
-             (let* ((|fail-17| (error 'match-failure
-                        :discr
-                        (list |?x₀-14| |?x₁-15|))))
-                |fail-17|)))
+             (error 'match-failure :discr (list |?x₀-14| |?x₁-15|))))
      (case (|Option/tag| |?x₀-14|)
        (1
          (let* ((|f-18| (|Some/f0| |?x₀-14|)))
             (case (|Option/tag| |?x₁-15|)
               (1
                 (let* ((|f-19| (|Some/f0| |?x₁-15|)))
-                   (let* ((|π-20| (%int* |f-18| |f-19|))
-                          (|con-21| (|mk/Some| |π-20|)))
-                      |con-21|)))
+                   (let* ((|π-20| (%int* |f-18| |f-19|))) (|mk/Some| |π-20|))))
               (t (|fail-16|)))))
        (t (|fail-16|)))))
 
@@ -110,6 +104,5 @@
          (|con-30| (|mk/Some| 3))
          (|app-31| (|«<*>»-3| |con-29| |con-30|))
          (|con-32| (|mk/Some| 4))
-         (|app-33| (|«<*>»-3| |app-31| |con-32|))
-         (|p-34| (cons |app-28| |app-33|)))
-     |p-34|))
+         (|app-33| (|«<*>»-3| |app-31| |con-32|)))
+     (cons |app-28| |app-33|)))

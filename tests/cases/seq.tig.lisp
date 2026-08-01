@@ -38,7 +38,7 @@ let main#2/0 : Int = let app#6 : Int = #7(3); ret #6
 
 ; body
 (defun |dbl-7| (|x-4|)
-  (let* ((|π-5| (%int+ |x-4| |x-4|))) |π-5|))
+  (%int+ |x-4| |x-4|))
 
 (defparameter |main-2|
-  (let* ((|app-6| (|dbl-7| 3))) |app-6|))
+  (|dbl-7| 3))

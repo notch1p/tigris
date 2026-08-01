@@ -68,9 +68,8 @@
       (let* ((|f-6| (|Cons/f0| |?x₀-5|))
              (|f-7| (|Cons/f1| |?x₀-5|)))
          (let* ((|app-8| (|countTree-3| |f-6|))
-                (|app-9| (|countForest-2| |f-7|))
-                (|π-10| (%int+ |app-8| |app-9|)))
-            |π-10|)))
+                (|app-9| (|countForest-2| |f-7|)))
+            (%int+ |app-8| |app-9|))))
     (t (error "unreachable"))))
 
 (defun |countTree-3| (|?x₀-11|)
@@ -80,9 +79,7 @@
     (1
       (let* ((|f-12| (|Node/f0| |?x₀-11|))
              (|f-13| (|Node/f1| |?x₀-11|)))
-         (let* ((|app-14| (|countForest-2| |f-13|))
-                (|π-15| (%int+ 1 |app-14|)))
-            |π-15|)))
+         (let* ((|app-14| (|countForest-2| |f-13|))) (%int+ 1 |app-14|))))
     (t (error "unreachable"))))
 
 (defparameter |main-4|
@@ -101,6 +98,5 @@
          (|con-28| (|mk/Cons| |con-26| |con-27|))
          (|con-29| (|mk/Cons| |con-25| |con-28|))
          (|con-30| (|mk/Cons| |con-20| |con-29|))
-         (|con-31| (|mk/Node| 1 |con-30|))
-         (|app-32| (|countTree-3| |con-31|)))
-     |app-32|))
+         (|con-31| (|mk/Node| 1 |con-30|)))
+     (|countTree-3| |con-31|)))

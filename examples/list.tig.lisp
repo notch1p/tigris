@@ -67,25 +67,24 @@
 
 ; body
 (defun |fn-55| (|?x₀-38|)
-  (let* ((|π-39| (%int+ 1 |?x₀-38|))) |π-39|))
+  (%int+ 1 |?x₀-38|))
 
 (defun |fn-56| (|?x₀-42| |?x₁-43|)
-  (let* ((|π-44| (%int+ |?x₀-42| |?x₁-43|))) |π-44|))
+  (%int+ |?x₀-42| |?x₁-43|))
 
 (defun |fn-57| (|?x₀-47| |?x₁-48|)
-  (let* ((|π-49| (%int+ |?x₀-47| |?x₁-48|))) |π-49|))
+  (%int+ |?x₀-47| |?x₁-48|))
 
 (defun |map-2| (|f-7| |?x₀-8|)
   (case (|List/tag| |?x₀-8|)
     (0
-      (let* ((|con-9| (|mk/Nil|))) |con-9|))
+      (|mk/Nil|))
     (1
       (let* ((|f-10| (|Cons/f0| |?x₀-8|))
              (|f-11| (|Cons/f1| |?x₀-8|)))
          (let* ((|app-12| (gapply1 |f-7| |f-10|))
-                (|app-13| (|map-2| |f-7| |f-11|))
-                (|con-14| (|mk/Cons| |app-12| |app-13|)))
-            |con-14|)))
+                (|app-13| (|map-2| |f-7| |f-11|)))
+            (|mk/Cons| |app-12| |app-13|))))
     (t (error "unreachable"))))
 
 (defun |foldl-3| (|f-15| |init-16| |?x₀-17|)
@@ -95,15 +94,12 @@
     (1
       (let* ((|f-18| (|Cons/f0| |?x₀-17|))
              (|f-19| (|Cons/f1| |?x₀-17|)))
-         (let* ((|app-20| (gapply2 |f-15| |init-16| |f-18|))
-                (|app-21| (|foldl-3| |f-15| |app-20| |f-19|)))
-            |app-21|)))
+         (let* ((|app-20| (gapply2 |f-15| |init-16| |f-18|)))
+            (|foldl-3| |f-15| |app-20| |f-19|))))
     (t (error "unreachable"))))
 
 (defun |hd-4| (|?x₀-22|)
-  (labels ((|fail-23| ()
-             (let* ((|fail-24| (error 'match-failure :discr (list |?x₀-22|))))
-                |fail-24|)))
+  (labels ((|fail-23| () (error 'match-failure :discr (list |?x₀-22|))))
      (case (|List/tag| |?x₀-22|)
        (1
          (let* ((|f-25| (|Cons/f0| |?x₀-22|))
@@ -112,9 +108,7 @@
        (t (|fail-23|)))))
 
 (defun |tl-5| (|?x₀-27|)
-  (labels ((|fail-28| ()
-             (let* ((|fail-29| (error 'match-failure :discr (list |?x₀-27|))))
-                |fail-29|)))
+  (labels ((|fail-28| () (error 'match-failure :discr (list |?x₀-27|))))
      (case (|List/tag| |?x₀-27|)
        (1
          (let* ((|f-30| (|Cons/f0| |?x₀-27|))
@@ -136,6 +130,5 @@
          (|app-50| (|foldl-3| |fn-46| 0 |app-40|))
          (|app-51| (|hd-4| |app-40|))
          (|p-52| (cons |app-50| |app-51|))
-         (|p-53| (cons |app-45| |p-52|))
-         (|p-54| (cons |app-40| |p-53|)))
-     |p-54|))
+         (|p-53| (cons |app-45| |p-52|)))
+     (cons |app-40| |p-53|)))

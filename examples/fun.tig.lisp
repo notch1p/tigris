@@ -38,13 +38,13 @@
 
 ; body
 (defun |fn-20| (|?x₀-7| |?x₁-8|)
-  (let* ((|π-9| (%int+ |?x₀-7| |?x₁-8|))) |π-9|))
+  (%int+ |?x₀-7| |?x₁-8|))
 
 (defun |unwrapBoxed-3| (|?x₀-11|)
   |?x₀-11|)
 
 (defparameter |boxedAdd-2|
-  (let* ((|fn-6| (%clos (function |fn-20|) 2))) |fn-6|))
+  (%clos (function |fn-20|) 2))
 
 (defparameter |pb#13-14|
   |boxedAdd-2|)
@@ -55,6 +55,5 @@
 (defparameter |main-5|
   (let* ((|app-16| (|unwrapBoxed-3| |boxedAdd-2|))
          (|app-17| (gapply2 |app-16| 20 20))
-         (|app-18| (gapply2 |unboxedAdd'-4| 30 30))
-         (|p-19| (cons |app-17| |app-18|)))
-     |p-19|))
+         (|app-18| (gapply2 |unboxedAdd'-4| 30 30)))
+     (cons |app-17| |app-18|)))

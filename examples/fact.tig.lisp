@@ -49,27 +49,25 @@
              (|app-26| (|toString-4| |π-21|))
              (|app-27| (|append-3| |app-25| |app-26|))
              (|app-28| (|println-2| |app-27|))
-             (|π-29| (%int- |?x₀-20| 1))
-             (|app-30| (|go-35| |n-17| |π-21| |π-29|)))
-         |app-30|))))
+             (|π-29| (%int- |?x₀-20| 1)))
+         (|go-35| |n-17| |π-21| |π-29|)))))
 
 (defun |println-2| (|η-8|)
-  (let* ((|ffi-9| (%println |η-8|))) |ffi-9|))
+  (%println |η-8|))
 
 (defun |append-3| (|η-10| |η-11|)
-  (let* ((|ffi-12| (%string-append |η-10| |η-11|))) |ffi-12|))
+  (%string-append |η-10| |η-11|))
 
 (defun |toString-4| (|η-13|)
-  (let* ((|ffi-14| (%to-string |η-13|))) |ffi-14|))
+  (%to-string |η-13|))
 
 (defun |read-5| (|η-15|)
-  (let* ((|ffi-16| (%read |η-15|))) |ffi-16|))
+  (%read |η-15|))
 
 (defun |fact-6| (|n-17|)
-  (let* ((|app-31| (|go-35| |n-17| 1 |n-17|))) |app-31|))
+  (|go-35| |n-17| 1 |n-17|))
 
 (defparameter |main-7|
   (let* ((|app-32| (|println-2| "Enter a number:"))
-         (|app-33| (|read-5| nil))
-         (|app-34| (|fact-6| |app-33|)))
-     |app-34|))
+         (|app-33| (|read-5| nil)))
+     (|fact-6| |app-33|)))

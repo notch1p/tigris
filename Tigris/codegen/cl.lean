@@ -92,8 +92,24 @@ partial def emitCode (c : Code .postCC) : CGM Sexp := do
   match c with
   | .let .. =>
     let (binds, rest) := peelLets c
-    let bs <- binds.mapM fun d => do return Sexp.list #[.sym (<- valSym d.fvarId), <- emitValue d.value]
-    return .list #[.sym "let*", .list bs.toArray, <- emitCode rest]
+    let binds := binds.toArray
+    let emitBinds (ds : Subarray (LetDecl .postCC)) : CGM (Array Sexp) :=
+      ds.foldlM (init := #[]) fun acc d => do
+        let f <- valSym d.fvarId
+        let a <- emitValue d.value
+        return acc.push $ Sexp.list #[.sym f, a]
+    -- reduces `let* xₙ = eₙ in xₙ` to `eₙ` for a group of n bindings.
+    -- Mostly to work around SBCL's naive tailcall. See also comments in examples/fact.tig.
+    match rest, binds.back? with
+    | .ret (.fvar r), some last =>
+      if r == last.fvarId then
+        let bs   <- emitBinds binds[:binds.size - 1]
+        let tail <- emitValue last.value
+        return if bs.isEmpty then tail else .list #[.sym "let*", .list bs, tail]
+      else
+        return .list #[.sym "let*", .list (<- emitBinds binds.toSubarray), <- emitCode rest]
+    | _, _ =>
+      return .list #[.sym "let*", .list (<- emitBinds binds.toSubarray), <- emitCode rest]
   | .jp d k =>
     let ps <- d.params.mapM fun p => Sexp.sym <$> valSym p.fvarId
     let bodyS <- emitCode d.body

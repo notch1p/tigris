@@ -51,10 +51,10 @@
 
 ; body
 (defun |fn-29| (|x-16| |y-17|)
-  (let* ((|π-18| (%int= |x-16| |y-17|))) |π-18|))
+  (%int= |x-16| |y-17|))
 
 (defun |println-2| (|η-7|)
-  (let* ((|ffi-8| (%println |η-7|))) |ffi-8|))
+  (%println |η-7|))
 
 (defun |distancePow-3| (|?x₀-9|)
   (case (|Point/tag| |?x₀-9|)
@@ -62,16 +62,15 @@
       (let* ((|f-10| (|Point/f0| |?x₀-9|))
              (|f-11| (|Point/f1| |?x₀-9|)))
          (let* ((|π-12| (%int* |f-10| |f-10|))
-                (|π-13| (%int* |f-11| |f-11|))
-                (|π-14| (%int+ |π-12| |π-13|)))
-            |π-14|)))
+                (|π-13| (%int* |f-11| |f-11|)))
+            (%int+ |π-12| |π-13|))))
     (t (error "unreachable"))))
 
 (defun |getEq-5| (|?x₀-20|)
   |?x₀-20|)
 
 (defparameter |i_Eq_0-4|
-  (let* ((|fn-15| (%clos (function |fn-29|) 2))) |fn-15|))
+  (%clos (function |fn-29|) 2))
 
 (defparameter |main-6|
   (let* ((|app-22| (|getEq-5| |i_Eq_0-4|))
@@ -79,6 +78,5 @@
          (|app-24| (|println-2| |app-23|))
          (|con-25| (|mk/Point| 6 8))
          (|app-26| (|distancePow-3| |con-25|))
-         (|app-27| (|println-2| |app-26|))
-         (|p-28| (cons |app-24| |app-27|)))
-     |p-28|))
+         (|app-27| (|println-2| |app-26|)))
+     (cons |app-24| |app-27|)))
