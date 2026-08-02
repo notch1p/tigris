@@ -77,32 +77,28 @@
       (let* ((|f-5| (|Add/f0| |?x₀-4|))
              (|f-6| (|Add/f1| |?x₀-4|)))
          (let* ((|app-7| (|eval-2| |f-5|))
-                (|app-8| (|eval-2| |f-6|))
-                (|π-9| (%int+ |app-7| |app-8|)))
-            |π-9|)))
+                (|app-8| (|eval-2| |f-6|)))
+            (%int+ |app-7| |app-8|))))
     (4
       (let* ((|f-10| (|Div/f0| |?x₀-4|))
              (|f-11| (|Div/f1| |?x₀-4|)))
          (let* ((|app-12| (|eval-2| |f-10|))
-                (|app-13| (|eval-2| |f-11|))
-                (|π-14| (%int/ |app-12| |app-13|)))
-            |π-14|)))
+                (|app-13| (|eval-2| |f-11|)))
+            (%int/ |app-12| |app-13|))))
     (3
       (let* ((|f-15| (|Mul/f0| |?x₀-4|))
              (|f-16| (|Mul/f1| |?x₀-4|)))
          (let* ((|app-17| (|eval-2| |f-15|))
-                (|app-18| (|eval-2| |f-16|))
-                (|π-19| (%int* |app-17| |app-18|)))
-            |π-19|)))
+                (|app-18| (|eval-2| |f-16|)))
+            (%int* |app-17| |app-18|))))
     (0
       (let* ((|f-20| (|Atom/f0| |?x₀-4|))) |f-20|))
     (2
       (let* ((|f-21| (|Sub/f0| |?x₀-4|))
              (|f-22| (|Sub/f1| |?x₀-4|)))
          (let* ((|app-23| (|eval-2| |f-21|))
-                (|app-24| (|eval-2| |f-22|))
-                (|π-25| (%int- |app-23| |app-24|)))
-            |π-25|)))
+                (|app-24| (|eval-2| |f-22|)))
+            (%int- |app-23| |app-24|))))
     (t (error "unreachable"))))
 
 (defparameter |prog-3|
@@ -119,17 +115,14 @@
          (|con-36| (|mk/Add| |con-34| |con-35|))
          (|con-37| (|mk/Add| |con-31| |con-36|))
          (|con-38| (|mk/Div| |con-30| |con-37|))
-         (|con-39| (|mk/Sub| |con-29| |con-38|))
-         (|con-40| (|mk/Mul| |con-26| |con-39|)))
-     |con-40|))
+         (|con-39| (|mk/Sub| |con-29| |con-38|)))
+     (|mk/Mul| |con-26| |con-39|)))
 
 (defparameter |pb#41-42|
-  (let* ((|app-43| (|eval-2| |prog-3|))) |app-43|))
+  (|eval-2| |prog-3|))
 
 (defparameter |pb#41-chk-44|
-  (labels ((|fail-45| ()
-             (let* ((|fail-46| (error 'match-failure :discr (list |pb#41-42|))))
-                |fail-46|)))
+  (labels ((|fail-45| () (error 'match-failure :discr (list |pb#41-42|))))
      (case |pb#41-42|
        (3850
          |pb#41-42|)

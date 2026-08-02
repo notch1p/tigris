@@ -39,15 +39,36 @@ def Array.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ) (xs : Array
   map 2 arrays with `f` then append them, in one go.
   `seq2 f as bs` is `map f as ++ map f bs`, but faster.
 -/
-def Array.seq2 (f : α -> β) : Array α -> Array α -> Array β
-  | as, bs =>
-    let ass := as.size
-    let bss := bs.size
-    ass + bss |>.fold (init := #[]) fun i h a =>
-      if h' : i < ass then
-        a.push $ f as[i]
-      else
-        a.push $ f bs[i - ass]
+def Array.seq2 (f : α -> β) (as bs : Array α) : Array β :=
+  let ass := as.size
+  let bss := bs.size
+  ass + bss |>.fold (init := #[]) fun i h a =>
+    if h' : i < ass then
+      a.push $ f as[i]
+    else
+      a.push $ f bs[i - ass]
+
+/-
+  fold 2 arrays one-by-one with `f`, in one go.
+  `seq2fold f z as bs` is `foldl f z (as ++ bs) `.
+-/
+def Array.seq2fold (f : β -> α -> β) (init : β) (xs ys : Array α) : β :=
+  let xss := xs.size
+  let yss := ys.size
+  xss + yss |>.fold (init := init) fun i h a =>
+    if h' : i < xss then f a xs[i]
+    else f a ys[i - xss]
+
+/-
+  fold `xs` `ys` one-by-one, in parallel with another `zs` with `f`, in one go.
+-/
+def Array.seq2fold2 (f : β -> α -> γ -> β) (init : β)
+  (xs : Array α) (ys : Subarray α) (zs : Array γ) : β :=
+  let xss := xs.size; let yss := ys.size
+  let minsz := min (xss + yss) zs.size
+  minsz |>.fold (init := init) fun i h a =>
+    if h' : i < xss then f a xs[i] zs[i]
+    else f a ys[i - xss] zs[i]
 
 def Array.foldr2 (f: α -> β -> γ -> γ) (init : γ) (xs : Array α) (ys : Array β) : γ :=
   let minSz := Nat.min xs.size ys.size
@@ -75,6 +96,10 @@ def List.foldr1 (f : α -> α -> α) (xs : List α) (h : xs ≠ []) : α :=
   match xs with
   | [x] => x
   | x :: y :: xs => f x (foldr1 f (y :: xs) $ List.cons_ne_nil y xs)
+def List.foldl1 (f : α -> α -> α) (xs : List α) (h : xs ≠ []) : α :=
+  match xs with
+  | [x] => x
+  | x :: y :: xs => foldl1 f (f x y :: xs) (List.cons_ne_nil (f x y) xs)
 
 def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> γ
   | x :: xs, y :: ys => foldl2 f (f init x y) xs ys

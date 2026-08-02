@@ -15,9 +15,13 @@ let hd (x :: _) = x
 let tl (_ :: xs) = xs
 
 let main =
-  let l = 1 :: 2 :: 3 :: 4 :: Nil
+  let 
+    const k _ = k
+    l         = 1 :: 2 :: 3 :: 4 :: Nil
   let mapl = map (1 + _) l
-  let sum = foldl (_ + _) 0 l
-  ( mapl, sum
+      sum  = foldl (_ + _) 0 l
+      k    = const 10
+  ( mapl, map k l
+  , sum
   , foldl (_ + _) 0 mapl
   , hd mapl)

@@ -49,11 +49,11 @@
     (%apply-slow c (list a1 a2))))
 
 ; ftype
-(declaim (ftype (function (integer) integer) |fn-55|))
+(declaim (ftype (function (integer) integer) |fn-62|))
 
-(declaim (ftype (function (integer integer) integer) |fn-56|))
+(declaim (ftype (function (integer integer) integer) |fn-63|))
 
-(declaim (ftype (function (integer integer) integer) |fn-57|))
+(declaim (ftype (function (integer integer) integer) |fn-64|))
 
 (declaim (ftype (function (clos |List|) |List|) |map-2|))
 
@@ -66,14 +66,17 @@
 (declaim (type cons |main-6|))
 
 ; body
-(defun |fn-55| (|?x₀-38|)
-  (%int+ 1 |?x₀-38|))
+(defun |fn-61| (|k-33| |_-34|)
+  |k-33|)
 
-(defun |fn-56| (|?x₀-42| |?x₁-43|)
-  (%int+ |?x₀-42| |?x₁-43|))
+(defun |fn-62| (|?x₀-41|)
+  (%int+ 1 |?x₀-41|))
 
-(defun |fn-57| (|?x₀-47| |?x₁-48|)
-  (%int+ |?x₀-47| |?x₁-48|))
+(defun |fn-63| (|?x₀-45| |?x₁-46|)
+  (%int+ |?x₀-45| |?x₁-46|))
+
+(defun |fn-64| (|?x₀-52| |?x₁-53|)
+  (%int+ |?x₀-52| |?x₁-53|))
 
 (defun |map-2| (|f-7| |?x₀-8|)
   (case (|List/tag| |?x₀-8|)
@@ -117,18 +120,23 @@
        (t (|fail-28|)))))
 
 (defparameter |main-6|
-  (let* ((|con-32| (|mk/Nil|))
-         (|con-33| (|mk/Cons| 4 |con-32|))
-         (|con-34| (|mk/Cons| 3 |con-33|))
-         (|con-35| (|mk/Cons| 2 |con-34|))
-         (|con-36| (|mk/Cons| 1 |con-35|))
-         (|fn-37| (%clos (function |fn-55|) 1))
-         (|app-40| (|map-2| |fn-37| |con-36|))
-         (|fn-41| (%clos (function |fn-56|) 2))
-         (|app-45| (|foldl-3| |fn-41| 0 |con-36|))
-         (|fn-46| (%clos (function |fn-57|) 2))
-         (|app-50| (|foldl-3| |fn-46| 0 |app-40|))
-         (|app-51| (|hd-4| |app-40|))
-         (|p-52| (cons |app-50| |app-51|))
-         (|p-53| (cons |app-45| |p-52|)))
-     (cons |app-40| |p-53|)))
+  (let* ((|con-35| (|mk/Nil|))
+         (|con-36| (|mk/Cons| 4 |con-35|))
+         (|con-37| (|mk/Cons| 3 |con-36|))
+         (|con-38| (|mk/Cons| 2 |con-37|))
+         (|con-39| (|mk/Cons| 1 |con-38|))
+         (|fn-40| (%clos (function |fn-62|) 1))
+         (|app-43| (|map-2| |fn-40| |con-39|))
+         (|fn-44| (%clos (function |fn-63|) 2))
+         (|app-48| (|foldl-3| |fn-44| 0 |con-39|))
+         (|app-49| (%clos (lambda (|g0|)
+               (|fn-61| 10 |g0|))
+             1))
+         (|app-50| (|map-2| |app-49| |con-39|))
+         (|fn-51| (%clos (function |fn-64|) 2))
+         (|app-55| (|foldl-3| |fn-51| 0 |app-43|))
+         (|app-56| (|hd-4| |app-43|))
+         (|p-57| (cons |app-55| |app-56|))
+         (|p-58| (cons |app-48| |p-57|))
+         (|p-59| (cons |app-50| |p-58|)))
+     (cons |app-43| |p-59|)))

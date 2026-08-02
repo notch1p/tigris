@@ -99,7 +99,8 @@ lean_exe "tigris" where  -- Deprecated
 lean_exe "tigrisc" where
   root := `Tigrisc
 lean_exe "tigrisi" where
-  root := `Tigrisi
+  root := `eval
+  srcDir := "Tigris/TCNF/interpreter"
 @[default_target]
 lean_exe "tigrisl" where
   root := `Tigrisl
