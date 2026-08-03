@@ -4,7 +4,7 @@ import Tigris.typing.fexpr
 import Tigris.parsing.ptype
 import Tigris.typing.ttypes
 import Tigris.parsing.types
-import Tigris.interpreter.types
+import Tigris.oldInterpreter.types
 namespace Parsing open Lexing Parser PType TopDecl
 
 def declaration : TParser σ TopDecl := first'
@@ -52,17 +52,17 @@ def module : TParser σ $ Array TopDecl :=
 def moduleFile : TParser σ $ Array TopDecl :=
   sepBy (optional END) declarationFile <* optional END
 
-def parse (s : String) (PE : PEnv) : Except String Expr :=
+def parse (s : String.Slice) (PE : PEnv) : Except String Expr :=
   match runST fun _ => parseExpr <* optional END <* spaces <* endOfInput |>.run s |>.run' (PE, "") with
   | .ok _ t    => pure t
   | .error _ e => throw (toString e)
 
-def parseModule' (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
+def parseModule' (s : String.Slice) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
   match runST fun _ => module <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
-def typeExpr (s : String) (PE : PEnv) (E : Env) : EIO String TExpr :=
+def typeExpr (s : String.Slice) (PE : PEnv) (E : Env) : EIO String TExpr :=
   match runST fun _ => parseExpr <* optional END <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (_, l))   => do
     liftEIO (IO.print l)
@@ -93,12 +93,12 @@ def toplevelFile : TParser σ $ Array TopDecl := withErrorMessage "Toplevel" $
   let hd := lpOrModOrMutFile <* optional END
   (foldl (· ++ ·) · hd) =<< hd
 
-def parseModuleIR (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
+def parseModuleIR (s : String.Slice) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
   match runST fun _ => toplevelFile <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
-def parseREPL (s : String) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
+def parseREPL (s : String.Slice) (PE : PEnv) : EIO String (PEnv × Array TopDecl) :=
   match runST fun _ => toplevel <* spaces <* endOfInput |>.run s |>.run (PE, "") with
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
@@ -106,7 +106,7 @@ end Parsing
 
 namespace MLType
 
-def parseToplevel (s : String) (toplevel := `File) : IO Unit :=
+def parseToplevel (s : String.Slice) (toplevel := `File) : IO Unit :=
   let p {σ} : TParser σ (Array TopDecl) := if toplevel matches `File then Parsing.toplevelFile else Parsing.toplevel
   match runST fun _ => (p <* Lexing.spaces <* Parser.endOfInput) s |>.run (initState, "") with
   | (.error _ e, (_, l)) => do
@@ -116,7 +116,7 @@ def parseToplevel (s : String) (toplevel := `File) : IO Unit :=
     println! l
     println! repr t
 
-def testTParser : String -> IO Unit := fun s =>
+def testTParser : String.Slice -> IO Unit := fun s =>
   match
     runST fun _ => (Parsing.letDeclDispatch <* Lexing.spaces <* Parser.endOfInput) |>.run s |>.run (initState, "")
   with
@@ -127,7 +127,7 @@ def testTParser : String -> IO Unit := fun s =>
     println! l
     println! repr t
 
-def check1 (s : String) (E : Env := defaultE) : IO Unit :=
+def check1 (s : String.Slice) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
   | .error e => println! e
   | .ok e    =>
@@ -135,7 +135,7 @@ def check1 (s : String) (E : Env := defaultE) : IO Unit :=
     | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
     | .ok    s => println! s
 
-def check1C (s : String) (E : Env := defaultE) : IO Unit :=
+def check1C (s : String.Slice) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
   | .error e => println! e
   | .ok e    =>
@@ -144,11 +144,11 @@ def check1C (s : String) (E : Env := defaultE) : IO Unit :=
     | .ok    (te, s, l) => println!
       reprStr te ++ "\n" ++
       toString s ++ "\n" ++ l
-def check1C' (s : String) (E : Env := defaultE) : Option TExpr := do
+def check1C' (s : String.Slice) (E : Env := defaultE) : Option TExpr := do
   let e <- Parsing.parse s initState |>.toOption
   runInferConstraintT e E |>.toOption |>.map Prod.fst
 
-def check1F (s : String) (E : Env := defaultE) : IO Unit :=
+def check1F (s : String.Slice) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
   | .error e => println! e
   | .ok e    =>
@@ -158,7 +158,7 @@ def check1F (s : String) (E : Env := defaultE) : IO Unit :=
       reprStr te ++ "\n" ++
       toString s ++ "\n" ++ l
 
-def checkFile (s : String) : IO Unit := do
+def checkFile (s : String.Slice) : IO Unit := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState |>.toIO .userError
   let stage0 <- inferToplevelC topdecl defaultE' |> IO.ofExcept
   let (toplevel, logger, _) <- inferToplevelF stage0 |> IO.ofExcept

@@ -1,7 +1,7 @@
 import PP.dependentPP
 import Tigris.parsing.types
 import Tigris.typing.ttypes
-import Tigris.interpreter.types
+import Tigris.oldInterpreter.types
 
 open PrettyPrint Alignment
 /-- truncate a string to length `n - 1`, extracting from both
@@ -67,6 +67,19 @@ def helpMsg : TableOf HelpHeader := .mk $
    , (.str "#compile <exp>"   , .str "Compile <exp> to one of the backends.")
    , (.str ""                 , .str "implies `#cps`.")
    , (.str ""                 , .str "the only backend is common lisp for now.")]
+
+def tigiMsg : TableOf HelpHeader := .mk $
+  #[ (.str "#load <path>"           , .str "load src from <path> into REPL")
+   , (.str ""                       , .byl "<path> may not contain spaces or ';'")
+   , (.str "#help"                  , .str "show this help string")
+   , (.str "#(type|check) <exp>"    , .str "typecheck <exp> without evaluating it")
+   , (.str "#tast <exp>"            , .str "dump the typed parsetree of <expr>")
+   , (.str ""                       , .str "that is, System F IR, the core calculus")
+   , (.str "#ast <exp|decl>"        , .str "dump the parsetree of <exp|decl>")
+   , (.str "#flush"                 , .byl "flush the REPL environment")
+   , (.str "#disassemble <sym>"     , .str "Dump an object in TCNF. <sym> is one of")
+   , (.str ""                       , .blu "⬝ <id> e.g. id")
+   , (.str ""                       , .blu "⬝ #<fvar> e.g. #13")]
 
 def tiglHelpMsg : TableOf HelpHeader := .mk
   #[ (.str "--tcnf"                 , .str "emit TCNF")

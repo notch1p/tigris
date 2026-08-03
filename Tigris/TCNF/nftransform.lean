@@ -1,4 +1,4 @@
-import Tigris.interpreter.entrypoint
+import Tigris.oldInterpreter.entrypoint
 import Tigris.TCNF.nflift
 
 /-!

@@ -137,7 +137,7 @@ partial def tyApps (mt : Bool) (param : ParamInfo) : TParser σ MLType := withEr
         registerTyArity h args.size mt false
         return MLType.mkApp (.TCon h) args.toList
       else
-        error s!"undefined type {Logging.magenta h}\n"
+        error s!"undefined type {h}\n"
         throwUnexpected
   | .TVar v =>
     let k := param.kinds.getD v.toStr .type

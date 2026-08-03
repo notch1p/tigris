@@ -1,20 +1,40 @@
-import Tigris.interpreter.lapp
-open IO
+import Tigris.TCNF.interpreter.app
+import Tigris.table
+open IO TCNF.Interpreter.App Std PrettyPrint
 
-abbrev EvalState := Option
+abbrev REPLState := Option
                   $ Task
-                  $ Except Error
-                  $ LApp.REPLState × LInterpreter.Val × Scheme
+                  $ Except IO.Error
+                  $ EvalState
 
-def main : IO Unit := do
+def strip : String.Slice -> String.Slice :=
+    .trimAsciiStart
+  ∘ .dropEndWhile (pat := fun c => c.isWhitespace || c == ';')
+  ∘ .dropWhile    (pat := not ∘ Char.isWhitespace)
+
+def main (fs : List String) : IO Unit := do
   setStdoutBuf false
+
+  unless fs.isEmpty do
+    TCNF.Interpreter.main fs
+    return
+
+  letI motd := "A direct interpreter for the Tigris Language targeting Opt/CC'd TCNF.\n\
+                For an outdated language specifications see docs/* or my thesis.\n\
+                USAGE\n  \
+                ⬝ tigrisi [..files]\n  \
+                ⬝ Type #help;; to check available commands.\n  \
+                ⬝ Exit with <C-d> or <C-z-Ret> (Windows).\n  \
+                ⬝ Interrupt with <C-c> (doesn't work if\n    \
+                  running through `lake exe`)"
+  println! motd
 
   let mut prompt := "> "
   let mut buf := ""
 
-  let stdin <- getStdin
-  let replST <- mkRef LApp.initREPL
-  let EVS : IO.Ref EvalState <- mkRef none
+  let stdin <- IO.getStdin
+  let esRef : IO.Ref EvalState <- mkRef {}
+  let rsRef : IO.Ref REPLState <- mkRef none
 
   let fd <- installSigintPipe
 
@@ -24,35 +44,68 @@ def main : IO Unit := do
         let r <- readFdByte fd
         if r <= 0 then pure ()
         else
-          if let some t <- EVS.get then
+          if let some t <- rsRef.get then
             IO.cancel t
           else pure ()
 
   repeat do
-    let st <- replST.get
-
+    let es <- esRef.get
     print prompt
     prompt := "- "
 
     let input <- stdin.getLine --readTtyLine
     if input.isEmpty then IO.Process.exit 0
-    buf := buf ++ input |>.trimLeft
-    if !input.trimRight.endsWith ";;" then continue
+    buf := buf ++ input |>.trimAsciiStart |>.toString
+    if !input.trimAsciiEnd.endsWith ";;" then continue
     if input.startsWith "\n" then continue
 
-    try
-      let t <- asTask (LApp.interpretI st buf) 5
-      EVS.set $ some t
-      let (st, v, sch) <- ofExcept =<< (wait t |>.toIO)
-      replST.set st
+    if buf.startsWith "#h" then
+      print $ tabulate (Text.mkBoldBlackWhite "Commands") {align := alignH} tigiMsg
 
-      print v
-      print " : "
-      println sch
-
-    catch e => println! Logging.error $ toString e
-    finally
-      EVS.set none
+    else if buf.startsWith "#f" then
+      esRef.set {}
+      println! "REPL environment has been flushed"
+    else if buf.startsWith "#d" then
+      let sbuf := strip buf
+      let query :=
+        if sbuf.startsWith "#"
+        then es.is.globaldecls.get? (sbuf.drop 1 |>.toNat?.getD 0)
+        else es.optDecls.find? sbuf.toString
+      match query with
+      | some d => println! format d
+      | none   => println! s!"Unbound symbol/fvar {sbuf}"
+    else if buf.startsWith "#t" || buf.startsWith "#c" then
+      try
+        let e <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) es.PE
+              |> IO.ofExcept
+        let (fe, s, _) <- runInferConstraintF e es.E |> IO.ofExcept
+        if buf.startsWith "#ta" then println! format fe
+        else println! format s
+      catch e => println! e
+    else if buf.startsWith "#a" then
+      (Parsing.parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace) es.PE |>.toIO') >>= fun
+      | .ok (_, b)  => println! reprStr b
+      | .error e    => println! Logging.error $ toString e
+    else if buf.startsWith "#l" then
+      try
+        let sbuf <- FS.readFile $ toString $ strip buf
+        let t <- asTask $ Prod.snd <$> (EIO.toIO .userError $ evaluate1 sbuf |>.run es)
+        rsRef.set $ some t
+        let st <- IO.ofExcept =<< wait t
+        esRef.set st
+      catch e =>
+        println! e
+        println! "Evaluation context is restored as there are errors.\n\
+                  Fix those then #load again to update it."
+      finally rsRef.set none
+    else
+      try
+        let t <- asTask $ Prod.snd <$> (EIO.toIO .userError $ evaluate1 buf |>.run es)
+        rsRef.set $ some t
+        let st <- IO.ofExcept =<< wait t
+        esRef.set st
+      catch e => println! e
+      finally rsRef.set none
 
     buf := ""
     prompt := "> "

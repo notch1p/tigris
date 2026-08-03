@@ -1,5 +1,5 @@
-import Tigris.interpreter.entrypoint
-import Tigris.interpreter.leval
+import Tigris.oldInterpreter.entrypoint
+import Tigris.oldInterpreter.leval
 import Tigris.oldcore2.ftransform
 
 namespace LApp

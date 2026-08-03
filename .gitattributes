@@ -13,7 +13,9 @@ docs/midterm/listproc.sty         linguist-vendored
 docs/midterm/ottalt.sty           linguist-vendored
 Tigris/typing/oldtyping.lean      linguist-vendored
 Tigris/oldcore/*                  linguist-vendored
-Tigris/oldcps/*                   linguist-vendored
 Tigris/oldcore2/*                 linguist-vendored
+Tigris/oldcps/*                   linguist-vendored
+Tigris/oldInterpreter/*           linguist-vendored
 Tigris/oldcore2/matchAppF.lean   -linguist-vendored
+oldMain.lean                      linguist-vendored
 tests/cases/*                     linguist-vendored

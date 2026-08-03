@@ -29,12 +29,12 @@ where
 instance : BEq Value := ⟨Value.beq⟩
 
 structure IState where
-  globals : TreeMap FVarId $ Decl .postCC
-  topvals : TreeMap FVarId Value
-  locals  : TreeMap FVarId Value := ∅
-                          --   params          body         captured locals
-  joins   : TreeMap FVarId (Array FVarId × Code .postCC × TreeMap FVarId Value)
-          := ∅
+  globaldecls : TreeMap FVarId $ Decl .postCC := ∅
+  topvals     : TreeMap FVarId Value := ∅
+  locals      : TreeMap FVarId Value := ∅
+                              --   params          body         captured locals
+  joins       : TreeMap FVarId (Array FVarId × Code .postCC × TreeMap FVarId Value)
+              := ∅
 deriving Inhabited
 
 abbrev EvaluatorM := ReaderT IState $ EIO TypingError

@@ -14,11 +14,11 @@ def asConst : TConst -> Value
   | .PBool b => .bool b
 
 def lookup (x : FVarId) : EvaluatorM Value := do
-  let {globals, topvals, locals,..} <- read
+  let {globaldecls, topvals, locals,..} <- read
   match locals[x]? <|> topvals[x]? with
   | some v => return v
   | none   =>
-    let some {fvarId,..} := globals[x]? | impossible! "unbound fvar #{x}"
+    let some {fvarId,..} := globaldecls[x]? | impossible! "unbound fvar #{x}"
     return .clos fvarId #[]
 
 def evalAtom : Atom -> EvaluatorM Value
@@ -69,9 +69,9 @@ partial def evalLetValue : LetValue .postCC -> EvaluatorM Value
     applyN f as.toSubarray
 
 partial def applyN (f : Value) (as : Subarray Value) : EvaluatorM Value := do
-  let s@{globals,locals,..} <- read
+  let s@{globaldecls,locals,..} <- read
   let (.clos f env) := f | impossible! "callee #{f} is not a code pointer"
-  let some {params, body,..} := globals[f]? | impossible! "undefined function #{f}"
+  let some {params, body,..} := globaldecls[f]? | impossible! "undefined function #{f}"
   let arity := params.size - env.size
   let ass := as.size
   if arity == ass then
@@ -109,12 +109,14 @@ partial def evalCode (c : Code .postCC) : EvaluatorM Value :=
 
 partial def evalCases (d : FVarId) (alts : Array $ Alt .postCC) : EvaluatorM Value := do
   match <- lookup d with
+  | .unit =>
+    goConst $ alts.find? fun | .default _         | .const .PUnit _ => true         | _ => false
   | .int i =>
-    goConst $ alts.find? fun | .default _ => true | .const (.PInt i') _ => i == i' | _ => false
+    goConst $ alts.find? fun | .default _ => true | .const (.PInt i') _ => i == i'  | _ => false
   | .bool b =>
     goConst $ alts.find? fun | .default _ => true | .const (.PBool b') _ => b == b' | _ => false
   | .str s =>
-    goConst $ alts.find? fun | .default _ => true | .const (.PStr s') _ => s == s' | _ => false
+    goConst $ alts.find? fun | .default _ => true | .const (.PStr s') _ => s == s'  | _ => false
   | .constr t as =>
     match alts.find? fun | .default _ => true | .ctor t' .. => t' == t | _ => false
     with
@@ -132,29 +134,34 @@ where
   | _ => impossible! "Can't match against {d}"
 end
 
+open Format (fill group pretty nestD)
+def template {α} [ToFormat α] (name : String) (v : α) (ty : Scheme) : String :=
+  let s := s!"{name} ="
+  let ss := s.length
+  if ss <= 20
+  then pretty (fill $ (group $ s <> nestD (format v)) <+> "⊢" <> format ty)
+              (width := 70) (indent := ss - 1) (column := ss - 1)
+  else pretty (fill $ (group $ s ++ "\n" ++ format v) <+> "⊢" <> format ty)
+              (width := 70) (indent := 2) (column := 2)
 def check (s : String) : LowerM Unit := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState
   let stage₀@(_, E, _) <- inferToplevelC topdecl MLType.defaultE' |>.mapError toString |> EIO.ofExcept
   let (fdecls, _, ctors) <- inferToplevelF stage₀ |>.mapError toString |> EIO.ofExcept
   let {decls, main} <- lowerModuleCCOpt fdecls ctors E.tyDecl
-  let mut globals := ∅
+  let mut globaldecls := ∅
   let mut topvals := ∅
-  for d@{fvarId, arity, body,..} in decls.push main do
+  for d@{fvarId, arity, body, name, ty,..} in decls.push main do
     if arity > 0 then
-      globals := globals.insert fvarId d
+      liftEIO (println! template name "<fun>" $ E.E[name]?.getD $ .Forall [] [] ty)
+      globaldecls := globaldecls.insert fvarId d
     else
-      let v <- evalCode body {globals, topvals} |>.adapt toString
+      let v <- evalCode body {globaldecls, topvals} |>.adapt toString
+      liftEIO (println! template name v $ E.E[name]?.getD $ .Forall [] [] ty)
       topvals := topvals.insert fvarId v
 
-  for (id, val) in topvals do
-    let s   := s!"#{id} = "
-    let res :=
-      if s.length <= 15 then s!"{s}{format val |>.pretty (indent := s.length) (column := s.length)}"
-      else s!"{s}\n{format val |>.pretty (indent := 2) (column := 2)}"
-    liftEIO $ println! res
 def checkFile (s : System.FilePath) : IO Unit := do
   let s <- IO.FS.readFile s
   EIO.toIO .userError $ check s
 
-def _root_.main (args : List String) :=
+def main (args : List String) :=
   args.forA fun p => checkFile p

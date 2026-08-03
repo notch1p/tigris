@@ -1,7 +1,7 @@
 import Tigris.oldcore2.lam
 import Tigris.oldcore2.opt
 import Tigris.oldcore2.lift
-import Tigris.interpreter.entrypoint
+import Tigris.oldInterpreter.entrypoint
 import Tigris.oldcore.matchApp
 import PP
 

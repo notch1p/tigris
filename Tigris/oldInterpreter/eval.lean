@@ -1,8 +1,8 @@
 import Tigris.typing.ttypes
 import Tigris.parsing.types
 import Tigris.parsing.ptype
-import Tigris.interpreter.types
-import Tigris.interpreter.entrypoint
+import Tigris.oldInterpreter.types
+import Tigris.oldInterpreter.entrypoint
 
 /-! deprecated -/
 

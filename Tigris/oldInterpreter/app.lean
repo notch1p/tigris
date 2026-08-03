@@ -1,4 +1,4 @@
-import Tigris.interpreter.eval
+import Tigris.oldInterpreter.eval
 
 open Parsing PType Value MLType TV Pattern Expr TypingError Interpreter IO Std.ToFormat
 

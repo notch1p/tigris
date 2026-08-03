@@ -21,6 +21,6 @@ let prog =
             Add (Mul (Atom 10)
                      (Atom 20)) $
                 (Atom 0)
-;;
+
 let 3850 = eval prog
 

@@ -39,13 +39,14 @@ def main : IO Unit := do
           else pure ()
 
   letI motd := "A basic language using Hindley-Milner type system\n\
-               with a naive (term-rewriting) interpreted implementation.\n\
-               For language specifications see source.\n\
-               USAGE\n  \
-               ⬝ Type #help;; to check available commands.\n  \
-               ⬝ Exit with <C-d> or <C-z-Ret> (Windows).\n  \
-               ⬝ Interrupt with <C-c> (doesn't work if\n    \
-                 running through `lake exe`)"
+                with a direct style evaluator implementation, obsolete now.\n\
+                Use tigrisi instead.\n\
+                For an outdated language specifications see docs/* or my thesis.\n\
+                USAGE\n  \
+                ⬝ Type #help;; to check available commands.\n  \
+                ⬝ Exit with <C-d> or <C-z-Ret> (Windows).\n  \
+                ⬝ Interrupt with <C-c> (doesn't work if\n    \
+                  running through `lake exe`)"
   println! motd
 
   repeat do

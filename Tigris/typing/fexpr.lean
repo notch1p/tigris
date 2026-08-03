@@ -236,9 +236,9 @@ inductive TopDeclF
   | patBind : Pattern × FExpr -> TopDeclF
 deriving Repr
 
-def inferToplevelF : Array TopDeclT × Env × Logger -> Except TypingError (Array TopDeclF × Logger × Std.HashMap String Nat)
-  | (b, Γ, L) =>
-    b.foldlM (init := (#[], L, ∅)) fun (bF, L, ctorsAcc) b => do
+def inferToplevelF : Array TopDeclT × Env × Logger -> (_ : Std.HashMap String Nat := ∅) -> Except TypingError (Array TopDeclF × Logger × Std.HashMap String Nat)
+  | (b, Γ, L), ctors =>
+    b.foldlM (init := (#[], L, ctors)) fun (bF, L, ctorsAcc) b => do
       match b with
       | .idBind binds =>
         let (acc, L) <- binds.foldlM (init := (#[], L)) fun (acc, L) (id, sch, te) =>

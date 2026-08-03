@@ -1,6 +1,6 @@
 import Tigris.parsing.types
 import Tigris.oldcore.matchApp
-import Tigris.interpreter.entrypoint
+import Tigris.oldInterpreter.entrypoint
 import Tigris.typing.oldtyping
 import Tigris.oldcore.anf
 import Tigris.oldcore.opt

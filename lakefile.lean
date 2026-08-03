@@ -95,12 +95,13 @@ extern_lib libleanffi pkg := do
 
 /- @[default_target] -/
 lean_exe "tigris" where  -- Deprecated
-  root := `Main
+  root := `oldMain
 lean_exe "tigrisc" where
   root := `Tigrisc
+
+@[default_target]
 lean_exe "tigrisi" where
-  root := `eval
-  srcDir := "Tigris/TCNF/interpreter"
+  root := `Tigrisi
 @[default_target]
 lean_exe "tigrisl" where
   root := `Tigrisl

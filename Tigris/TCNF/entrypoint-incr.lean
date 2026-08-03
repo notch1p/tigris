@@ -10,7 +10,7 @@ Not the whole module's decl. Otherwise it defeats the very purpose of _being inc
 structure IncrState where
   /-- ρ₀ -/
   topNames : FVarEnv := ∅
-  globals  : FVSet   := ∅
+  globals  : FVSet   := {matchFailFVar}
   kmap     : KMap    := ∅
   ariMap   : AriMap  := ∅
   closMap  : ClosMap := ∅
@@ -22,11 +22,12 @@ def lowerTop1 (decl : TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMa
   : IncrementalM (Array $ Decl .preCC) := do
   let (fieldTys, ctorTyParams) := ctorTypeInfo tyDecls
   modifyThe NFState ({· with ctors, fieldTys, ctorTyParams, tyDecl := tyDecls})
-  let {topNames,..} <- get
-  let topNames <- collectTopNames.collect1 decl |>.foldlM (fun ρ nm => (ρ.insert nm ·) <$> internExtern nm) topNames
-  let allDecls <- (lowerTopDecl topNames) decl
-  modify ({· with topNames})
-  return allDecls
+  let {topNames, globals,..} <- get
+  let (topNames, globals) <- collectTopNames.collect1 decl |>.foldlM (fun (topNames, globals) nm => do
+    let fv <- internExtern nm
+    pure (topNames.insert nm fv, globals.insert fv)) (topNames, globals)
+  modify ({· with topNames, globals})
+  lowerTopDecl topNames decl
 
 def lowerTop (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)
   : IncrementalM (Array $ Decl .preCC) := decls.flatMapM (lowerTop1 · ctors tyDecls)
@@ -44,15 +45,10 @@ where prog : IncrementalM Unit := do
 end Lowering
 
 section CC
-def ccDecls (decls : Array $ Decl .preCC) : IncrementalM Unit :=
-  decls.forM ccDecl where
-ccDecl decl := do
-  let (globals, lifted) <- modifyGet fun s@{globals, lifted,..} =>
-    let globals := globals.insert decl.fvarId
-    ((globals, lifted), {s with globals})
-  let go := TCNF.CC.ccDecl decl
-  let (res, lifted') <- go.run {globals} |>.run lifted
-  modify fun s => {s with lifted := lifted'.push res}
+def ccDecls (decls : Array $ Decl .preCC) : IncrementalM Unit := do
+  let {globals,..} <- get
+  let (res, lifted) <- decls.mapM ccDecl |>.run {globals} |>.run #[]
+  modify fun s => {s with lifted := lifted ++ res}
 
 def lowerTopCC decls ctors tyDecls := (lowerTop decls ctors tyDecls >>= ccDecls) *> IncrState.lifted <$> get
 
@@ -62,16 +58,15 @@ def checkCCI (s : String) : LowerM Unit := do
   let (decls, _, ctors) <- inferToplevelF stage₀ |>.mapError toString |> EIO.ofExcept
   let ds := decls.size
 
-  let rec go i lifted is nfs globals (h : i <= ds) :=
+  let rec go i lifted is nfs (h : i <= ds) :=
     match h' : i with
     | 0 => return lifted
     | n + 1 => do
       let ((decls, is), nfs) <- lowerTop1 decls[ds - i] ctors E.tyDecl |>.run is |>.run nfs
-      let globals := nfs.externNames.fold (fun s k _ => s.insert k) globals
-      let (_, {lifted := lifted',..}) <- ccDecls decls |>.run {is with globals} |>.run' nfs
-      go n (lifted ++ lifted') is nfs globals $ Nat.le_of_succ_le h
+      let (_, {lifted := lifted',..}) <- ccDecls decls |>.run is |>.run' nfs
+      go n (lifted ++ lifted') is nfs $ Nat.le_of_succ_le h
 
-  let lifted <- go ds #[] {} {} ({matchFailFVar} : FVSet) Nat.le.refl
+  let lifted <- go ds #[] {} {} Nat.le.refl
   liftEIO $ println! Std.ToFormat.format lifted |>.pretty (width := 80)
 end CC
 
@@ -110,17 +105,16 @@ def checkKOCI (s : String) : LowerM Unit := do
   let ds := decls.size
   let newtypes := newtypeCtors tyDecl
 
-  let rec go i lifted is nfs globals (h : i <= ds) :=
+  let rec go i lifted is nfs (h : i <= ds) :=
     match h' : i with
     | 0 => return lifted
     | n + 1 => do
       let ((decls, is), nfs) <- lowerTop1 decls[ds - i] ctors tyDecl |>.run is |>.run nfs
-      let globals := nfs.externNames.fold (fun s k _ => s.insert k) globals
-      let ((_, is@{lifted := lifted',..}), nfs) <- ccDecls decls |>.run {is with globals} |>.run nfs
+      let ((_, is@{lifted := lifted',..}), nfs) <- ccDecls decls |>.run is |>.run nfs
       let lifted' <- optimize1 newtypes lifted' |>.run' is |>.run' nfs
-      go n lifted' is nfs globals $ Nat.le_of_succ_le h
+      go n lifted' is nfs $ Nat.le_of_succ_le h
 
-  let lifted <- go ds #[] {} {} ({matchFailFVar} : FVSet) Nat.le.refl
+  let lifted <- go ds #[] {} {} Nat.le.refl
   liftEIO $ println! Std.ToFormat.format lifted |>.pretty (width := 80)
 end Opt
 end Incremental
