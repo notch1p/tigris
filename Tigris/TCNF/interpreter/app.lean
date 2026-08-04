@@ -50,7 +50,7 @@ def evaluate1 (s : String.Slice) : EvalM Unit := do
       else
         let v <- evalCode body {is with globaldecls, topvals} |>.adapt toString
         if let some ty := E.E[name]? then
-          liftEIO (println! template name "<fun>" ty)
+          liftEIO (println! template name v ty)
         return {is with topvals := topvals.insert fvarId v}
 
   modify (fun s => {s with is})

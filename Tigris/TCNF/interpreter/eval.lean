@@ -150,13 +150,15 @@ def check (s : String) : LowerM Unit := do
   let {decls, main} <- lowerModuleCCOpt fdecls ctors E.tyDecl
   let mut globaldecls := ∅
   let mut topvals := ∅
-  for d@{fvarId, arity, body, name, ty,..} in decls.push main do
+  for d@{fvarId, arity, body, name,..} in decls.push main do
     if arity > 0 then
-      liftEIO (println! template name "<fun>" $ E.E[name]?.getD $ .Forall [] [] ty)
+      if let some ty := E.E[name]? then
+        liftEIO (println! template name "<fun>" ty)
       globaldecls := globaldecls.insert fvarId d
     else
       let v <- evalCode body {globaldecls, topvals} |>.adapt toString
-      liftEIO (println! template name v $ E.E[name]?.getD $ .Forall [] [] ty)
+      if let some ty := E.E[name]? then
+        liftEIO (println! template name v ty)
       topvals := topvals.insert fvarId v
 
 def checkFile (s : System.FilePath) : IO Unit := do
