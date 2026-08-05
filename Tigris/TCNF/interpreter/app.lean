@@ -12,6 +12,7 @@ structure EvalState where
   ctors    : HashMap String Nat := ∅
 
 abbrev EvalM := StateRefT EvalState LowerM
+instance : MonadLift IO EvalM := ⟨liftM ∘ liftEIO⟩
 
 def evaluate1 (s : String.Slice) : EvalM Unit := do
   let {PE, E, is, nfs, ins, ctors, optDecls} <- get
@@ -20,7 +21,7 @@ def evaluate1 (s : String.Slice) : EvalM Unit := do
                       |>.mapError toString |> EIO.ofExcept
   let (decls, L, ctors) <- inferToplevelF te ctors |>.mapError toString |> EIO.ofExcept
   modify fun s => {s with E, PE, ctors}
-  liftEIO (IO.print L)
+  IO.print L
   let ds := decls.size
 
   -- not very effcient since we can derive it when typechecking too lazy to refactor
@@ -45,12 +46,12 @@ def evaluate1 (s : String.Slice) : EvalM Unit := do
     fun is@{globaldecls,topvals,..} d@{fvarId, arity, body, name,..} => do
       if arity > 0 then
         if let some ty := E.E[name]? then
-          liftEIO (println! template name "<fun>" ty)
+          println! template name "<fun>" ty
         return {is with globaldecls := globaldecls.insert fvarId d}
       else
         let v <- evalCode body {is with globaldecls, topvals} |>.adapt toString
         if let some ty := E.E[name]? then
-          liftEIO (println! template name v ty)
+          println! template name v ty
         return {is with topvals := topvals.insert fvarId v}
 
   modify (fun s => {s with is})

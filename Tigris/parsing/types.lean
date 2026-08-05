@@ -300,7 +300,7 @@ structure PEnv where
   recordFields : Std.HashMap Symbol (Array Symbol) := {}
   indentStack  : List Nat := [0]
   lastEol : Nat := 0
-
+instance : EmptyCollection PEnv := ⟨{}, {}, {}, {}, {}, {}, {}, 0⟩
 --abbrev TParser := SimpleParserT Substring.Raw Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT String.Slice Char
                   $ StateRefT (PEnv × String) (ST σ)

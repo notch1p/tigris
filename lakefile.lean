@@ -94,7 +94,7 @@ extern_lib libleanffi pkg := do
   buildStaticLib (pkg.staticLibDir / name) #[ffiO]
 
 /- @[default_target] -/
-lean_exe "tigris" where  -- Deprecated
+lean_exe "tigris-old" where  -- Deprecated
   root := `oldMain
 lean_exe "tigrisc" where
   root := `Tigrisc

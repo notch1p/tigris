@@ -127,6 +127,7 @@ structure PPSpec (header : List Text.SString) where
   align    : Align header
   width    : OverrideWidth header := 0
   header?  : Bool := true
+  divider? : Bool := true
   margin   : Nat := 3
   padsBy   : PadsBy := .perCol
 
@@ -219,7 +220,8 @@ def tabulate (name : String) (spec : PPSpec header) (t : TableOf header) : Strin
   let bd := t.1.foldr (init := "") (padRow mw spec · ++ "\n" ++ ·)
   if spec.header? then
     let (hd, totl) := padHeader mw spec
-    s!"{name}\n{hd}\n{pad totl '='}\n{bd}"
+    if spec.divider? then s!"{name}\n{hd}\n{pad totl '='}\n{bd}"
+    else s!"{name}\n{hd}\n{bd}"
   else bd
 
 end PrettyPrint

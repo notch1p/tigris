@@ -6,6 +6,7 @@ private def checkInterrupt : EIO TypingError Unit :=
   IO.checkCanceled >>= fun
   | true => throw .Interrupted
   | false => return ()
+local macro "withInterrupt!" x:doSeq : term => ``(checkInterrupt *> do $x)
 
 def asConst : TConst -> Value
   | .PUnit   => .unit
@@ -18,24 +19,24 @@ def lookup (x : FVarId) : EvaluatorM Value := do
   match locals[x]? <|> topvals[x]? with
   | some v => return v
   | none   =>
-    let some {fvarId,..} := globaldecls[x]? | impossible! "unbound fvar #{x}"
+    let some {fvarId,..} := globaldecls[x]? | impossibleF! "unbound fvar #{x}"
     return .clos fvarId #[]
 
 def evalAtom : Atom -> EvaluatorM Value
   | .lit k  => return asConst k
-  | .erased => impossible! "unreachable code is reached"
+  | .erased => impossibleF! "unreachable code is reached"
   | .fvar x => lookup x
 
 def projPair (s : FVarId) : Nat -> Value -> EvaluatorM Value
   | 0, .pair p _ => return p
   | 1, .pair _ q => return q
-  | i, v => impossible! "invalid pair projection #{i} for #{s} ==> {v}"
+  | i, v => impossibleF! "invalid pair projection #{i} for #{s} ==> {v}"
 
 def projConstr (s : FVarId) : Nat -> Value -> EvaluatorM Value
   | i, v@(.constr t as) =>
     if h : i < as.size then return as[i]
-    else impossible! "invalid variant projection #{i} for #{s} ==> {v}"
-  | i, v => impossible! "invalid variant projection #{i} for #{s} ==> {v}"
+    else impossibleF! "invalid variant projection #{i} for #{s} ==> {v}"
+  | i, v => impossibleF! "invalid variant projection #{i} for #{s} ==> {v}"
 
 def evalPrimBinop (op : PrimOp) (args : Array Value) : EvaluatorM Value :=
   match op, h : args.size with
@@ -46,7 +47,16 @@ def evalPrimBinop (op : PrimOp) (args : Array Value) : EvaluatorM Value :=
   | .eqInt , _ + 2 => applyBinOp! BEq.beq args expectInt  Value.bool
   | .eqBool, _ + 2 => applyBinOp! BEq.beq args expectBool Value.bool
   | .eqStr , _ + 2 => applyBinOp! BEq.beq args expectStr  Value.bool
-  | op, _          => impossible! "cannot apply {repr op} to {args}"
+  | op, _          => impossibleF! "cannot apply {repr op} to {args}"
+
+def evalExtern (f : String) (args : Array Value) : EvaluatorM Value := do
+  match externTab.findD f 0, h : args.size with
+  | 0, n     => impossibleF! "undefined foreign function {f}/{n}"
+  | 1, _ + 1 => println! format args[0]; return .unit
+  | 2, _ + 1 => return format args[0] |>.pretty |> .str
+  | 3, _ + 2 => applyBinOp! String.append args expectStr Value.str
+  | 4, _ + 1 => IO.print "read> " *> IO.getStdin >>= liftM ∘ IO.FS.Stream.getLine >>= readValue
+  | _, n     => impossibleF! "no implementation available for foreign function {f}/{n}"
 
 mutual
 partial def evalLetValue : LetValue .postCC -> EvaluatorM Value
@@ -55,23 +65,23 @@ partial def evalLetValue : LetValue .postCC -> EvaluatorM Value
   | .proj i s => projPair s i =<< lookup s
   | .field _ i s => projConstr s i =<< lookup s
   | .ctor t as => .constr t <$> as.mapM evalAtom
-  | .prim op args => evalPrimBinop op =<< args.mapM evalAtom
+  | .prim op args  => evalPrimBinop op =<< args.mapM evalAtom
+  | .extern f args => evalExtern f =<< args.mapM evalAtom
   | .isCtor s t a =>
     lookup s <&> fun
                  | .constr t' as => .bool $ t' == t && as.size == a
                  | _ => .bool $ false
   | .mkClos c env => .clos c <$> env.mapM evalAtom
-  | .extern .. => return .unit
-  | .app 0 as | .pap 0 as => impossible! "All branches failed to match against {format as}"
+  | .app 0 as | .pap 0 as => impossibleF! "All branches failed to match against {format as}"
   | .app f as | .pap f as => do
     let as <- as.mapM evalAtom
     let f <- lookup f
     applyN f as.toSubarray
 
-partial def applyN (f : Value) (as : Subarray Value) : EvaluatorM Value := do
+partial def applyN (f : Value) (as : Subarray Value) : EvaluatorM Value := withInterrupt!
   let s@{globaldecls,locals,..} <- read
-  let (.clos f env) := f | impossible! "callee #{f} is not a code pointer"
-  let some {params, body,..} := globaldecls[f]? | impossible! "undefined function #{f}"
+  let (.clos f env) := f | impossibleF! "callee #{f} is not a code pointer"
+  let some {params, body,..} := globaldecls[f]? | impossibleF! "undefined function #{f}"
   let arity := params.size - env.size
   let ass := as.size
   if arity == ass then
@@ -92,7 +102,7 @@ partial def jump (f : FVarId) (as : Array Value) : EvaluatorM Value := fun s => 
 
 partial def evalCode (c : Code .postCC) : EvaluatorM Value :=
   match c with
-  | .let {fvarId, value,..} b => do
+  | .let {fvarId, value,..} b => withInterrupt!
     let v <- evalLetValue value
     withReader
       (fun s@{locals,..} => {s with locals := locals.insert fvarId v})
@@ -105,7 +115,7 @@ partial def evalCode (c : Code .postCC) : EvaluatorM Value :=
       (evalCode k)
   | .jmp jp args => jump jp =<< args.mapM evalAtom
   | .ret a => evalAtom a
-  | .unreach _ => impossible! "unreachable code has been reached"
+  | .unreach _ => impossibleF! "unreachable code has been reached"
 
 partial def evalCases (d : FVarId) (alts : Array $ Alt .postCC) : EvaluatorM Value := do
   match <- lookup d with
@@ -125,13 +135,13 @@ partial def evalCases (d : FVarId) (alts : Array $ Alt .postCC) : EvaluatorM Val
       let s@{locals,..} <- read
       let locals := Array.foldl2 (fun acc a {fvarId,..} => acc.insert fvarId a) locals as ps
       evalCode k {s with locals}
-    | _ => impossible! "Can't match against {d} ==> {t}"
-  | v => impossible! "Discriminant {v} is neither variant nor constant"
+    | _ => impossibleF! "Can't match against {d} ==> {t}"
+  | v => impossibleF! "Discriminant {v} is neither variant nor constant"
 where
   goConst : Option (Alt .postCC) -> EvaluatorM Value
   | some $ .default k
   | some $ .const _ k => evalCode k
-  | _ => impossible! "Can't match against {d}"
+  | _ => impossibleF! "Can't match against {d}"
 end
 
 open Format (fill group pretty nestD)
