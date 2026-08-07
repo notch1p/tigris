@@ -86,14 +86,14 @@ def registerTy (name : String) (kind : Kind) (mt : Bool) (flag := true) : TParse
           else (true, orig)
         else
           let err := Logging.error
-            "types are dynamically scoped: for this reason they may not be redefined.\n"
+            s!"types are dynamically scoped: for this reason {name} may not be redefined.\n"
           (false, st, l ++ err)
       | .error _ =>
         let err := Logging.error $
           if mt then
-            s!"mutual inductive type {Logging.magenta name} kind mismatch,\n\
+            s!"mutual inductive type {name} kind mismatch,\n\
               expected {kind'} but received {kind}\n"
-          else s!"type {Logging.magenta name} kind mismatch: {kind'} vs {kind}\n"
+          else s!"type {name} kind mismatch: {kind'} vs {kind}\n"
         (false, st, l ++ err)
   then return ()
   else throwUnexpected

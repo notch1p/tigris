@@ -35,7 +35,7 @@ let optionMap : ∀ α β, (β → α) → Option β → Option α =
 
 let listMap : ∀ α β, (β → α) → List β → List α =
   (Λ α β.
-     fun listMap : (β → α) → List β → List α =>
+     rec fun listMap : (β → α) → List β → List α =>
        fun f : β → α =>
          fun ?x₀ : List β =>
            match ?x₀ with

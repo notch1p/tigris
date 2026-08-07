@@ -10,7 +10,9 @@ let optBind x f =
   | None => None
   | Some x => f x
 
-instance Monad Option := {pure = optPure, bind = optBind}
+instance Monad Option := {pure = Some, bind
+                                       | None, f => None
+                                       | Some x, f => f x}
 
 infixr 90 ">>=" => bind
 infixr 90 ">>='" => optBind

@@ -53,11 +53,15 @@
     (%apply-slow c (list a1))))
 
 ; ftype
-(declaim (ftype (function (integer integer integer) |Option|) |fn-37|))
+(declaim (ftype (function (t) |Option|) |Some-44|))
 
-(declaim (ftype (function (integer integer) |Option|) |fn-36|))
+(declaim (ftype (function (|Option| clos) |Option|) |fn-45|))
 
-(declaim (ftype (function (integer) |Option|) |fn-35|))
+(declaim (ftype (function (integer integer integer) |Option|) |fn-48|))
+
+(declaim (ftype (function (integer integer) |Option|) |fn-47|))
+
+(declaim (ftype (function (integer) |Option|) |fn-46|))
 
 (declaim (ftype (function (t) |Option|) |optPure-2|))
 
@@ -68,24 +72,35 @@
 (declaim (type |Option| |main-5|))
 
 ; body
-(defun |fn-37| (|x-18| |y-22| |z-27|)
-  (let* ((|π-29| (%int+ |x-18| |y-22|))
-         (|π-30| (%int+ |π-29| |z-27|)))
-     (|optPure-2| |π-30|)))
+(defun |Some-44| (|η-14|)
+  (|mk/Some| |η-14|))
 
-(defun |fn-36| (|x-18| |y-22|)
-  (let* ((|app-25| (|optPure-2| 30))
-         (|fn-26| (%clos (lambda (|g0|)
-               (|fn-37| |x-18| |y-22| |g0|))
-             1)))
-     (|optBind-3| |app-25| |fn-26|)))
+(defun |fn-45| (|?x₀-17| |?x₁-18|)
+  (case (|Option/tag| |?x₀-17|)
+    (0
+      (|mk/None|))
+    (1
+      (let* ((|f-20| (|Some/f0| |?x₀-17|))) (gapply1 |?x₁-18| |f-20|)))
+    (t (error "unreachable"))))
 
-(defun |fn-35| (|x-18|)
-  (let* ((|con-20| (|mk/None|))
-         (|fn-21| (%clos (lambda (|g1|)
-               (|fn-36| |x-18| |g1|))
+(defun |fn-48| (|x-27| |y-31| |z-36|)
+  (let* ((|π-38| (%int+ |x-27| |y-31|))
+         (|π-39| (%int+ |π-38| |z-36|)))
+     (|Some-44| |π-39|)))
+
+(defun |fn-47| (|x-27| |y-31|)
+  (let* ((|app-34| (|Some-44| 30))
+         (|fn-35| (%clos (lambda (|g0|)
+               (|fn-48| |x-27| |y-31| |g0|))
              1)))
-     (|optBind-3| |con-20| |fn-21|)))
+     (|fn-45| |app-34| |fn-35|)))
+
+(defun |fn-46| (|x-27|)
+  (let* ((|con-29| (|mk/None|))
+         (|fn-30| (%clos (lambda (|g1|)
+               (|fn-47| |x-27| |g1|))
+             1)))
+     (|fn-45| |con-29| |fn-30|)))
 
 (defun |optPure-2| (|x-6|)
   (|mk/Some| |x-6|))
@@ -99,10 +114,11 @@
     (t (error "unreachable"))))
 
 (defparameter |i_Monad_0-4|
-  (|mk/Monad| (%clos (function |optPure-2|) 1)
-    (%clos (function |optBind-3|) 2)))
+  (let* ((|Some-13| (%clos (function |Some-44|) 1))
+         (|fn-16| (%clos (function |fn-45|) 2)))
+     (|mk/Monad| |Some-13| |fn-16|)))
 
 (defparameter |main-5|
-  (let* ((|app-16| (|optPure-2| 20))
-         (|fn-17| (%clos (function |fn-35|) 1)))
-     (|optBind-3| |app-16| |fn-17|)))
+  (let* ((|app-25| (|Some-44| 20))
+         (|fn-26| (%clos (function |fn-46|) 1)))
+     (|fn-45| |app-25| |fn-26|)))

@@ -1,0 +1,15 @@
+type Ref a
+type List a = Nil | Cons a (List a)
+
+infixr 90 "::" => Cons
+
+extern mkref "quote"  : forall a, a -> Ref a
+extern deref "eval"   : forall a, Ref a -> a
+extern setf  "set"    : forall a, Ref a -> a -> a
+
+let ref = mkref Nil
+
+let main = 
+  let _        = setf ref $ true :: Nil
+  let (x :: _) = deref ref
+  x + 1 -- fails since x is actually bool.

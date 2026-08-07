@@ -239,8 +239,8 @@ def gensym (n : Nat) : String :=
   else s.toString ++ q.toSubscriptString
 def strLE x y := decide $ String.le x y
 partial def normalize : Scheme -> Scheme
-  | .Forall _ ps body =>
-    let ts := fv ps ∪ fv body |>.toList
+  | .Forall tvs ps body =>
+    let ts := tvs
     let ord := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
     let rename a := ord.lookup a |>.getD a
     let rec normtype (blocked : Std.HashSet TV)
@@ -264,8 +264,8 @@ partial def normalize : Scheme -> Scheme
   .Forall (ord.map Prod.snd) ps (normtype ∅ body)
 
 partial def normalizeWithRen : Scheme -> (Scheme × Subst)
-  | .Forall _ ps body =>
-    let ts := fv ps ∪ fv body |>.toList
+  | .Forall tvs ps body =>
+    let ts := tvs
     let ord : List (TV × TV) := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
     let rename a := ord.lookup a |>.getD a
     let rec normtype (blocked : Std.HashSet TV)
