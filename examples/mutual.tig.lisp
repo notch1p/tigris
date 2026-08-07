@@ -57,32 +57,32 @@
 
 (declaim (ftype (function (|Tree|) integer) |countTree-3|))
 
-(declaim (type integer |main-4|))
+(declaim (type integer |main-15|))
 
 ; body
-(defun |countForest-2| (|?x₀-5|)
-  (case (|Forest/tag| |?x₀-5|)
+(defun |countForest-2| (|?x₀-4|)
+  (case (|Forest/tag| |?x₀-4|)
     (0
       0)
     (1
-      (let* ((|f-6| (|Cons/f0| |?x₀-5|))
-             (|f-7| (|Cons/f1| |?x₀-5|)))
-         (let* ((|app-8| (|countTree-3| |f-6|))
-                (|app-9| (|countForest-2| |f-7|)))
-            (%int+ |app-8| |app-9|))))
+      (let* ((|f-5| (|Cons/f0| |?x₀-4|))
+             (|f-6| (|Cons/f1| |?x₀-4|)))
+         (let* ((|app-7| (|countTree-3| |f-5|))
+                (|app-8| (|countForest-2| |f-6|)))
+            (%int+ |app-7| |app-8|))))
     (t (error "unreachable"))))
 
-(defun |countTree-3| (|?x₀-11|)
-  (case (|Tree/tag| |?x₀-11|)
+(defun |countTree-3| (|?x₀-10|)
+  (case (|Tree/tag| |?x₀-10|)
     (0
       0)
     (1
-      (let* ((|f-12| (|Node/f0| |?x₀-11|))
-             (|f-13| (|Node/f1| |?x₀-11|)))
-         (let* ((|app-14| (|countForest-2| |f-13|))) (%int+ 1 |app-14|))))
+      (let* ((|f-11| (|Node/f0| |?x₀-10|))
+             (|f-12| (|Node/f1| |?x₀-10|)))
+         (let* ((|app-13| (|countForest-2| |f-12|))) (%int+ 1 |app-13|))))
     (t (error "unreachable"))))
 
-(defparameter |main-4|
+(defparameter |main-15|
   (let* ((|con-16| (|mk/Nil|))
          (|con-17| (|mk/Node| 5 |con-16|))
          (|con-18| (|mk/Nil|))

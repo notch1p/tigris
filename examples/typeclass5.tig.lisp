@@ -67,54 +67,54 @@
 
 (declaim (ftype (function (integer) integer) |fn-41|))
 
-(declaim (ftype (function (clos |List|) |List|) |listMap-3|))
+(declaim (ftype (function (clos |List|) |List|) |listMap-11|))
 
-(declaim (type cons |main-6|))
+(declaim (type cons |main-25|))
 
 ; body
-(defun |fn-40| (|f-8| |?x₀-9|)
-  (case (|Option/tag| |?x₀-9|)
+(defun |fn-40| (|f-4| |?x₀-5|)
+  (case (|Option/tag| |?x₀-5|)
     (0
       (|mk/None|))
     (1
-      (let* ((|f-11| (|Some/f0| |?x₀-9|)))
-         (let* ((|app-12| (gapply1 |f-8| |f-11|))) (|mk/Some| |app-12|))))
+      (let* ((|f-7| (|Some/f0| |?x₀-5|)))
+         (let* ((|app-8| (gapply1 |f-4| |f-7|))) (|mk/Some| |app-8|))))
     (t (error "unreachable"))))
 
 (defun |fn-41| (|?x₀-28|)
   (%int+ 2 |?x₀-28|))
 
-(defun |listMap-3| (|f-15| |?x₀-16|)
-  (case (|List/tag| |?x₀-16|)
+(defun |listMap-11| (|f-12| |?x₀-13|)
+  (case (|List/tag| |?x₀-13|)
     (0
       (|mk/Nil|))
     (1
-      (let* ((|f-18| (|Cons/f0| |?x₀-16|))
-             (|f-19| (|Cons/f1| |?x₀-16|)))
-         (let* ((|app-20| (gapply1 |f-15| |f-18|))
-                (|app-21| (|listMap-3| |f-15| |f-19|)))
-            (|mk/Cons| |app-20| |app-21|))))
+      (let* ((|f-15| (|Cons/f0| |?x₀-13|))
+             (|f-16| (|Cons/f1| |?x₀-13|)))
+         (let* ((|app-17| (gapply1 |f-12| |f-15|))
+                (|app-18| (|listMap-11| |f-12| |f-16|)))
+            (|mk/Cons| |app-17| |app-18|))))
     (t (error "unreachable"))))
 
-(defun |const-5| (|x-24| |_-25|)
-  |x-24|)
+(defun |const-22| (|x-23| |_-24|)
+  |x-23|)
 
 (defparameter |i_Functor_0-2|
   (%clos (function |fn-40|) 2))
 
-(defparameter |i_Functor_1-4|
-  (%clos (function |listMap-3|) 2))
+(defparameter |i_Functor_1-20|
+  (%clos (function |listMap-11|) 2))
 
-(defparameter |main-6|
+(defparameter |main-25|
   (let* ((|fn-27| (%clos (function |fn-41|) 1))
          (|con-30| (|mk/Some| 1))
          (|app-31| (|fn-40| |fn-27| |con-30|))
          (|app-33| (%clos (lambda (|g0|)
-               (|const-5| t |g0|))
+               (|const-22| t |g0|))
              1))
          (|con-34| (|mk/Nil|))
          (|con-35| (|mk/Cons| 3 |con-34|))
          (|con-36| (|mk/Cons| 2 |con-35|))
          (|con-37| (|mk/Cons| 1 |con-36|))
-         (|app-38| (gapply2 |i_Functor_1-4| |app-33| |con-37|)))
+         (|app-38| (gapply2 |i_Functor_1-20| |app-33| |con-37|)))
      (cons |app-31| |app-38|)))

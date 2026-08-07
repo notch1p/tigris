@@ -26,48 +26,48 @@
 
 (declaim (ftype (function (t) null) |println-2|))
 
-(declaim (ftype (function (string string) string) |append-3|))
+(declaim (ftype (function (string string) string) |append-5|))
 
-(declaim (ftype (function (t) string) |toString-4|))
+(declaim (ftype (function (t) string) |toString-9|))
 
-(declaim (ftype (function (null) t) |read-5|))
+(declaim (ftype (function (null) t) |read-12|))
 
-(declaim (ftype (function (integer) integer) |fact-6|))
+(declaim (ftype (function (integer) integer) |fact-15|))
 
-(declaim (type integer |main-7|))
+(declaim (type integer |main-31|))
 
 ; body
-(defun |go-35| (|n-17| |acc-19| |?x₀-20|)
-  (case |?x₀-20|
+(defun |go-35| (|n-16| |acc-18| |?x₀-19|)
+  (case |?x₀-19|
     (0
-      |acc-19|)
-    (t (let* ((|π-21| (%int* |acc-19| |?x₀-20|))
-             (|π-22| (%int- |n-17| |?x₀-20|))
-             (|app-23| (|toString-4| |π-22|))
-             (|app-24| (|append-3| "fact " |app-23|))
-             (|app-25| (|append-3| |app-24| " = "))
-             (|app-26| (|toString-4| |π-21|))
-             (|app-27| (|append-3| |app-25| |app-26|))
-             (|app-28| (|println-2| |app-27|))
-             (|π-29| (%int- |?x₀-20| 1)))
-         (|go-35| |n-17| |π-21| |π-29|)))))
+      |acc-18|)
+    (t (let* ((|π-20| (%int* |acc-18| |?x₀-19|))
+             (|π-21| (%int- |n-16| |?x₀-19|))
+             (|app-22| (|toString-9| |π-21|))
+             (|app-23| (|append-5| "fact " |app-22|))
+             (|app-24| (|append-5| |app-23| " = "))
+             (|app-25| (|toString-9| |π-20|))
+             (|app-26| (|append-5| |app-24| |app-25|))
+             (|app-27| (|println-2| |app-26|))
+             (|π-28| (%int- |?x₀-19| 1)))
+         (|go-35| |n-16| |π-20| |π-28|)))))
 
-(defun |println-2| (|η-8|)
-  (%println |η-8|))
+(defun |println-2| (|η-3|)
+  (%println |η-3|))
 
-(defun |append-3| (|η-10| |η-11|)
-  (%string-append |η-10| |η-11|))
+(defun |append-5| (|η-6| |η-7|)
+  (%string-append |η-6| |η-7|))
 
-(defun |toString-4| (|η-13|)
-  (%to-string |η-13|))
+(defun |toString-9| (|η-10|)
+  (%to-string |η-10|))
 
-(defun |read-5| (|η-15|)
-  (%read |η-15|))
+(defun |read-12| (|η-13|)
+  (%read |η-13|))
 
-(defun |fact-6| (|n-17|)
-  (|go-35| |n-17| 1 |n-17|))
+(defun |fact-15| (|n-16|)
+  (|go-35| |n-16| 1 |n-16|))
 
-(defparameter |main-7|
+(defparameter |main-31|
   (let* ((|app-32| (|println-2| "Enter a number:"))
-         (|app-33| (|read-5| nil)))
-     (|fact-6| |app-33|)))
+         (|app-33| (|read-12| nil)))
+     (|fact-15| |app-33|)))

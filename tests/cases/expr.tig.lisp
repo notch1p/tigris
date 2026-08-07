@@ -1,17 +1,17 @@
 ;; == TCNF CC & Optimize'd ==
 
-let rec eval#2/1 (?x₀#4 : Expr Int) : Expr Int → Int =
-  case #4 of
-    Add⟦f#5 : Expr Int, f#6 : Expr Int⟧ =>
-      let app#7 : Int = #2(#5);
-      let app#8 : Int = #2(#6); let π#9 : Int = ADD(#7, #8); ret #9;
-    Mul⟦f#10 : Expr Int, f#11 : Expr Int⟧ =>
-      let app#12 : Int = #2(#10);
-      let app#13 : Int = #2(#11); let π#14 : Int = MUL(#12, #13); ret #14;
-    Atom⟦f#15 : Int⟧ => ret #15;
+let rec eval#2/1 (?x₀#3 : Expr Int) : Expr Int → Int =
+  case #3 of
+    Add⟦f#4 : Expr Int, f#5 : Expr Int⟧ =>
+      let app#6 : Int = #2(#4);
+      let app#7 : Int = #2(#5); let π#8 : Int = ADD(#6, #7); ret #8;
+    Mul⟦f#9 : Expr Int, f#10 : Expr Int⟧ =>
+      let app#11 : Int = #2(#9);
+      let app#12 : Int = #2(#10); let π#13 : Int = MUL(#11, #12); ret #13;
+    Atom⟦f#14 : Int⟧ => ret #14;
     _ => (⊥ : Int)
 
-let main#3/0 : Int =
+let main#15/0 : Int =
   let con#16 : Expr Int = Atom⟦20⟧;
   let con#17 : Expr Int = Atom⟦10⟧;
   let con#18 : Expr Int = Atom⟦3⟧;
@@ -72,28 +72,28 @@ let main#3/0 : Int =
 ; ftype
 (declaim (ftype (function (|Expr|) integer) |eval-2|))
 
-(declaim (type integer |main-3|))
+(declaim (type integer |main-15|))
 
 ; body
-(defun |eval-2| (|?x₀-4|)
-  (case (|Expr/tag| |?x₀-4|)
+(defun |eval-2| (|?x₀-3|)
+  (case (|Expr/tag| |?x₀-3|)
     (1
-      (let* ((|f-5| (|Add/f0| |?x₀-4|))
-             (|f-6| (|Add/f1| |?x₀-4|)))
-         (let* ((|app-7| (|eval-2| |f-5|))
-                (|app-8| (|eval-2| |f-6|)))
-            (%int+ |app-7| |app-8|))))
+      (let* ((|f-4| (|Add/f0| |?x₀-3|))
+             (|f-5| (|Add/f1| |?x₀-3|)))
+         (let* ((|app-6| (|eval-2| |f-4|))
+                (|app-7| (|eval-2| |f-5|)))
+            (%int+ |app-6| |app-7|))))
     (2
-      (let* ((|f-10| (|Mul/f0| |?x₀-4|))
-             (|f-11| (|Mul/f1| |?x₀-4|)))
-         (let* ((|app-12| (|eval-2| |f-10|))
-                (|app-13| (|eval-2| |f-11|)))
-            (%int* |app-12| |app-13|))))
+      (let* ((|f-9| (|Mul/f0| |?x₀-3|))
+             (|f-10| (|Mul/f1| |?x₀-3|)))
+         (let* ((|app-11| (|eval-2| |f-9|))
+                (|app-12| (|eval-2| |f-10|)))
+            (%int* |app-11| |app-12|))))
     (0
-      (let* ((|f-15| (|Atom/f0| |?x₀-4|))) |f-15|))
+      (let* ((|f-14| (|Atom/f0| |?x₀-3|))) |f-14|))
     (t (error "unreachable"))))
 
-(defparameter |main-3|
+(defparameter |main-15|
   (let* ((|con-16| (|mk/Atom| 20))
          (|con-17| (|mk/Atom| 10))
          (|con-18| (|mk/Atom| 3))

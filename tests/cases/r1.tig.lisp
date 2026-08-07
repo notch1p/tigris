@@ -1,17 +1,17 @@
 ;; == TCNF CC & Optimize'd ==
 
-let add#2/2 (x#6 : Int, y#7 : Int) : Int → Int → Int =
-  let π#8 : Int = ADD(#6, #7); ret #8
+let add#2/2 (x#3 : Int, y#4 : Int) : Int → Int → Int =
+  let π#5 : Int = ADD(#3, #4); ret #5
 
-let inc#3/0 : Int → Int = let app#9 : Int → Int = #2ᵖ(1); ret #9
+let inc#6/0 : Int → Int = let app#7 : Int → Int = #2ᵖ(1); ret #7
 
-let applyTwice#4/2 (f#10 : α → α, x#11 : α) : (α → α) → α → α =
-  let app#12 : α = #10(#11); let app#13 : α = #10(#12); ret #13
+let applyTwice#8/2 (f#9 : α → α, x#10 : α) : (α → α) → α → α =
+  let app#11 : α = #9(#10); let app#12 : α = #9(#11); ret #12
 
-let main#5/0 : Int × Int × Int =
+let main#13/0 : Int × Int × Int =
   let app#15 : Int → Int = #2(1, 41);
   let app#16 : Int = #2(10, 5);
-  let app#17 : Int = #4(#3, 0);
+  let app#17 : Int = #8(#6, 0);
   let p#18 : Int × Int = ⟨#16, #17⟩;
   let p#19 : Int × Int × Int = ⟨#15, #18⟩; ret #19
 ;; == Runtime ==
@@ -51,27 +51,27 @@ let main#5/0 : Int × Int × Int =
 ; ftype
 (declaim (ftype (function (integer integer) integer) |add-2|))
 
-(declaim (type clos |inc-3|))
+(declaim (type clos |inc-6|))
 
-(declaim (ftype (function (clos t) t) |applyTwice-4|))
+(declaim (ftype (function (clos t) t) |applyTwice-8|))
 
-(declaim (type cons |main-5|))
+(declaim (type cons |main-13|))
 
 ; body
-(defun |add-2| (|x-6| |y-7|)
-  (%int+ |x-6| |y-7|))
+(defun |add-2| (|x-3| |y-4|)
+  (%int+ |x-3| |y-4|))
 
-(defun |applyTwice-4| (|f-10| |x-11|)
-  (let* ((|app-12| (gapply1 |f-10| |x-11|))) (gapply1 |f-10| |app-12|)))
+(defun |applyTwice-8| (|f-9| |x-10|)
+  (let* ((|app-11| (gapply1 |f-9| |x-10|))) (gapply1 |f-9| |app-11|)))
 
-(defparameter |inc-3|
+(defparameter |inc-6|
   (%clos (lambda (|g0|)
       (|add-2| 1 |g0|))
     1))
 
-(defparameter |main-5|
+(defparameter |main-13|
   (let* ((|app-15| (|add-2| 1 41))
          (|app-16| (|add-2| 10 5))
-         (|app-17| (|applyTwice-4| |inc-3| 0))
+         (|app-17| (|applyTwice-8| |inc-6| 0))
          (|p-18| (cons |app-16| |app-17|)))
      (cons |app-15| |p-18|)))

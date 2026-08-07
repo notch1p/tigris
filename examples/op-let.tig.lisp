@@ -54,45 +54,45 @@
 ; ftype
 (declaim (ftype (function (|List| |List|) integer) |«<+>»-2|))
 
-(declaim (ftype (function (|Option| |Option|) |Option|) |«<*>»-3|))
+(declaim (ftype (function (|Option| |Option|) |Option|) |«<*>»-12|))
 
-(declaim (type cons |main-4|))
+(declaim (type cons |main-21|))
 
 ; body
-(defun |«<+>»-2| (|xs-5| |ys-6|)
-  (case (|List/tag| |xs-5|)
+(defun |«<+>»-2| (|xs-3| |ys-4|)
+  (case (|List/tag| |xs-3|)
     (0
-      (case (|List/tag| |ys-6|)
+      (case (|List/tag| |ys-4|)
         (0
           0)
         (t 0)))
     (1
-      (let* ((|f-7| (|Cons/f0| |xs-5|))
-             (|f-8| (|Cons/f1| |xs-5|)))
-         (case (|List/tag| |ys-6|)
+      (let* ((|f-5| (|Cons/f0| |xs-3|))
+             (|f-6| (|Cons/f1| |xs-3|)))
+         (case (|List/tag| |ys-4|)
            (1
-             (let* ((|f-9| (|Cons/f0| |ys-6|))
-                    (|f-10| (|Cons/f1| |ys-6|)))
-                (let* ((|π-11| (%int+ |f-7| |f-9|))
-                       (|app-12| (|«<+>»-2| |f-8| |f-10|)))
-                   (%int+ |π-11| |app-12|))))
+             (let* ((|f-7| (|Cons/f0| |ys-4|))
+                    (|f-8| (|Cons/f1| |ys-4|)))
+                (let* ((|π-9| (%int+ |f-5| |f-7|))
+                       (|app-10| (|«<+>»-2| |f-6| |f-8|)))
+                   (%int+ |π-9| |app-10|))))
            (t 0))))
     (t 0)))
 
-(defun |«<*>»-3| (|?x₀-14| |?x₁-15|)
-  (labels ((|fail-16| ()
-             (error 'match-failure :discr (list |?x₀-14| |?x₁-15|))))
-     (case (|Option/tag| |?x₀-14|)
+(defun |«<*>»-12| (|?x₀-13| |?x₁-14|)
+  (labels ((|fail-15| ()
+             (error 'match-failure :discr (list |?x₀-13| |?x₁-14|))))
+     (case (|Option/tag| |?x₀-13|)
        (1
-         (let* ((|f-18| (|Some/f0| |?x₀-14|)))
-            (case (|Option/tag| |?x₁-15|)
+         (let* ((|f-17| (|Some/f0| |?x₀-13|)))
+            (case (|Option/tag| |?x₁-14|)
               (1
-                (let* ((|f-19| (|Some/f0| |?x₁-15|)))
-                   (let* ((|π-20| (%int* |f-18| |f-19|))) (|mk/Some| |π-20|))))
-              (t (|fail-16|)))))
-       (t (|fail-16|)))))
+                (let* ((|f-18| (|Some/f0| |?x₁-14|)))
+                   (let* ((|π-19| (%int* |f-17| |f-18|))) (|mk/Some| |π-19|))))
+              (t (|fail-15|)))))
+       (t (|fail-15|)))))
 
-(defparameter |main-4|
+(defparameter |main-21|
   (let* ((|con-22| (|mk/Nil|))
          (|con-23| (|mk/Cons| 456 |con-22|))
          (|con-24| (|mk/Cons| 123 |con-23|))
@@ -102,7 +102,7 @@
          (|app-28| (|«<+>»-2| |con-24| |con-27|))
          (|con-29| (|mk/Some| 2))
          (|con-30| (|mk/Some| 3))
-         (|app-31| (|«<*>»-3| |con-29| |con-30|))
+         (|app-31| (|«<*>»-12| |con-29| |con-30|))
          (|con-32| (|mk/Some| 4))
-         (|app-33| (|«<*>»-3| |app-31| |con-32|)))
+         (|app-33| (|«<*>»-12| |app-31| |con-32|)))
      (cons |app-28| |app-33|)))

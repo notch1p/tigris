@@ -57,13 +57,13 @@
 
 (declaim (ftype (function (clos |List|) |List|) |map-2|))
 
-(declaim (ftype (function (clos t |List|) t) |foldl-3|))
+(declaim (ftype (function (clos t |List|) t) |foldl-11|))
 
-(declaim (ftype (function (|List|) t) |hd-4|))
+(declaim (ftype (function (|List|) t) |hd-19|))
 
-(declaim (ftype (function (|List|) |List|) |tl-5|))
+(declaim (ftype (function (|List|) |List|) |tl-25|))
 
-(declaim (type cons |main-6|))
+(declaim (type cons |main-31|))
 
 ; body
 (defun |fn-61| (|k-33| |_-34|)
@@ -78,48 +78,48 @@
 (defun |fn-64| (|?x₀-52| |?x₁-53|)
   (%int+ |?x₀-52| |?x₁-53|))
 
-(defun |map-2| (|f-7| |?x₀-8|)
-  (case (|List/tag| |?x₀-8|)
+(defun |map-2| (|f-3| |?x₀-4|)
+  (case (|List/tag| |?x₀-4|)
     (0
       (|mk/Nil|))
     (1
-      (let* ((|f-10| (|Cons/f0| |?x₀-8|))
-             (|f-11| (|Cons/f1| |?x₀-8|)))
-         (let* ((|app-12| (gapply1 |f-7| |f-10|))
-                (|app-13| (|map-2| |f-7| |f-11|)))
-            (|mk/Cons| |app-12| |app-13|))))
+      (let* ((|f-6| (|Cons/f0| |?x₀-4|))
+             (|f-7| (|Cons/f1| |?x₀-4|)))
+         (let* ((|app-8| (gapply1 |f-3| |f-6|))
+                (|app-9| (|map-2| |f-3| |f-7|)))
+            (|mk/Cons| |app-8| |app-9|))))
     (t (error "unreachable"))))
 
-(defun |foldl-3| (|f-15| |init-16| |?x₀-17|)
-  (case (|List/tag| |?x₀-17|)
+(defun |foldl-11| (|f-12| |init-13| |?x₀-14|)
+  (case (|List/tag| |?x₀-14|)
     (0
-      |init-16|)
+      |init-13|)
     (1
-      (let* ((|f-18| (|Cons/f0| |?x₀-17|))
-             (|f-19| (|Cons/f1| |?x₀-17|)))
-         (let* ((|app-20| (gapply2 |f-15| |init-16| |f-18|)))
-            (|foldl-3| |f-15| |app-20| |f-19|))))
+      (let* ((|f-15| (|Cons/f0| |?x₀-14|))
+             (|f-16| (|Cons/f1| |?x₀-14|)))
+         (let* ((|app-17| (gapply2 |f-12| |init-13| |f-15|)))
+            (|foldl-11| |f-12| |app-17| |f-16|))))
     (t (error "unreachable"))))
 
-(defun |hd-4| (|?x₀-22|)
-  (labels ((|fail-23| () (error 'match-failure :discr (list |?x₀-22|))))
-     (case (|List/tag| |?x₀-22|)
+(defun |hd-19| (|?x₀-20|)
+  (labels ((|fail-21| () (error 'match-failure :discr (list |?x₀-20|))))
+     (case (|List/tag| |?x₀-20|)
        (1
-         (let* ((|f-25| (|Cons/f0| |?x₀-22|))
-                (|f-26| (|Cons/f1| |?x₀-22|)))
-            |f-25|))
-       (t (|fail-23|)))))
+         (let* ((|f-23| (|Cons/f0| |?x₀-20|))
+                (|f-24| (|Cons/f1| |?x₀-20|)))
+            |f-23|))
+       (t (|fail-21|)))))
 
-(defun |tl-5| (|?x₀-27|)
-  (labels ((|fail-28| () (error 'match-failure :discr (list |?x₀-27|))))
-     (case (|List/tag| |?x₀-27|)
+(defun |tl-25| (|?x₀-26|)
+  (labels ((|fail-27| () (error 'match-failure :discr (list |?x₀-26|))))
+     (case (|List/tag| |?x₀-26|)
        (1
-         (let* ((|f-30| (|Cons/f0| |?x₀-27|))
-                (|f-31| (|Cons/f1| |?x₀-27|)))
-            |f-31|))
-       (t (|fail-28|)))))
+         (let* ((|f-29| (|Cons/f0| |?x₀-26|))
+                (|f-30| (|Cons/f1| |?x₀-26|)))
+            |f-30|))
+       (t (|fail-27|)))))
 
-(defparameter |main-6|
+(defparameter |main-31|
   (let* ((|con-35| (|mk/Nil|))
          (|con-36| (|mk/Cons| 4 |con-35|))
          (|con-37| (|mk/Cons| 3 |con-36|))
@@ -128,14 +128,14 @@
          (|fn-40| (%clos (function |fn-62|) 1))
          (|app-43| (|map-2| |fn-40| |con-39|))
          (|fn-44| (%clos (function |fn-63|) 2))
-         (|app-48| (|foldl-3| |fn-44| 0 |con-39|))
+         (|app-48| (|foldl-11| |fn-44| 0 |con-39|))
          (|app-49| (%clos (lambda (|g0|)
                (|fn-61| 10 |g0|))
              1))
          (|app-50| (|map-2| |app-49| |con-39|))
          (|fn-51| (%clos (function |fn-64|) 2))
-         (|app-55| (|foldl-3| |fn-51| 0 |app-43|))
-         (|app-56| (|hd-4| |app-43|))
+         (|app-55| (|foldl-11| |fn-51| 0 |app-43|))
+         (|app-56| (|hd-19| |app-43|))
          (|p-57| (cons |app-55| |app-56|))
          (|p-58| (cons |app-48| |p-57|))
          (|p-59| (cons |app-50| |p-58|)))

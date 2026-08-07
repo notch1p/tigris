@@ -50,16 +50,16 @@
 
 (declaim (ftype (function (integer) integer) |fn-28|))
 
-(declaim (type cons |main-3|))
+(declaim (type cons |main-12|))
 
 ; body
-(defun |fn-26| (|f-5| |?x₀-6|)
-  (case (|Sum/tag| |?x₀-6|)
+(defun |fn-26| (|f-4| |?x₀-5|)
+  (case (|Sum/tag| |?x₀-5|)
     (0
-      (let* ((|f-7| (|Inl/f0| |?x₀-6|))) (|mk/Inl| |f-7|)))
+      (let* ((|f-6| (|Inl/f0| |?x₀-5|))) (|mk/Inl| |f-6|)))
     (1
-      (let* ((|f-9| (|Inr/f0| |?x₀-6|)))
-         (let* ((|app-10| (gapply1 |f-5| |f-9|))) (|mk/Inr| |app-10|))))
+      (let* ((|f-8| (|Inr/f0| |?x₀-5|)))
+         (let* ((|app-9| (gapply1 |f-4| |f-8|))) (|mk/Inr| |app-9|))))
     (t (error "unreachable"))))
 
 (defun |fn-27| (|?x₀-17|)
@@ -71,7 +71,7 @@
 (defparameter |i_Functor_0-2|
   (%clos (function |fn-26|) 2))
 
-(defparameter |main-3|
+(defparameter |main-12|
   (let* ((|con-13| (|mk/Inl| 2))
          (|con-14| (|mk/Inr| 1))
          (|fn-16| (%clos (function |fn-27|) 1))

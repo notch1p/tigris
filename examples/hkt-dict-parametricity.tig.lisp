@@ -24,15 +24,15 @@ let main : ∀ α [Functor Sum α], Sum Int Int × Sum α Int =
 ;; == TCNF IR ==
 
 let i_Functor_0#2/0 : Functor (Sum a) =
-  let fn#4 (f#5 : a → b, ?x₀#6 : Sum a a) : (a → b) → Sum a a → Sum a b =
-    case #6 of
-      Inl⟦f#7 : a⟧ => let con#8 : Sum a b = Inl⟦#7⟧; ret #8;
-      Inr⟦f#9 : a⟧ =>
-        let app#10 : b = #5(#9); let con#11 : Sum a b = Inr⟦#10⟧; ret #11;
+  let fn#3 (f#4 : a → b, ?x₀#5 : Sum a a) : (a → b) → Sum a a → Sum a b =
+    case #5 of
+      Inl⟦f#6 : a⟧ => let con#7 : Sum a b = Inl⟦#6⟧; ret #7;
+      Inr⟦f#8 : a⟧ =>
+        let app#9 : b = #4(#8); let con#10 : Sum a b = Inr⟦#9⟧; ret #10;
       _ => (⊥ : Sum a b);
-  let con#12 : Functor (Sum a) = Functor⟦#4⟧; ret #12
+  let con#11 : Functor (Sum a) = Functor⟦#3⟧; ret #11
 
-let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
+let main#12/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
   let fn#13 (d_Functor_0#14 : Functor (Sum α))
     : Functor (Sum α) → Sum Int Int × Sum α Int =
     let con#15 : Sum Int α = Inl⟦2⟧;
@@ -49,11 +49,11 @@ let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
   ret #13
 ;; == TCNF CC & Optimize'd ==
 
-let fn#28/2 (f#5 : a → b, ?x₀#6 : Sum a a) : (a → b) → Sum a a → Sum a b =
-  case #6 of
-    Inl⟦f#7 : a⟧ => let con#8 : Sum a b = Inl⟦#7⟧; ret #8;
-    Inr⟦f#9 : a⟧ =>
-      let app#10 : b = #5(#9); let con#11 : Sum a b = Inr⟦#10⟧; ret #11;
+let fn#28/2 (f#4 : a → b, ?x₀#5 : Sum a a) : (a → b) → Sum a a → Sum a b =
+  case #5 of
+    Inl⟦f#6 : a⟧ => let con#7 : Sum a b = Inl⟦#6⟧; ret #7;
+    Inr⟦f#8 : a⟧ =>
+      let app#9 : b = #4(#8); let con#10 : Sum a b = Inr⟦#9⟧; ret #10;
     _ => (⊥ : Sum a b)
 
 let fn#30/1 (?x₀#19 : Int) : Int → Int = let π#20 : Int = MUL(2, #19); ret #20
@@ -71,9 +71,9 @@ let fn#29/1 (d_Functor_0#14 : Functor (Sum α))
   let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩; ret #27
 
 let i_Functor_0#2/0 : Functor (Sum a) =
-  let fn#4 : (a → b) → Sum a a → Sum a b = 𝐂⟦28⟧; ret #4
+  let fn#3 : (a → b) → Sum a a → Sum a b = 𝐂⟦28⟧; ret #3
 
-let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
+let main#12/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
   let fn#13 : Functor (Sum α) → Sum Int Int × Sum α Int = 𝐂⟦29⟧; ret #13
 ;; == Runtime ==
 (load "runtime.lisp")
@@ -139,16 +139,16 @@ let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
 
 (declaim (ftype (function (t) cons) |fn-29|))
 
-(declaim (type clos |main-3|))
+(declaim (type clos |main-12|))
 
 ; body
-(defun |fn-28| (|f-5| |?x₀-6|)
-  (case (|Sum/tag| |?x₀-6|)
+(defun |fn-28| (|f-4| |?x₀-5|)
+  (case (|Sum/tag| |?x₀-5|)
     (0
-      (let* ((|f-7| (|Inl/f0| |?x₀-6|))) (|mk/Inl| |f-7|)))
+      (let* ((|f-6| (|Inl/f0| |?x₀-5|))) (|mk/Inl| |f-6|)))
     (1
-      (let* ((|f-9| (|Inr/f0| |?x₀-6|)))
-         (let* ((|app-10| (gapply1 |f-5| |f-9|))) (|mk/Inr| |app-10|))))
+      (let* ((|f-8| (|Inr/f0| |?x₀-5|)))
+         (let* ((|app-9| (gapply1 |f-4| |f-8|))) (|mk/Inr| |app-9|))))
     (t (error "unreachable"))))
 
 (defun |fn-30| (|?x₀-19|)
@@ -169,5 +169,5 @@ let main#3/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
 (defparameter |i_Functor_0-2|
   (%clos (function |fn-28|) 2))
 
-(defparameter |main-3|
+(defparameter |main-12|
   (%clos (function |fn-29|) 1))

@@ -38,26 +38,26 @@
   (|f1| nil))
 
 ; ftype
-(declaim (type integer |main-6|))
+(declaim (type integer |main-15|))
 
 ; body
-(defun |mkref-2| (|η-7|)
-  (quote |η-7|))
+(defun |mkref-2| (|η-3|)
+  (quote |η-3|))
 
-(defun |deref-3| (|η-9|)
-  (eval |η-9|))
+(defun |deref-5| (|η-6|)
+  (eval |η-6|))
 
-(defun |setf-4| (|η-11| |η-12|)
-  (set |η-11| |η-12|))
+(defun |setf-8| (|η-9| |η-10|)
+  (set |η-9| |η-10|))
 
-(defparameter |ref-5|
-  (let* ((|con-14| (|mk/Nil|))) (|mkref-2| |con-14|)))
+(defparameter |ref-12|
+  (let* ((|con-13| (|mk/Nil|))) (|mkref-2| |con-13|)))
 
-(defparameter |main-6|
+(defparameter |main-15|
   (let* ((|con-16| (|mk/Nil|))
          (|con-17| (|mk/Cons| t |con-16|))
-         (|app-18| (|setf-4| |ref-5| |con-17|))
-         (|app-19| (|deref-3| |ref-5|)))
+         (|app-18| (|setf-8| |ref-12| |con-17|))
+         (|app-19| (|deref-5| |ref-12|)))
      (labels ((|fail-20| () (error 'match-failure :discr (list |app-19|))))
         (case (|List/tag| |app-19|)
           (1
@@ -65,5 +65,3 @@
                    (|f-23| (|Cons/f1| |app-19|)))
                (%int+ |f-22| 1)))
           (t (|fail-20|))))))
-
-(format t "~S~%" |main-6|)

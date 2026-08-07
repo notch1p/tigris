@@ -30,30 +30,30 @@
 ; ftype
 (declaim (ftype (function (integer integer) integer) |fn-20|))
 
-(declaim (ftype (function (t) clos) |unwrapBoxed-3|))
+(declaim (ftype (function (t) clos) |unwrapBoxed-8|))
 
-(declaim (type clos |unboxedAdd'-4|))
+(declaim (type clos |unboxedAdd'-13|))
 
-(declaim (type cons |main-5|))
+(declaim (type cons |main-15|))
 
 ; body
-(defun |fn-20| (|?x₀-7| |?x₁-8|)
-  (%int+ |?x₀-7| |?x₁-8|))
+(defun |fn-20| (|?x₀-4| |?x₁-5|)
+  (%int+ |?x₀-4| |?x₁-5|))
 
-(defun |unwrapBoxed-3| (|?x₀-11|)
-  |?x₀-11|)
+(defun |unwrapBoxed-8| (|?x₀-9|)
+  |?x₀-9|)
 
 (defparameter |boxedAdd-2|
   (%clos (function |fn-20|) 2))
 
-(defparameter |pb#13-14|
+(defparameter |pb#11-12|
   |boxedAdd-2|)
 
-(defparameter |unboxedAdd'-4|
-  |pb#13-14|)
+(defparameter |unboxedAdd'-13|
+  |pb#11-12|)
 
-(defparameter |main-5|
-  (let* ((|app-16| (|unwrapBoxed-3| |boxedAdd-2|))
+(defparameter |main-15|
+  (let* ((|app-16| (|unwrapBoxed-8| |boxedAdd-2|))
          (|app-17| (gapply2 |app-16| 20 20))
-         (|app-18| (gapply2 |unboxedAdd'-4| 30 30)))
+         (|app-18| (gapply2 |unboxedAdd'-13| 30 30)))
      (cons |app-17| |app-18|)))

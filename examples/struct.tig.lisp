@@ -43,40 +43,40 @@
 
 (declaim (ftype (function (t) null) |println-2|))
 
-(declaim (ftype (function (|Point|) integer) |distancePow-3|))
+(declaim (ftype (function (|Point|) integer) |distancePow-5|))
 
-(declaim (ftype (function (t) clos) |getEq-5|))
+(declaim (ftype (function (t) clos) |getEq-18|))
 
-(declaim (type cons |main-6|))
+(declaim (type cons |main-21|))
 
 ; body
-(defun |fn-29| (|x-16| |y-17|)
-  (%int= |x-16| |y-17|))
+(defun |fn-29| (|x-14| |y-15|)
+  (%int= |x-14| |y-15|))
 
-(defun |println-2| (|η-7|)
-  (%println |η-7|))
+(defun |println-2| (|η-3|)
+  (%println |η-3|))
 
-(defun |distancePow-3| (|?x₀-9|)
-  (case (|Point/tag| |?x₀-9|)
+(defun |distancePow-5| (|?x₀-6|)
+  (case (|Point/tag| |?x₀-6|)
     (0
-      (let* ((|f-10| (|Point/f0| |?x₀-9|))
-             (|f-11| (|Point/f1| |?x₀-9|)))
-         (let* ((|π-12| (%int* |f-10| |f-10|))
-                (|π-13| (%int* |f-11| |f-11|)))
-            (%int+ |π-12| |π-13|))))
+      (let* ((|f-7| (|Point/f0| |?x₀-6|))
+             (|f-8| (|Point/f1| |?x₀-6|)))
+         (let* ((|π-9| (%int* |f-7| |f-7|))
+                (|π-10| (%int* |f-8| |f-8|)))
+            (%int+ |π-9| |π-10|))))
     (t (error "unreachable"))))
 
-(defun |getEq-5| (|?x₀-20|)
-  |?x₀-20|)
+(defun |getEq-18| (|?x₀-19|)
+  |?x₀-19|)
 
-(defparameter |i_Eq_0-4|
+(defparameter |i_Eq_0-12|
   (%clos (function |fn-29|) 2))
 
-(defparameter |main-6|
-  (let* ((|app-22| (|getEq-5| |i_Eq_0-4|))
+(defparameter |main-21|
+  (let* ((|app-22| (|getEq-18| |i_Eq_0-12|))
          (|app-23| (gapply2 |app-22| 10 10))
          (|app-24| (|println-2| |app-23|))
          (|con-25| (|mk/Point| 6 8))
-         (|app-26| (|distancePow-3| |con-25|))
+         (|app-26| (|distancePow-5| |con-25|))
          (|app-27| (|println-2| |app-26|)))
      (cons |app-24| |app-27|)))

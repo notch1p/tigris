@@ -1,19 +1,19 @@
 ;; == TCNF CC & Optimize'd ==
 
-let fn#18/2 (x#6 : Int, y#7 : Int) : Int → Int → Bool =
-  let π#8 : Bool = EQⁱ(#6, #7); ret #8
+let fn#18/2 (x#4 : Int, y#5 : Int) : Int → Int → Bool =
+  let π#6 : Bool = EQⁱ(#4, #5); ret #6
 
-let i_Eq_0#2/0 : Eq Int = let fn#5 : Int → Int → Bool = 𝐂⟦18⟧; ret #5
+let i_Eq_0#2/0 : Eq Int = let fn#3 : Int → Int → Bool = 𝐂⟦18⟧; ret #3
 
-let rec sumTo#3/2 (n#10 : Int, acc#11 : Int) : Int → Int → Int =
-  let app#13 : Bool = #18(#10, 0);
-  case #13 of
-    true => ret #11;
+let rec sumTo#8/2 (n#9 : Int, acc#10 : Int) : Int → Int → Int =
+  let app#12 : Bool = #18(#9, 0);
+  case #12 of
+    true => ret #10;
     false =>
-      let π#14 : Int = SUB(#10, 1);
-      let π#15 : Int = ADD(#11, #10); let app#16 : Int = #3(#14, #15); ret #16
+      let π#13 : Int = SUB(#9, 1);
+      let π#14 : Int = ADD(#10, #9); let app#15 : Int = #8(#13, #14); ret #15
 
-let main#4/0 : Int = let app#17 : Int = #3(100, 0); ret #17
+let main#16/0 : Int = let app#17 : Int = #8(100, 0); ret #17
 ;; == Runtime ==
 (load "runtime.lisp")
 
@@ -45,24 +45,24 @@ let main#4/0 : Int = let app#17 : Int = #3(100, 0); ret #17
 ; ftype
 (declaim (ftype (function (integer integer) boolean) |fn-18|))
 
-(declaim (ftype (function (integer integer) integer) |sumTo-3|))
+(declaim (ftype (function (integer integer) integer) |sumTo-8|))
 
-(declaim (type integer |main-4|))
+(declaim (type integer |main-16|))
 
 ; body
-(defun |fn-18| (|x-6| |y-7|)
-  (%int= |x-6| |y-7|))
+(defun |fn-18| (|x-4| |y-5|)
+  (%int= |x-4| |y-5|))
 
-(defun |sumTo-3| (|n-10| |acc-11|)
-  (let* ((|app-13| (|fn-18| |n-10| 0)))
-     (if |app-13|
-       |acc-11|
-       (let* ((|π-14| (%int- |n-10| 1))
-              (|π-15| (%int+ |acc-11| |n-10|)))
-          (|sumTo-3| |π-14| |π-15|)))))
+(defun |sumTo-8| (|n-9| |acc-10|)
+  (let* ((|app-12| (|fn-18| |n-9| 0)))
+     (if |app-12|
+       |acc-10|
+       (let* ((|π-13| (%int- |n-9| 1))
+              (|π-14| (%int+ |acc-10| |n-9|)))
+          (|sumTo-8| |π-13| |π-14|)))))
 
 (defparameter |i_Eq_0-2|
   (%clos (function |fn-18|) 2))
 
-(defparameter |main-4|
-  (|sumTo-3| 100 0))
+(defparameter |main-16|
+  (|sumTo-8| 100 0))

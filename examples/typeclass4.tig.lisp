@@ -64,70 +64,70 @@
 
 (declaim (ftype (function (t |Option| |Option|) boolean) |fn-78|))
 
-(declaim (ftype (function (t) clos) |listEq-3|))
+(declaim (ftype (function (t) clos) |listEq-8|))
 
-(declaim (type cons |main-6|))
+(declaim (type cons |main-34|))
 
 ; body
-(defun |fn-76| (|x-8| |y-9|)
-  (%int= |x-8| |y-9|))
+(defun |fn-76| (|x-4| |y-5|)
+  (%int= |x-4| |y-5|))
 
-(defun |listEq-77| (|d_Eq_0-12| |?x₀-14| |?x₁-15|)
-  (case (|List/tag| |?x₀-14|)
+(defun |listEq-77| (|d_Eq_0-9| |?x₀-11| |?x₁-12|)
+  (case (|List/tag| |?x₀-11|)
     (0
-      (case (|List/tag| |?x₁-15|)
+      (case (|List/tag| |?x₁-12|)
         (0
           t)
         (t nil)))
     (1
-      (let* ((|f-16| (|Cons/f0| |?x₀-14|))
-             (|f-17| (|Cons/f1| |?x₀-14|)))
-         (case (|List/tag| |?x₁-15|)
+      (let* ((|f-13| (|Cons/f0| |?x₀-11|))
+             (|f-14| (|Cons/f1| |?x₀-11|)))
+         (case (|List/tag| |?x₁-12|)
            (1
-             (let* ((|f-18| (|Cons/f0| |?x₁-15|))
-                    (|f-19| (|Cons/f1| |?x₁-15|)))
-                (let* ((|app-21| (gapply2 |d_Eq_0-12| |f-16| |f-18|)))
-                   (if |app-21|
-                     (|listEq-77| |d_Eq_0-12| |f-17| |f-19|)
+             (let* ((|f-15| (|Cons/f0| |?x₁-12|))
+                    (|f-16| (|Cons/f1| |?x₁-12|)))
+                (let* ((|app-18| (gapply2 |d_Eq_0-9| |f-13| |f-15|)))
+                   (if |app-18|
+                     (|listEq-77| |d_Eq_0-9| |f-14| |f-16|)
                      nil))))
            (t nil))))
     (t nil)))
 
-(defun |fn-78| (|d_Eq_0-23| |?x₀-25| |?x₁-26|)
-  (case (|Option/tag| |?x₀-25|)
+(defun |fn-78| (|d_Eq_0-21| |?x₀-23| |?x₁-24|)
+  (case (|Option/tag| |?x₀-23|)
     (0
-      (case (|Option/tag| |?x₁-26|)
+      (case (|Option/tag| |?x₁-24|)
         (0
           t)
         (t nil)))
     (1
-      (let* ((|f-27| (|Some/f0| |?x₀-25|)))
-         (case (|Option/tag| |?x₁-26|)
+      (let* ((|f-25| (|Some/f0| |?x₀-23|)))
+         (case (|Option/tag| |?x₁-24|)
            (1
-             (let* ((|f-28| (|Some/f0| |?x₁-26|)))
-                (gapply2 |d_Eq_0-23| |f-27| |f-28|)))
+             (let* ((|f-26| (|Some/f0| |?x₁-24|)))
+                (gapply2 |d_Eq_0-21| |f-25| |f-26|)))
            (t nil))))
     (t nil)))
 
-(defun |listEq-3| (|d_Eq_0-12|)
+(defun |listEq-8| (|d_Eq_0-9|)
   (%clos (lambda (|g0| |g1|)
-      (|listEq-77| |d_Eq_0-12| |g0| |g1|))
+      (|listEq-77| |d_Eq_0-9| |g0| |g1|))
     2))
 
-(defun |i_Eq_1-4| (|d_Eq_0-23|)
+(defun |i_Eq_1-20| (|d_Eq_0-21|)
   (%clos (lambda (|g2| |g3|)
-      (|fn-78| |d_Eq_0-23| |g2| |g3|))
+      (|fn-78| |d_Eq_0-21| |g2| |g3|))
     2))
 
-(defun |i_Eq_2-5| (|d_Eq_0-32|)
-  (|listEq-3| |d_Eq_0-32|))
+(defun |i_Eq_2-30| (|d_Eq_0-31|)
+  (|listEq-8| |d_Eq_0-31|))
 
 (defparameter |i_Eq_0-2|
   (%clos (function |fn-76|) 2))
 
-(defparameter |main-6|
-  (let* ((|app-35| (|i_Eq_2-5| |i_Eq_0-2|))
-         (|app-36| (|i_Eq_1-4| |i_Eq_0-2|))
+(defparameter |main-34|
+  (let* ((|app-35| (|i_Eq_2-30| |i_Eq_0-2|))
+         (|app-36| (|i_Eq_1-20| |i_Eq_0-2|))
          (|con-38| (|mk/Nil|))
          (|con-39| (|mk/Cons| 2 |con-38|))
          (|con-40| (|mk/Cons| 1 |con-39|))

@@ -65,22 +65,22 @@
 
 (declaim (ftype (function (t) |Option|) |optPure-2|))
 
-(declaim (ftype (function (|Option| clos) |Option|) |optBind-3|))
+(declaim (ftype (function (|Option| clos) |Option|) |optBind-5|))
 
-(declaim (type |Monad| |i_Monad_0-4|))
+(declaim (type |Monad| |i_Monad_0-11|))
 
-(declaim (type |Option| |main-5|))
+(declaim (type |Option| |main-22|))
 
 ; body
-(defun |Some-44| (|η-14|)
-  (|mk/Some| |η-14|))
+(defun |Some-44| (|η-13|)
+  (|mk/Some| |η-13|))
 
-(defun |fn-45| (|?x₀-17| |?x₁-18|)
-  (case (|Option/tag| |?x₀-17|)
+(defun |fn-45| (|?x₀-16| |?x₁-17|)
+  (case (|Option/tag| |?x₀-16|)
     (0
       (|mk/None|))
     (1
-      (let* ((|f-20| (|Some/f0| |?x₀-17|))) (gapply1 |?x₁-18| |f-20|)))
+      (let* ((|f-19| (|Some/f0| |?x₀-16|))) (gapply1 |?x₁-17| |f-19|)))
     (t (error "unreachable"))))
 
 (defun |fn-48| (|x-27| |y-31| |z-36|)
@@ -102,23 +102,23 @@
              1)))
      (|fn-45| |con-29| |fn-30|)))
 
-(defun |optPure-2| (|x-6|)
-  (|mk/Some| |x-6|))
+(defun |optPure-2| (|x-3|)
+  (|mk/Some| |x-3|))
 
-(defun |optBind-3| (|x-8| |f-9|)
-  (case (|Option/tag| |x-8|)
+(defun |optBind-5| (|x-6| |f-7|)
+  (case (|Option/tag| |x-6|)
     (0
       (|mk/None|))
     (1
-      (let* ((|f-11| (|Some/f0| |x-8|))) (gapply1 |f-9| |f-11|)))
+      (let* ((|f-9| (|Some/f0| |x-6|))) (gapply1 |f-7| |f-9|)))
     (t (error "unreachable"))))
 
-(defparameter |i_Monad_0-4|
-  (let* ((|Some-13| (%clos (function |Some-44|) 1))
-         (|fn-16| (%clos (function |fn-45|) 2)))
-     (|mk/Monad| |Some-13| |fn-16|)))
+(defparameter |i_Monad_0-11|
+  (let* ((|Some-12| (%clos (function |Some-44|) 1))
+         (|fn-15| (%clos (function |fn-45|) 2)))
+     (|mk/Monad| |Some-12| |fn-15|)))
 
-(defparameter |main-5|
+(defparameter |main-22|
   (let* ((|app-25| (|Some-44| 20))
          (|fn-26| (%clos (function |fn-46|) 1)))
      (|fn-45| |app-25| |fn-26|)))
