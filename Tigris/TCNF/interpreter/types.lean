@@ -46,6 +46,26 @@ def externTab : Externs := .ofList $
 
 abbrev EvaluatorM := ReaderT IState $ EIO TypingError
 
+inductive Kont where
+  | halt
+  | letK (fv : FVarId) (rest : Code .postCC) (env : Frame) (k : Kont)
+  | appK (codeptr : FVarId) (caputred : Array Value) (remaining : Subarray Value) (k : Kont)
+
+
+abbrev EvaluatorCEK := EvaluatorM
+--instance : MonadLift EvaluatorM EvaluatorCEK := ⟨(· ·.toIState)⟩
+
+def Kont.trace (kont : Kont) : EvaluatorCEK String := go kont "\nBacktrace:" where
+  go
+  | .halt, acc => return acc
+  | .letK fv _ env k, acc => fun s@{globaldecls, ..} =>
+    let name := globaldecls[fv]?.elim s!"#{fv}" fun {name,..} => name
+    go k (acc ++ s!"\n  let {name} (env size : {env.size})") s
+  | .appK c _ rem k, acc => fun s@{globaldecls,..} =>
+    let name := globaldecls[c]?.elim s!"#{c}" fun {name,..} => name
+    go k (acc ++ s!"\n  #<FUNCTION {name}> ({rem.size} remaining args)") s
+
+
 open Lexing in partial def parseValue : TParser σ Value := Parser.first $
   [ parseInt
   , parseStr
@@ -67,7 +87,7 @@ where
     | 1 => return es[0]
     | _ + 2 => return es[0:es.size - 1].foldr Value.pair es.back
 
-in def readValue (s : String) : EvaluatorM Value :=
+in def readValue (s : String) : EvaluatorCEK Value :=
   match runST fun _ => parseValue <* spaces <* Parser.endOfInput |>.run s |>.run' ({}, "")
   with
   | .ok _ t    => pure t
@@ -123,27 +143,50 @@ def frameString f h := frameTable f h
                     |> tabulate "\nCurrent Frame:" {align := alignH, divider? := false}
 end
 
-scoped macro "impossible!" v:interpolatedStr(term) : term =>
-  ``(throw $ TypingError.Lowlevel $ "Interpreter: " ++ s! $v)
+@[inline] def throwErr (s : String) : EIO TypingError α :=
+  throw $ TypingError.Lowlevel $ "Interpreter: " ++ s
+def throwErrWithFrame (s : String) : EvaluatorCEK α := fun {locals,..} =>
+  if h : TreeMap.isEmpty locals
+  then throwErr s
+  else throw $ TypingError.Lowlevel
+             $ "Interpreter: " ++ s
+            ++ frameString locals (eq_false_of_ne_true h)
+
+def throwErrWithTrace (s : String) (k : Kont) : EvaluatorCEK α := do
+  let {locals, ..} <- read
+  let trace <- if k matches .halt then pure "" else k.trace
+  let framestr := if h : locals.isEmpty then "" else frameString locals (eq_false_of_ne_true h)
+  throwErr (s ++ framestr ++ trace)
+--  if h : TreeMap.isEmpty locals
+--  then throw $ TypingError.Lowlevel
+--             $ "Interpreter: " ++ s
+--            ++ "\nBacktrace:" ++ trace
+--  else throw $ TypingError.Lowlevel
+--             $ "Interpreter: " ++ s
+--            ++ frameString locals (eq_false_of_ne_true h)
+--            ++ "\nBacktrace:" ++ trace
 
 /-- any error tagged Lowlevel should be (but isn't) caught by a previous pass
    e.g. typechecker
 -/
+scoped macro (name := «term_impossible!_») "impossible!" v:interpolatedStr(term) : term => ``(throwErr s!$v)
+@[inherit_doc «term_impossible!_»]
 scoped macro "impossibleF!" v:interpolatedStr(term) : term =>
-  `(read >>= fun is =>
-     match is with
-     | {locals,..} =>
-       if h : TreeMap.isEmpty locals then impossible! $v
-       else
-         throw $ TypingError.Lowlevel
-               $ "Interpreter: " ++ s! $v
-              ++ frameString locals (eq_false_of_ne_true h))
+  ``(throwErrWithFrame s!$v)
+@[inherit_doc «term_impossible!_»]
+scoped macro "impossibleT!" v:interpolatedStr(term) k:ident : term =>
+  ``(throwErrWithTrace s!$v $k)
 
+/--
+applyHBinOp! op args key1 key2 node = node $ (args₁ : key1) `op` (args₂ : key2)
+-/
 scoped macro "applyHBinOp!" t:ident as:ident key1:ident key2:ident node:ident : term =>
   ``($key1 $as[0] >>= fun i =>
       $key2 $as[1] >>= fun j =>
         pure ($node ($t i j)))
-
+/--
+applyBinOp! op args key noed = node $ (args₁ : key) `op` (args₂ : key)
+-/
 scoped macro "applyBinOp!" t:ident as:ident key:ident node:ident : term =>
   ``(applyHBinOp! $t $as $key $key $node)
 
@@ -151,16 +194,76 @@ instance : Coe Int Value    := ⟨.int⟩
 instance : Coe Bool Value   := ⟨.bool⟩
 instance : Coe String Value := ⟨.str⟩
 instance : Coe Unit Value   := ⟨fun _ => .unit⟩
-scoped instance : MonadLift IO EvaluatorM
+scoped instance : MonadLift IO EvaluatorCEK
   := ⟨liftM ∘ EIO.adapt TypingError.Lowlevel ∘ liftEIO⟩
 
 @[inline]
-def expectInt : Value -> EvaluatorM Int
+def expectInt : Value -> EvaluatorCEK Int
   | .int i => return i
   | v => impossibleF! "expected Int, found {v}"
-def expectBool : Value -> EvaluatorM Bool
+def expectBool : Value -> EvaluatorCEK Bool
   | .bool b => return b
   | v => impossibleF! "expected Bool, found {v}"
-def expectStr : Value -> EvaluatorM String
+def expectStr : Value -> EvaluatorCEK String
   | .str s => return s
   | v => impossibleF! "expected String, found {v}"
+
+section Helpers
+def asConst : TConst -> Value
+  | .PUnit   => .unit
+  | .PInt i  => .int i
+  | .PStr s  => .str s
+  | .PBool b => .bool b
+
+def lookup (x : FVarId) : EvaluatorCEK Value := do
+  let {topvals, locals,..} <- read
+  match locals[x]? <|> topvals[x]? with
+  | some v => return v
+  | none   => do
+    impossibleF! "unbound fvar #{x}: not cached in `topvals`. likely implementation error in `check`/`evaluate1`."
+
+def evalAtom : Atom -> EvaluatorCEK Value
+  | .lit k  => return asConst k
+  | .erased => impossibleF! "unreachable code is reached"
+  | .fvar x => lookup x
+
+def projPair (s : FVarId) : Nat -> Value -> EvaluatorCEK Value
+  | 0, .pair p _ => return p
+  | 1, .pair _ q => return q
+  | i, v => impossibleF! "invalid pair projection #{i} for #{s} => {v}"
+
+def projConstr (s : FVarId) : Nat -> Value -> EvaluatorCEK Value
+  | i, v@(.constr t as) =>
+    if h : i < as.size then return as[i]
+    else impossibleF! "invalid variant projection #{i} for #{s} => {v}"
+  | i, v => impossibleF! "invalid variant projection #{i} for #{s} => {v}"
+
+def evalPrimBinop (op : PrimOp) (args : Array Value) : EvaluatorCEK Value :=
+  match op, h : args.size with
+  | .add   , _ + 2 => applyBinOp! Add.add args expectInt  Value.int
+  | .sub   , _ + 2 => applyBinOp! Sub.sub args expectInt  Value.int
+  | .mul   , _ + 2 => applyBinOp! Mul.mul args expectInt  Value.int
+  | .div   , _ + 2 => applyBinOp! Div.div args expectInt  Value.int
+  | .eqInt , _ + 2 => applyBinOp! BEq.beq args expectInt  Value.bool
+  | .eqBool, _ + 2 => applyBinOp! BEq.beq args expectBool Value.bool
+  | .eqStr , _ + 2 => applyBinOp! BEq.beq args expectStr  Value.bool
+  | op, _          => impossibleF! "cannot apply {repr op} to {args}"
+
+def evalExtern (f : String) (args : Array Value) : EvaluatorCEK Value := do
+  match externTab.findD f 0, h : args.size with
+  | 0, n     => impossibleF! "undefined foreign function {f}/{n}"
+  | 1, _ + 1 => println! format args[0]; return .unit
+  | 2, _ + 1 => return format args[0] |>.pretty |> .str
+  | 3, _ + 2 => applyBinOp! String.append args expectStr Value.str
+  | 4, _ + 1 => IO.print "read> " *> IO.getStdin >>= liftM ∘ IO.FS.Stream.getLine >>= readValue
+  | _, n     => impossibleF! "no implementation available for foreign function {f}/{n}"
+
+open Format (fill group pretty nestD) in
+def template {α} [ToFormat α] (name : String) (v : α) (ty : Scheme) : String :=
+  let s := s!"{name} ="
+  let ss := s.length
+  if ss <= 20
+  then pretty (fill $ (group $ s <> nestD (format v)) <+> "⊢" <> format ty)
+              (width := 70) (indent := ss - 1) (column := ss - 1)
+  else pretty (fill $ (group $ s ++ "\n" ++ format v) <+> "⊢" <> format ty)
+              (width := 70) (indent := 2) (column := 2)

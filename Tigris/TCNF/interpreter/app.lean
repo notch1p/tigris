@@ -1,11 +1,11 @@
-import Tigris.TCNF.interpreter.eval
+import Tigris.TCNF.interpreter.evalCEK
 import Tigris.TCNF.«entrypoint-incr»
 
 namespace TCNF.Interpreter.App open Incremental Std
 structure EvalState where
   PE       : PEnv      := initState
   E        : Env       := MLType.defaultE'
-  is       : IState    := {}
+  is       : IState  := {}
   nfs      : NFState   := {}
   ins      : IncrState := {}
   optDecls : Lean.Data.Trie (Decl .postCC) := ∅
@@ -47,9 +47,11 @@ def evaluate1 (s : String.Slice) : EvalM Unit := do
       if arity > 0 then
         if let some ty := E.E[name]? then
           println! template name "<fun>" ty
-        return {is with globaldecls := globaldecls.insert fvarId d}
+        return {is with
+          globaldecls := globaldecls.insert fvarId d
+          topvals     := topvals.insert fvarId (.clos fvarId #[])}
       else
-        let v <- evalCode body {is with globaldecls, topvals} |>.adapt toString
+        let v <- loop body .halt |>.run {is with globaldecls, topvals} |>.adapt toString
         if let some ty := E.E[name]? then
           println! template name v ty
         return {is with topvals := topvals.insert fvarId v}

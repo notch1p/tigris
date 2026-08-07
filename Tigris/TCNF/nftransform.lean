@@ -108,10 +108,40 @@ A let group arrives in topo order,
 so an SCC's mutually recursive members are contiguous;
 we use this property to recover each such run for lowerRecGroup.
 -/
-partial def recRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :=
+def recRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :=
   if h : i < binds.size then
-    if isRecBind binds[i].2.2 then recRunEnd binds (i+1) else i
+    if isRecBind binds[i].2.2
+    then recRunEnd binds (i+1) else i
   else i
+theorem recRunEnd_i_le (binds i) : i <= recRunEnd binds i := by
+  by_cases h : i < binds.size
+  case neg => simp[recRunEnd, h]
+  next =>
+    by_cases h' : isRecBind binds[i].2.2
+    case neg => simp[h', recRunEnd]
+    next =>
+      have eq2 : recRunEnd binds i = recRunEnd binds (i + 1)
+               := by simp [h, h', recRunEnd.eq_1 binds i]
+      have := eq2 ▸ @recRunEnd_i_le binds (i + 1)
+      omega
+
+/-- Like recRunEnd, but check for recbind on the type-stripped binding -/
+def stripRecRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :=
+  if h : i < binds.size then
+    if isRecBind (stripTy binds[i].2.2)
+    then stripRecRunEnd binds (i+1) else i
+  else i
+theorem stripRecRunEnd_i_le (binds i) : i <= stripRecRunEnd binds i := by
+  by_cases h : i < binds.size
+  case neg => simp[stripRecRunEnd, h]
+  next =>
+    by_cases h' : isRecBind (stripTy binds[i].2.2)
+    case neg => simp[h', stripRecRunEnd]
+    next =>
+      have eq2 : stripRecRunEnd binds i = stripRecRunEnd binds (i + 1)
+               := by simp [h, h', stripRecRunEnd.eq_1 binds i]
+      have := eq2 ▸ @stripRecRunEnd_i_le binds (i + 1)
+      omega
 
 /-- should be more efficient than xs[0:i] ++ ys ++ xs[i + 1:] -/
 @[inline] def replaceCol (xs : Array α) (i : Nat) (ys : Array α) : Array α :=
@@ -534,78 +564,110 @@ partial def patVarTys (scrutTy : MLType) (pat : Pattern) : CompilerM (Array (Str
       (fun acc arg fty => (acc ++ ·) <$> patVarTys fty arg)
       #[] args ftys
 
-def collectTopNames (decls : Array TopDeclF) : Array String :=
-  decls.flatMap collect1
-where collect1 : TopDeclF -> Array String
-  | .idBind binds =>
-    binds.filterMap fun (x, _, _) => if x.startsWith "(" then none else some x
-  | .patBind (pat, _) => pat.vars
 end Helper
 
-/-- Lower one top-level declaration to 1+ decls.
-Note that `p₀` maps every top-level name to its global `FVarId`,
-allowing mutual/forward references and `extern`/builtin to resolve -/
-partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl .preCC))
-  | .idBind binds => binds.filterMapM fun (name, _, fe) => do
-    if name.startsWith "(" then return none
-
-    let fe := stripTy fe
-    let fv <- match ρ₀.find? name with | some v => pure v | none => internExtern name
-    if isRecBind fe then
-      let inner := match fe with | .Fix i _ => i | _ => fe
-      let (allP, core) := peelLam inner
-      let selfN := allP.head?.elim name Prod.fst
-      let mut paramArr := #[]
-      let mut ρ'       := ρ₀.insert selfN fv
-      let mut length   := 0
-
-      for (nm, ty) in allP.tail do
+def lowerNonRecTopDecl (name : String) (fe : FExpr) (fv : FVarId) (ρ : FVarEnv)
+  : CompilerM (Decl .preCC) := do
+  let (params, core) := peelLam fe
+  -- eta-expands externs
+  if let .Var str _ := core then
+    if params.isEmpty && (ρ.find? str).isNone then
+      let (argTys, finalTy) := core.getTy.decomposeArr'
+      let mut paramArr   := #[]
+      let mut paramAtoms := #[]
+      for aty in argTys do
         let pf <- fresh
-        paramArr := paramArr.push $ Param.mk pf nm ty
-        ρ'       := ρ'.insert nm pf
-        length   := length + 1
+        paramArr   := paramArr.push $ Param.mk pf "η" aty
+        paramAtoms := paramAtoms.push $ Atom.fvar pf
+      let r <- fresh
+      let body := .let ⟨r, "ffi", finalTy, .extern str paramAtoms⟩ $ .ret $ .fvar r
+      setArity fv paramArr.size
+      return {fvarId := fv, name, params := paramArr, ty := fe.getTy, body}
+  let mut paramArr := #[]
+  let mut ρ'       := ρ
+  let mut length   := 0
 
-      let body <- lower core ρ' .ret
-      setArity fv length
-      return some {fvarId := fv, name, params := paramArr, ty := fe.getTy, body, recursive := true}
-    else
-      let (params, core) := peelLam fe
-      -- `extern id str : sch` lowered to `let id = Var str`, where `str` is a
-      -- foreign name. η-expand to an N-ary wrapper decl
-      -- whose body is a direct saturated foreign call.
-      if let .Var str _ := core then
-        if params.isEmpty && (ρ₀.find? str).isNone then
-          let (argTys, finalTy) := core.getTy.decomposeArr'
-          let mut paramArr   := #[]
-          let mut paramAtoms := #[]
-          for aty in argTys do
-            let pf <- fresh
-            paramArr   := paramArr.push $ Param.mk pf "η" aty
-            paramAtoms := paramAtoms.push $ Atom.fvar pf
-          let r <- fresh
-          let body := .let ⟨r, "ffi", finalTy, .extern str paramAtoms⟩ $ .ret $ .fvar r
-          setArity fv paramArr.size
-          return some {fvarId := fv, name, params := paramArr, ty := fe.getTy, body}
+  for (pnm, pty) in params do
+    let pf <- fresh
+    paramArr := paramArr.push $ Param.mk pf pnm pty
+    ρ'       := ρ'.insert pnm pf
+    length   := length + 1
 
-      let mut paramArr := #[]
-      let mut ρ'       := ρ₀
-      let mut length   := 0
+  let body <- lower core ρ' .ret
+  setArity fv length
+  return {fvarId := fv, name, params := paramArr, ty := fe.getTy, body, recursive := false}
 
-      for (nm, ty) in params do
-        let pf <- fresh
-        paramArr := paramArr.push $ Param.mk pf nm ty
-        ρ'       := ρ'.insert nm pf
-        length   := length + 1
+/--
+Lower one top-level declaration to 1+ decls, threading a FVarEnv.
+Returns the lowered decls and the updated env.
 
-      let body <- lower core ρ' .ret
-      setArity fv length
-      return some {fvarId := fv, name, params := paramArr, ty := fe.getTy, body, recursive := false}
+This allows redefinition which previously didn't:
+an existing name gets a fresh fvar, so it shadows only later decls;
+each body is lowered against the _pre-binding_ env — for
+example `let x = 1; let f () = x; let x = 2` keeps `f` statically bound to
+the first `x`, and a non-rec `let x = x + 1` still sees the old `x`.
+
+Within a single letrec group every member's id is allocated up front according
+to SCC-order computed in the typechecker.
+extern/builtin names are interned once and shared across groups. -/
+partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl .preCC) × FVarEnv)
+  | .idBind binds => do
+    let mut ρ  := ρ₀
+    let mut out : Array (Decl .preCC) := #[]
+    let mut i := 0
+    while h : i < binds.size do
+      let (name, _, fe) := binds[i]
+      let fe := stripTy fe
+      if name.startsWith "(" then
+        i := i + 1; continue
+      else if isRecBind fe then
+        let runEnd := stripRecRunEnd binds i
+        let group := binds[i:runEnd]
+        -- allocate every member's id first
+        for b in group do
+          let (nm, _, fe) := b
+          let fe := stripTy fe
+          if !nm.startsWith "(" && isRecBind fe then
+            let fv <- match ρ.find? nm with | some _ => fresh | none => internExtern nm
+            ρ := ρ.insert nm fv
+        -- lower each member against the mutual env
+        for b in group do
+          let (nm, _, fe) := b
+          let fe := stripTy fe
+          if !nm.startsWith "(" && isRecBind fe then
+            let fv := (ρ.find? nm).get!
+            let inner := match fe with | .Fix k _ => k | _ => fe
+            let (allP, core) := peelLam inner
+            let selfN := allP.head?.elim nm Prod.fst
+            let mut paramArr := #[]
+            let mut ρ'       := ρ.insert selfN fv
+            let mut length   := 0
+
+            for (pnm, pty) in allP.tail do
+              let pf <- fresh
+              paramArr := paramArr.push $ Param.mk pf pnm pty
+              ρ'       := ρ'.insert pnm pf
+              length   := length + 1
+
+            let body <- lower core ρ' .ret
+            setArity fv length
+            out := out.push {fvarId := fv, name := nm, params := paramArr, ty := fe.getTy, body, recursive := true}
+        i := runEnd
+      else
+        -- Non-recursive: fresh on redefinition, intern on first occurrence.
+        -- Body lowered against pre-binding ρ (not ρ after insert).
+        let fv <- match ρ.find? name with | some _ => fresh | none => internExtern name
+        let decl <- lowerNonRecTopDecl name fe fv ρ
+        out := out.push decl
+        ρ := ρ.insert name fv
+        i := i + 1
+    return (out, ρ)
   | .patBind (.PVar x, fe) => do
-    let fv <- match ρ₀.find? x with | some v => pure v | none => internExtern x
+    let fv <- match ρ₀.find? x with | some _ => fresh | none => internExtern x
     let body <- lower (stripTy fe) ρ₀ .ret
-    return #[{fvarId := fv, name := x, params := #[], ty := fe.getTy, body}]
+    return (#[{fvarId := fv, name := x, params := #[], ty := fe.getTy, body}], ρ₀.insert x fv)
   | .patBind (pat, fe) => do
-    -- `let pat = e` : bind a scrutinee `e`, then re-match it per bound variable.
+    -- bind a scrutinee, then re-match it per bound variable.
     let fe := stripTy fe
     let fv <- fresh
     let pbName := s!"pb#{fv}"
@@ -614,15 +676,15 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
     let scrutBody <- lower fe ρ₀ .ret
     let scrutDecl : Decl .preCC := {fvarId := pbFv, name := pbName, params := #[], ty := fe.getTy, body := scrutBody}
     let exhaustive <- patExhaustive fe.getTy pat
-    let varDecls <- (<- patVarTys fe.getTy pat).mapM fun (x, xty) => do
-      let xfv <- match ρ₀.find? x with | some v => pure v | none => internExtern x
+    let (varDecls, ρ) <- patVarTys fe.getTy pat >>= Array.foldlM (init := (#[], ρ₀)) fun (acc, ρ) (x, xty) => do
+      let xfv <- match ρ.find? x with | some _ => fresh | none => internExtern x
       let body <- lowerMatch
         #[.Var pbName fe.getTy]
         #[(#[pat], .Var x xty)]
         xty
         exhaustive
         ρp .ret
-      return ({fvarId := xfv, name := x, params := #[], ty := xty, body} : Decl .preCC)
+      return (acc.push {fvarId := xfv, name := x, params := #[], ty := xty, body}, ρ.insert x xfv)
     -- A refutable pattern that binds nothing (e.g. let 3860 = e) still asserts
     -- the match at run time; when it binds variables each extraction already does.
     let checkDecls : Array (Decl .preCC) <-
@@ -632,7 +694,7 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
         let body <- lowerMatch
           #[.Var pbName fe.getTy] #[(#[pat], .Var pbName fe.getTy)] fe.getTy exhaustive ρp .ret
         pure #[{fvarId := cfv, name := s!"{pbName}-chk", params := #[], ty := fe.getTy, body}]
-    return #[scrutDecl] ++ varDecls ++ checkDecls
+    return (#[scrutDecl] ++ varDecls ++ checkDecls, ρ)
 
 /-- ctor ↦ (its param types, tyctor TVs) -/
 def ctorTypeInfo (tyDecls : TyMap)

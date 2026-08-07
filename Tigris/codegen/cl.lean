@@ -145,6 +145,12 @@ partial def emitCases (discr : FVarId) (alts : Array (Alt .postCC)) : CGM Sexp :
     return .list (#[.sym "case", .list #[.sym (tagAcc tycon), .sym d]] ++ clauses)
   else
     match constAlts[0]?.map Prod.fst with
+    | some TConst.PUnit => -- has to provide qualified name here. weird
+      constAlts.mapM (emitCode ∘ Prod.snd) <&> fun clauses =>
+        match clauses[0]?, default? with
+        | some body, _  => body
+        | none, some db => db
+        | none, none    => .list #[.sym "error", .str "empty-cases"]
     | some (.PBool _) =>
       let mut tB? : Option Sexp := none
       let mut fB? : Option Sexp := none

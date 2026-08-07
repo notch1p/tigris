@@ -5,14 +5,15 @@ import Tigris.TCNF.nfopt
 namespace TCNF open Compiler CC Opt
 
 section Lowering
-/-- Lower a whole module (`inferToplevelF` output) to `Module .preCC`. `tyDecls`
+/-- Lower a whole module from inferToplevelF to preCC Module. `tyDecls`
 supplies constructor field types (for precise binder types); pass `∅` to skip. -/
 def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)
   : CompilerM (Module .preCC) := do
   let (fieldTys, ctorTyParams) := ctorTypeInfo tyDecls
   modify ({· with ctors, fieldTys, ctorTyParams, tyDecl := tyDecls})
-  let ρ₀ <- collectTopNames decls |>.foldlM (fun ρ nm => (ρ.insert nm ·) <$> internExtern nm) ∅
-  let allDecls <- decls.flatMapM (lowerTopDecl ρ₀)
+  let (allDecls, _) <- decls.foldlM (init := (#[], ∅)) fun (acc, ρ) d => do
+    let (ds, ρ') <- lowerTopDecl ρ d
+    pure (acc ++ ds, ρ')
   let main <- match allDecls.findRev? (·.name == "main") with
     | some m => pure m
     | none   => do
@@ -22,7 +23,7 @@ def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDec
            , params := #[]
            , ty     := MLType.tUnit
            , body   := .ret $ .lit .PUnit}
-  return {decls := allDecls.eraseP (·.name == "main"), main}
+  return {decls := allDecls.eraseP (·.fvarId == main.fvarId), main}
 
 def lowerModuleTop (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)
   : LowerM (Module .preCC) := lowerModule decls ctors tyDecls |>.run' {}

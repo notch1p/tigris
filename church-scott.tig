@@ -1,5 +1,5 @@
 NB. Church encoding of some coproduct and their eliminator
-
+let id x = x
 def inl a l r = l a
 def inr b l r = r b
 def case s l r = s l r

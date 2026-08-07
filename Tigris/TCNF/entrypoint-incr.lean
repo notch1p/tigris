@@ -23,11 +23,10 @@ def lowerTop1 (decl : TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMa
   let (fieldTys, ctorTyParams) := ctorTypeInfo tyDecls
   modifyThe NFState ({· with ctors, fieldTys, ctorTyParams, tyDecl := tyDecls})
   let {topNames, globals,..} <- get
-  let (topNames, globals) <- collectTopNames.collect1 decl |>.foldlM (fun (topNames, globals) nm => do
-    let fv <- internExtern nm
-    pure (topNames.insert nm fv, globals.insert fv)) (topNames, globals)
+  let (decls, topNames) <- lowerTopDecl topNames decl
+  let globals := decls.foldl (fun g d => g.insert d.fvarId) globals
   modify ({· with topNames, globals})
-  lowerTopDecl topNames decl
+  return decls
 
 def lowerTop (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) (tyDecls : TyMap)
   : IncrementalM (Array $ Decl .preCC) := decls.flatMapM (lowerTop1 · ctors tyDecls)

@@ -1,62 +1,12 @@
 import Tigris.TCNF.interpreter.types
 import Tigris.TCNF.entrypoint
-namespace TCNF.Interpreter open Std TCNF open MLType (TypingError)
+namespace TCNF.Interpreter.old open Std TCNF open MLType (TypingError)
 
 private def checkInterrupt : EIO TypingError Unit :=
   IO.checkCanceled >>= fun
   | true => throw .Interrupted
   | false => return ()
 local macro "withInterrupt!" x:doSeq : term => ``(checkInterrupt *> do $x)
-
-def asConst : TConst -> Value
-  | .PUnit   => .unit
-  | .PInt i  => .int i
-  | .PStr s  => .str s
-  | .PBool b => .bool b
-
-def lookup (x : FVarId) : EvaluatorM Value := do
-  let {globaldecls, topvals, locals,..} <- read
-  match locals[x]? <|> topvals[x]? with
-  | some v => return v
-  | none   =>
-    let some {fvarId,..} := globaldecls[x]? | impossibleF! "unbound fvar #{x}"
-    return .clos fvarId #[]
-
-def evalAtom : Atom -> EvaluatorM Value
-  | .lit k  => return asConst k
-  | .erased => impossibleF! "unreachable code is reached"
-  | .fvar x => lookup x
-
-def projPair (s : FVarId) : Nat -> Value -> EvaluatorM Value
-  | 0, .pair p _ => return p
-  | 1, .pair _ q => return q
-  | i, v => impossibleF! "invalid pair projection #{i} for #{s} ==> {v}"
-
-def projConstr (s : FVarId) : Nat -> Value -> EvaluatorM Value
-  | i, v@(.constr t as) =>
-    if h : i < as.size then return as[i]
-    else impossibleF! "invalid variant projection #{i} for #{s} ==> {v}"
-  | i, v => impossibleF! "invalid variant projection #{i} for #{s} ==> {v}"
-
-def evalPrimBinop (op : PrimOp) (args : Array Value) : EvaluatorM Value :=
-  match op, h : args.size with
-  | .add   , _ + 2 => applyBinOp! Add.add args expectInt  Value.int
-  | .sub   , _ + 2 => applyBinOp! Sub.sub args expectInt  Value.int
-  | .mul   , _ + 2 => applyBinOp! Mul.mul args expectInt  Value.int
-  | .div   , _ + 2 => applyBinOp! Div.div args expectInt  Value.int
-  | .eqInt , _ + 2 => applyBinOp! BEq.beq args expectInt  Value.bool
-  | .eqBool, _ + 2 => applyBinOp! BEq.beq args expectBool Value.bool
-  | .eqStr , _ + 2 => applyBinOp! BEq.beq args expectStr  Value.bool
-  | op, _          => impossibleF! "cannot apply {repr op} to {args}"
-
-def evalExtern (f : String) (args : Array Value) : EvaluatorM Value := do
-  match externTab.findD f 0, h : args.size with
-  | 0, n     => impossibleF! "undefined foreign function {f}/{n}"
-  | 1, _ + 1 => println! format args[0]; return .unit
-  | 2, _ + 1 => return format args[0] |>.pretty |> .str
-  | 3, _ + 2 => applyBinOp! String.append args expectStr Value.str
-  | 4, _ + 1 => IO.print "read> " *> IO.getStdin >>= liftM ∘ IO.FS.Stream.getLine >>= readValue
-  | _, n     => impossibleF! "no implementation available for foreign function {f}/{n}"
 
 mutual
 partial def evalLetValue : LetValue .postCC -> EvaluatorM Value
@@ -89,7 +39,7 @@ partial def applyN (f : Value) (as : Subarray Value) : EvaluatorM Value := withI
       fun acc a b => acc.insert b.fvarId a
     evalCode body {s with locals}
   else if arity > ass then return .clos f (env ++ as)
-  else
+  else -- seq2fold2 f xs ys zs = foldl2 f (xs ++ ys) zs = foldl .. (xs ++ ys `zip` zs)
     let locals := Array.seq2fold2 (init := locals) (xs := env) (ys := as) (zs := params)
       fun acc a b => acc.insert b.fvarId a
     let f' <- evalCode body {s with locals}
@@ -165,6 +115,7 @@ def check (s : String) : LowerM Unit := do
       if let some ty := E.E[name]? then
         liftEIO (println! template name "<fun>" ty)
       globaldecls := globaldecls.insert fvarId d
+      topvals := topvals.insert fvarId (.clos fvarId #[])
     else
       let v <- evalCode body {globaldecls, topvals} |>.adapt toString
       if let some ty := E.E[name]? then
