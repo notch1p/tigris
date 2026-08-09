@@ -62,7 +62,7 @@
 ; ftype
 (declaim (ftype (function (|Expr|) integer) |eval-2|))
 
-(declaim (type |Expr| |prog-3|))
+(declaim (type |Expr| |prog-25|))
 
 (declaim (type integer |pb#41-42|))
 
@@ -71,37 +71,37 @@
 (declaim (type null |main-47|))
 
 ; body
-(defun |eval-2| (|?x₀-4|)
-  (case (|Expr/tag| |?x₀-4|)
+(defun |eval-2| (|?x₀-3|)
+  (case (|Expr/tag| |?x₀-3|)
     (1
-      (let* ((|f-5| (|Add/f0| |?x₀-4|))
-             (|f-6| (|Add/f1| |?x₀-4|)))
-         (let* ((|app-7| (|eval-2| |f-5|))
-                (|app-8| (|eval-2| |f-6|)))
-            (%int+ |app-7| |app-8|))))
+      (let* ((|f-4| (|Add/f0| |?x₀-3|))
+             (|f-5| (|Add/f1| |?x₀-3|)))
+         (let* ((|app-6| (|eval-2| |f-4|))
+                (|app-7| (|eval-2| |f-5|)))
+            (%int+ |app-6| |app-7|))))
     (4
-      (let* ((|f-10| (|Div/f0| |?x₀-4|))
-             (|f-11| (|Div/f1| |?x₀-4|)))
-         (let* ((|app-12| (|eval-2| |f-10|))
-                (|app-13| (|eval-2| |f-11|)))
-            (%int/ |app-12| |app-13|))))
+      (let* ((|f-9| (|Div/f0| |?x₀-3|))
+             (|f-10| (|Div/f1| |?x₀-3|)))
+         (let* ((|app-11| (|eval-2| |f-9|))
+                (|app-12| (|eval-2| |f-10|)))
+            (%int/ |app-11| |app-12|))))
     (3
-      (let* ((|f-15| (|Mul/f0| |?x₀-4|))
-             (|f-16| (|Mul/f1| |?x₀-4|)))
-         (let* ((|app-17| (|eval-2| |f-15|))
-                (|app-18| (|eval-2| |f-16|)))
-            (%int* |app-17| |app-18|))))
+      (let* ((|f-14| (|Mul/f0| |?x₀-3|))
+             (|f-15| (|Mul/f1| |?x₀-3|)))
+         (let* ((|app-16| (|eval-2| |f-14|))
+                (|app-17| (|eval-2| |f-15|)))
+            (%int* |app-16| |app-17|))))
     (0
-      (let* ((|f-20| (|Atom/f0| |?x₀-4|))) |f-20|))
+      (let* ((|f-19| (|Atom/f0| |?x₀-3|))) |f-19|))
     (2
-      (let* ((|f-21| (|Sub/f0| |?x₀-4|))
-             (|f-22| (|Sub/f1| |?x₀-4|)))
-         (let* ((|app-23| (|eval-2| |f-21|))
-                (|app-24| (|eval-2| |f-22|)))
-            (%int- |app-23| |app-24|))))
+      (let* ((|f-20| (|Sub/f0| |?x₀-3|))
+             (|f-21| (|Sub/f1| |?x₀-3|)))
+         (let* ((|app-22| (|eval-2| |f-20|))
+                (|app-23| (|eval-2| |f-21|)))
+            (%int- |app-22| |app-23|))))
     (t (error "unreachable"))))
 
-(defparameter |prog-3|
+(defparameter |prog-25|
   (let* ((|con-26| (|mk/Atom| 20))
          (|con-27| (|mk/Atom| 10))
          (|con-28| (|mk/Atom| 20))
@@ -119,7 +119,7 @@
      (|mk/Mul| |con-26| |con-39|)))
 
 (defparameter |pb#41-42|
-  (|eval-2| |prog-3|))
+  (|eval-2| |prog-25|))
 
 (defparameter |pb#41-chk-44|
   (labels ((|fail-45| () (error 'match-failure :discr (list |pb#41-42|))))

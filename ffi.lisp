@@ -14,3 +14,8 @@
 
 (defun %read (_) 
   (declare (ignore _)) (read))
+
+(defun %mkref (x)
+  (let ((ref (gensym)))
+    (set ref x)
+    ref))

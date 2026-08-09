@@ -569,9 +569,10 @@ end Helper
 def lowerNonRecTopDecl (name : String) (fe : FExpr) (fv : FVarId) (ρ : FVarEnv)
   : CompilerM (Decl .preCC) := do
   let (params, core) := peelLam fe
-  -- eta-expands externs
+  -- eta-expands externs (filters out (enum/no field) ctors)
+  let ctors <- NFState.ctors <$> get
   if let .Var str _ := core then
-    if params.isEmpty && (ρ.find? str).isNone then
+    if params.isEmpty && (ρ.find? str).isNone && str ∉ ctors then
       let (argTys, finalTy) := core.getTy.decomposeArr'
       let mut paramArr   := #[]
       let mut paramAtoms := #[]

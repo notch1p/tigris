@@ -11,8 +11,9 @@ extern unsafeIO "identity" : forall a, IO a -> a
 class Monad (m : Type -> Type) where
   pure : forall a, a -> m a
   bind : forall a b, m a -> (a -> m b) -> m b
-infixr 90 "::" => Cons
+infixr 90 "::"  => Cons
 infixr 80 ">>=" => bind
+prefix 90 "'"   => mkref
 
 instance Monad IO where
   pure = pureIO
@@ -21,7 +22,7 @@ instance Monad IO where
 -- Monad solves the classic value restriction issue but the encoding of IO is
 -- problematic since IO isn't an arrow type such as Realworld -> a so that
 -- every references to ioref do NOT create a new ref but all share the same one. 
-let ioref = mkref Nil -- Besides, mkref === quote isn't better.
+let ioref = 'Nil -- Besides, mkref === quote isn't better.
 
 let rec main =
   let _ = f ()

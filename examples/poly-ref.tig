@@ -6,8 +6,9 @@ infixr 90 "::" => Cons
 extern mkref "quote"  : forall a, a -> Ref a
 extern deref "eval"   : forall a, Ref a -> a
 extern setf  "set"    : forall a, Ref a -> a -> a
+prefix 90 "'" => mkref
 
-let ref = mkref Nil
+let ref = 'Nil
 
 let main = 
   let _        = setf ref $ true :: Nil

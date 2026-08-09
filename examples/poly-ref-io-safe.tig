@@ -1,0 +1,36 @@
+type IO a
+type Ref a
+type List a = Nil | Cons a (List a)
+
+extern mkref    "%mkref"       : forall a, a -> IO (Ref a)
+extern deref    "symbol-value" : forall a, Ref a -> IO a
+extern setf     "set"          : forall a, Ref a -> a -> IO Unit
+extern pureIO   "identity"     : forall a, a -> IO a
+extern unsafeIO "identity"     : forall a, IO a -> a
+
+class Monad (m : Type -> Type) where
+  pure : forall a, a -> m a
+  bind : forall a b, m a -> (a -> m b) -> m b
+infixr 90 "::"  => Cons
+infixr 80 ">>=" => bind
+prefix 90 "'"   => mkref
+
+instance Monad IO where
+  pure = pureIO
+  bind act f = f $ unsafeIO act
+
+-- Monad solves the classic value restriction issue but the encoding of IO is
+-- problematic since IO isn't an arrow type such as Realworld -> a so that
+-- every references to ioref do NOT create a new ref but all share the same one.
+let ioref _ = 'Nil -- thus we manually make it lazy.
+
+let rec main =
+  let _ = f ()
+  g () -- g fails since ioref is now 1 :: Nil
+where
+  f _ = ioref () >>= fun ref =>  -- ref is of metavariable type and does not generalize
+    setf ref $ 1 :: Nil          -- subsequent usage refines that to List Int 
+    -- setf ref $ true :: Nil    -- fails since unable to unify Int with Bool
+  g _ =
+    ioref () >>= fun ref => deref ref >>=
+      fun Nil => pure true
