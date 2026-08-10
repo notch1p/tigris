@@ -1,7 +1,9 @@
+#include <errno.h>
 #include <lean/lean.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef lean_obj_res OBJRES;
 typedef lean_obj_arg OWNED_ARG;
@@ -15,6 +17,42 @@ string_repeat_ascii(uint8_t c, size_t n) {
   memset(str, c, n * sizeof(uint8_t));
 
   return lean_mk_string(str);
+}
+
+OBJRES lean_mk_symlink(BORROWED_ARG p1, BORROWED_ARG p2) {
+  lean_string_object* ps1 = lean_to_string(p1);
+  lean_string_object* ps2 = lean_to_string(p2);
+  if (symlink(ps1->m_data, ps2->m_data) == 0) {
+    return lean_io_result_mk_ok(lean_box(0));
+  }
+  char* msg = strerror(errno);
+  switch (errno) {
+    case EACCES:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_permission_denied(errno, lean_mk_string(msg)));
+    case EEXIST:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_already_exists(errno, lean_mk_string(msg)));
+    case ENOENT:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_no_such_thing(errno, lean_mk_string(msg)));
+    case ENOTDIR:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_inappropriate_type(errno, lean_mk_string(msg)));
+    case ENOSPC:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_resource_exhausted(errno, lean_mk_string(msg)));
+    case EROFS:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_unsupported_operation(errno, lean_mk_string(msg)));
+    case ENAMETOOLONG:
+    case ELOOP:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_invalid_argument(errno, lean_mk_string(msg)));
+    default:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_other_error(errno, lean_mk_string(msg)));
+  }
 }
 
 enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {

@@ -2,7 +2,9 @@ import Tigris.codegen.cl
 
 open TCNF.CL
 
-/-- Read + compile a source file end-to-end to CL text, or an error message. -/
+@[extern "lean_mk_symlink"] opaque mk_symlink : @&String -> @&String -> IO Unit
+def IO.FS.symlink := mk_symlink.on System.FilePath.toString
+
 def compileFile (path : System.FilePath) : IO (Except String String) := do
   try
     let src <- IO.FS.readFile path
@@ -46,7 +48,7 @@ where examples := fp "examples"
       name p   := fn p |>.getD p.toString
 open IO (mkRef)
 
-def main : IO Unit := do
+def main (paths : List String) : IO UInt32 := do
   let pass <- mkRef 0
   let fail <- mkRef 0
   let stdout <- IO.getStdout
@@ -84,7 +86,15 @@ def main : IO Unit := do
   let pass <- pass.get
   let fail <- fail.get
   println! "\n{pass} passed, {fail} failed"
-  if fail > 0 then IO.Process.exit 1
+  if fail > 0 then return 1
+  match paths with
+  | bindir :: paths =>
+    for p in paths do
+      let artp := s!"{bindir}/{p}"
+      println! "linking {artp} -> {p}"
+      mk_symlink artp p
+    return 0
+  | _ => return 0
 
 where
   waitAll    {α} : List (Task α) -> IO Unit := (List.forM · waitIgnore)

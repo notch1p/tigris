@@ -107,6 +107,13 @@ lean_exe "tigrisl" where
   root := `Tigrisl
   needs := #[runtime.lean]
 
+def lake2 : IO.Process.SpawnArgs where
+  cmd := "lake"
+  args := #["test", "--", _package.config.buildDir / _package.config.binDir |>.toString, "tigrisl", "tigrisi"]
+in script shortcut do
+  liftM $ IO.println =<< IO.Process.run lake2
+  return 0
+
 --lean_exe «eval-direct» where
 --  root := `eval
 --  srcDir := "Tigris/TCNF/interpreter"
@@ -115,4 +122,3 @@ lean_exe "tigrisl" where
 --  srcDir := "Tigris/TCNF/interpreter"
 
 require Parser from git "https://github.com/fgdorais/lean4-parser"@"afcde96c3f0ccd84beb096fd3af5dd144b401e3c"
-

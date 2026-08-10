@@ -188,11 +188,12 @@ def letDeclDispatch : TParser σ $ Array Binding := withExpected "let-declaratio
   let letCol <- kwCol "def" <|> kwCol "let"
   let p <- test REC >>= fun | false => pure letBody | true => pure letrecBody
   let b <- withInlineBlock letCol $ sepBy1 AND $ let1Common $ p letCol
-  let some b' <- option? $ whereBindings whereRec | pure b
-  let bs := b' ++ b
+
   option? (IN *> parseExpr) >>= fun -- only for REPL, avoids backtracking. not "true" letexp
-  | some body => return #[("_", Let bs body)]
-  | none => return bs
+  | some body => return #[("_", Let b body)]
+  | none => do
+    let some b' <- option? $ whereBindings whereRec | pure b
+    return b' ++ b
 where whereRec (whereCol : Nat) := let1Common (letrecBody whereCol)
 
 def letPatDecl : TParser σ (Pattern × Expr) := withExpected "pattern declaration" do

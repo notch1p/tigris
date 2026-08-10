@@ -71,7 +71,6 @@ def helpMsg : TableOf HelpHeader := .mk $
 def tigiMsg : TableOf HelpHeader := .mk $
   #[ (.str "#load <path>"           , .str "load src from <path> into REPL")
    , (.str ""                       , .byl "<path> may not contain spaces or ';'")
-   , (.str "#help"                  , .str "show this help string")
    , (.str "#(type|check) <exp>"    , .str "typecheck <exp> without evaluating it")
    , (.str "#tast <exp>"            , .str "dump the typed parsetree of <expr>")
    , (.str ""                       , .str "that is, System F IR, the core calculus")
@@ -79,7 +78,10 @@ def tigiMsg : TableOf HelpHeader := .mk $
    , (.str "#flush"                 , .byl "flush the REPL environment")
    , (.str "#disassemble <sym>"     , .str "Dump an object in TCNF. <sym> is one of")
    , (.str ""                       , .blu "⬝ <id> e.g. id")
-   , (.str ""                       , .blu "⬝ #<fvar> e.g. #13")]
+   , (.str ""                       , .blu "⬝ #<fvar> e.g. #13")
+   , (.str "#synth <texp>"          , .str "Try synthesize a instance of <texp>")
+   , (.str ""                       , .str "<texp>: type term of form C a₁ a₂ .. aₙ")
+   , (.str "#help"                  , .str "show this help string")]
 
 def tiglHelpMsg : TableOf HelpHeader := .mk
   #[ (.str "--tcnf"                 , .str "emit TCNF")

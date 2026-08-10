@@ -3,6 +3,7 @@ expr.tig.old.lisp                 linguist-vendored
 examples/typeclass*.tig           linguist-language=haskell
 examples/poly-ref*.tig            linguist-language=haskell
 examples/where.tig                linguist-language=haskell
+examples/neg.tig                  linguist-language=haskell
 examples/hkt-*.tig                linguist-language=haskell
 examples/*                        linguist-vendored
 runtime.lean                      linguist-vendored

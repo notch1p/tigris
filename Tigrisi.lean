@@ -12,6 +12,18 @@ def strip : String.Slice -> String.Slice :=
   ∘ .dropEndWhile (pat := fun c => c.isWhitespace || c == ';')
   ∘ .dropWhile    (pat := not ∘ Char.isWhitespace)
 
+def parsePred (s : String.Slice) (pe : PEnv) : IO Pred :=
+  match runST fun _ => parseInstScheme <* Parser.endOfInput |>.run s |>.run' (pe, "") with
+  | Parser.Result.ok _ p => return p
+  | Parser.Result.error _ e => throwServerError $ toString e
+where parseInstScheme {σ} : TParser σ Pred :=
+  Parsing.PType.tyExp >>= fun ty =>
+    match ty.getRightmost with
+    | .TApp (.TCon cname) args => return ⟨cname, args⟩
+    | .TCon cname              => return ⟨cname, []⟩
+    | ty => Parser.throwUnexpectedWithMessage
+              (msg := s!"not a valid class: {ty} is not of form C a₁ ...")
+
 def main (fs : List String) : IO Unit := do
   setStdoutBuf false
 
@@ -65,6 +77,14 @@ def main (fs : List String) : IO Unit := do
     else if buf.startsWith "#f" then
       esRef.set {}
       println! "REPL environment has been flushed"
+    else if buf.startsWith "#s" then
+      try
+        let sbuf := strip buf
+        let p <- parsePred sbuf es.PE
+        let (.Ascribe (.Var inst) ty) <- Resolve.resolvePred es.E p |> IO.ofExcept
+                                       | throwServerError "#synth: impossible"
+        println! inst ++ TCNF.PP.colon ++ format ty |>.fill
+      catch e => println! e
     else if buf.startsWith "#d" then
       let sbuf := strip buf
       let query :=
@@ -78,9 +98,12 @@ def main (fs : List String) : IO Unit := do
       try
         let e <- Parsing.parse (buf.dropWhile $ not ∘ Char.isWhitespace) es.PE
               |> IO.ofExcept
-        let (fe, s, _) <- runInferConstraintF e es.E |> IO.ofExcept
-        if buf.startsWith "#ta" then println! format fe
-        else println! format s
+        if buf.startsWith "#ta" then
+          let (fe, _, _) <- runInferConstraintF e es.E |> IO.ofExcept
+          println! format fe
+        else
+          let (_, s, _) <- runInferConstraintT e es.E |> IO.ofExcept
+          println! format s
       catch e => println! e
     else if buf.startsWith "#a" then
       (Parsing.parseModule' (buf.dropWhile $ not ∘ Char.isWhitespace) es.PE |>.toIO') >>= fun
