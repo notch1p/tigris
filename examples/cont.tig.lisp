@@ -50,7 +50,7 @@
 
 (declaim (ftype (function (t clos) t) |bind-13|))
 
-(declaim (ftype (function (clos) t) |callcc-26|))
+(declaim (ftype (function (clos) t) |call/cc-26|))
 
 (declaim (type integer |main-49|))
 
@@ -108,13 +108,13 @@
       (|fn-54| |?x₀-14| |f-15| |g5|))
     1))
 
-(defun |callcc-26| (|f-27|)
+(defun |call/cc-26| (|f-27|)
   (%clos (lambda (|g6|)
       (|fn-56| |f-27| |g6|))
     1))
 
 (defparameter |f-40|
-  (let* ((|fn-41| (%clos (function |fn-59|) 1))) (|callcc-26| |fn-41|)))
+  (let* ((|fn-41| (%clos (function |fn-59|) 1))) (|call/cc-26| |fn-41|)))
 
 (defparameter |main-49|
   (let* ((|fn-50| (%clos (function |fn-61|) 1))) (|run-8| |f-40| |fn-50|)))

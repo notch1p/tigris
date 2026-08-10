@@ -18,12 +18,12 @@ def declaration : TParser σ TopDecl := first'
    , (idBind ∘ Array.singleton) <$> postfixDecl
    , (idBind ∘ Array.singleton) <$> value parseExpr
    ]
-  simpErrorCombine
+--  simpErrorCombine
 
 def tydecl : TParser σ TopDecl := first'
  #[ tyBind <$> tyDecl false
    , tyBind <$> tyEmpty]
-  simpErrorCombine
+--  simpErrorCombine
 
 def declarationFile : TParser σ TopDecl := first'
   #[ instanceDecl
@@ -35,7 +35,7 @@ def declarationFile : TParser σ TopDecl := first'
    , (idBind ∘ Array.singleton) <$> prefixDecl
    , (idBind ∘ Array.singleton) <$> postfixDecl
    ]
-  simpErrorCombine
+--  simpErrorCombine
 
 def mutTyDecl : TParser σ $ Array TopDecl := do
   let tysd <- takeMany1 (tyBind <$> tyDecl true)
@@ -71,8 +71,8 @@ def typeExpr (s : String.Slice) (PE : PEnv) (E : Env) : EIO String TExpr :=
     return te
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
-def lpOrMod : TParser σ TopDecl := withErrorMessage "Decl" $
-  first' #[declaration, patBind <$> letPatDecl] simpErrorCombine
+def lpOrMod : TParser σ TopDecl := withExpected "declaration" $
+  first' #[declaration, patBind <$> letPatDecl] -- simpErrorCombine
 
 def lpOrModOrMut : TParser σ $ Array TopDecl := do
   if <- test MUTUAL then
@@ -82,14 +82,14 @@ def lpOrModOrMut : TParser σ $ Array TopDecl := do
 def lpOrModOrMutFile : TParser σ $ Array TopDecl := do
   if <- test MUTUAL then
     mutTyDecl <* END
-  else Array.singleton <$> (withErrorMessage "Decl" $
-  first' #[declarationFile, patBind <$> letPatDecl] simpErrorCombine)
+  else Array.singleton <$> (withExpected "declaration" $
+  first' #[declarationFile, patBind <$> letPatDecl] /- simpErrorCombine -/)
 
-def toplevel : TParser σ $ Array TopDecl := withErrorMessage "Toplevel" $
+def toplevel : TParser σ $ Array TopDecl := withExpected "Toplevel" $
   let hd := lpOrModOrMut <* optional END
   (foldl (· ++ ·) · hd) =<< hd
 
-def toplevelFile : TParser σ $ Array TopDecl := withErrorMessage "Toplevel" $
+def toplevelFile : TParser σ $ Array TopDecl := withExpected "Toplevel" $
   let hd := lpOrModOrMutFile <* optional END
   (foldl (· ++ ·) · hd) =<< hd
 

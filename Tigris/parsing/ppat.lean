@@ -36,7 +36,7 @@ def resolveBareRecordPat (fs : Array $ String × Pattern) : TParser σ Pattern :
 
 variable {σ}
 mutual
-partial def patAtom : TParser σ Pattern := ws $ first' (combine := simpErrorCombine) $
+partial def patAtom : TParser σ Pattern := ws $ first' $
   #[ patRecordTyped
    , patRecord
    , parenthesized patProd
@@ -107,7 +107,7 @@ partial def patPrimary (minPrec := 0) : TParser σ Pattern := loop =<< patPrefix
       error s!"{repr expr} does not reduce to a (applicable) pattern\n"
       throwUnexpected
 
-partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := loop =<< patApp where
+partial def parsePattern (minPrec : Nat := 0) : TParser σ Pattern := withExpected "pattern" $ loop =<< patApp where
   loop lhs := do
     let pos <- getPosition
     let some {assoc, prec, impl, ..} <- takeInfixOp? minPrec true

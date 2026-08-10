@@ -122,7 +122,7 @@ partial def tyCtor (param : ParamInfo) : TParser σ MLType := do
       error s!"unbound type variable {id}\n"
       throwUnexpected
 
-partial def tyApps (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyTerm" do
+partial def tyApps (mt : Bool) (param : ParamInfo) : TParser σ MLType := withExpected "type term" do
   let hd <- tyAtom mt param
   match hd with
   | .TCon h =>
@@ -173,7 +173,7 @@ def tyPred (param : ParamInfo) : TParser σ Pred := do
   | _ => error s!"not a valid predicate" *> throwUnexpected
 @[inline] def tyPreds (param : ParamInfo) : TParser σ (Array Pred) := sbrack $ sepBy1 COMMA $ tyPred param
 
-def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMessage "TyForall" do
+def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := do
   let param'@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
   let param := param ∪ param'
   let pred <- optionD (tyPreds param) #[] <&> Array.toList
@@ -182,7 +182,7 @@ def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := withErrorMes
     COMMA
     .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyArrow mt param
 
-def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := withErrorMessage "TyField" do
+def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := do
   let id <- ID; COLON; let ty <- tyForall mt param
   return (id, ty)
 
@@ -199,7 +199,7 @@ def tyInstScheme : TParser σ (Scheme × ParamInfo) := do
   (·, param) <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
 
 def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool) (offside? : Bool)
-  : TParser σ TyDecl := withErrorMessage "TyRecord" do
+  : TParser σ TyDecl := withExpected "structure declaration" do
   let fields <-
     if offside? then alignedBindings (tyField mt param)
     else sepBy COMMA (tyField mt param)
@@ -216,7 +216,7 @@ def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool) (offside? : Bool)
           , param := param.ordered
           , ctors := #[(tycon, fields.toList, tys.size)]}
 
-def tyDecl (mt : Bool) : TParser σ TyDecl := withErrorMessage "TyDecl" do
+def tyDecl (mt : Bool) : TParser σ TyDecl := withExpected "type declaration" do
   let cls? <- TYPE?
   let tycon <- ID
   if tycon.isUpperInit then

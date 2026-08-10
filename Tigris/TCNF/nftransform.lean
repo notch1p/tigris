@@ -604,9 +604,7 @@ Returns the lowered decls and the updated env.
 
 This allows redefinition which previously didn't:
 an existing name gets a fresh fvar, so it shadows only later decls;
-each body is lowered against the _pre-binding_ env — for
-example `let x = 1; let f () = x; let x = 2` keeps `f` statically bound to
-the first `x`, and a non-rec `let x = x + 1` still sees the old `x`.
+each body is lowered against the _pre-binding_ env.
 
 Within a single letrec group every member's id is allocated up front according
 to SCC-order computed in the typechecker.

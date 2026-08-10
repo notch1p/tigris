@@ -211,9 +211,13 @@ def simpErrorCombine (e₁ : Simple String.Slice Char) (e₂ : Simple String.Sli
     let merged := dedupMsgsAt p₁ (m₁ ++ m₂)
     Simple.rebuild p₁ found merged
 end
+
+def withExpected (msg : String) (p : ParserT ε σ τ m α) : ParserT ε σ τ m α := do
+  try p catch e => throwErrorWithMessage e s!"expected {msg}"
+
 def first'
   (ps : Array $ ParserT ε σ τ m α)
-  (combine : ε → ε → ε)
+  (combine : ε → ε → ε := fun _ => id)
   : ParserT ε σ τ m α := do
   let rec go n (h : n <= ps.size) e s :=
     match _ : n with

@@ -18,15 +18,19 @@ namespace Lexing open Parser Parser.Char
 
 def alphanum' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
-  withErrorMessage "letter or digit character or \'" do
+  withErrorMessage "expected letter or digit character or \'" do
     tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '!' || c == '?'
+def alphanum'' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
+  : ParserT ε σ Char m Char :=
+  withErrorMessage "expected letter or digit character or \'" do
+    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '!' || c == '?' || c == '-' || c == '/'
 def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
-  withErrorMessage "alphabetic character" do
+  withErrorMessage "expected alphabetic character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
 def lowercase' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
-  withErrorMessage "alphabetic lowercase character" do
+  withErrorMessage "expected alphabetic lowercase character" do
     tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_'
 def oneOf [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m] (l : List Char)
   : ParserT ε σ Char m Char := withBacktracking $ withErrorMessage s!"expected one of {l}" $ tokenFilter (· ∈ l)
@@ -267,17 +271,22 @@ def reserved :=
    , "postfix" , "and"   , "rec"   , "fun"   , "end"
    , "def"     , "fn"    , "in"    , "if"    , "where"]
 
-open ASCII in private def ID' : TParser σ String :=
-  withErrorMessage "identifier" do
-      (· ++ ·)
-  <$> (Char.toString <$> alpha')
-  <*> foldl String.push "" alphanum'
+open ASCII in private def ID' : TParser σ String := withErrorMessage "expected identifier" do
+  if <- test $ char '«' then
+    (foldl String.push "" $ tokenFilter fun | '«' | '»' => false | _ => true)
+    <* (void $ char '»')
+  else
+    let c <- Char.toString <$> alpha'
+    foldl String.push c alphanum''
 
 open ASCII in private def IDlower' : TParser σ String :=
-  withErrorMessage "lowercase identifier" do
-      (· ++ ·)
-  <$> (Char.toString <$> lowercase')
-  <*> foldl String.push "" alphanum'
+  withErrorMessage "expected lowercase identifier" do
+  if <- test $ char '«' then
+    (foldl String.push "" $ tokenFilter fun | '«' | '»' => false | _ => true)
+    <* (void $ char '»')
+  else
+    let c <- Char.toString <$> lowercase'
+    foldl String.push c alphanum''
 
 def IDlower : TParser σ Symbol := do
   let id <- spaces *> IDlower'
@@ -294,8 +303,23 @@ def strLit : TParser σ String :=
   char '"' *> foldl .push "" (tokenFilter (· != '"')) <* char '"'
 def boolLit : TParser σ Bool := string "true" $> true <|> string "false" $> false
 
-def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α :=
-  (ws $ char l) *> t <* (ws $ char r)
+/--
+Note that inside explicit delimiters the offside rule is suspended since the delimiters
+themselves provide structure so indentation doesn't affecet semantics.
+-/
+def between (l : Char) (t : TParser σ α) (r : Char) : TParser σ α := do
+  void $ spaces *> char l
+  let ({indentStack, ..}, _) <- get
+  modify fun (pe, log) => ({pe with indentStack := [0]}, log)
+  try
+    let a <- t
+    void $ spaces *> char r
+    modify fun (pe, log) => ({pe with indentStack}, log)
+--    void spaces                    -- trailing spaces respect original layout
+    return a
+  catch e =>
+    modify fun (pe, log) => ({pe with indentStack}, log)
+    throw e
 
 def parenthesized (t : TParser σ α) : TParser σ α := between '(' t ')'
 def braced (t : TParser σ α) : TParser σ α := between '{' t '}'
@@ -303,7 +327,7 @@ def sbrack (t : TParser σ α) : TParser σ α := between '[' t ']'
 
 def kw (s : String) : TParser σ Unit := dumbspaces *>
                                      (withBacktracking
-                                    $ withErrorMessage s!"kw '{s}'"
+                                    $ withErrorMessage s!"expected keyword '{s}'"
                                     $ string s
                                     *> notFollowedBy alphanum')
 
@@ -311,17 +335,17 @@ def kw (s : String) : TParser σ Unit := dumbspaces *>
 def kwCol (s : String) : TParser σ Nat := do
   dumbspaces
   let col <- currentColAbs
-  withBacktracking (withErrorMessage s!"kw '{s}'" $ string s *> notFollowedBy alphanum')
+  withBacktracking (withErrorMessage s!"expected keyword '{s}'" $ string s *> notFollowedBy alphanum')
   return col
 
 def kwOpExact (s : String) : TParser σ Unit := dumbspaces *>
   ( withBacktracking
-  $ withErrorMessage s!"kwOp '{s}'"
+  $ withErrorMessage s!"expected keyword operator '{s}'"
   $ void
   $ string s)
 def kwOpNoExtend (s : String) (badNext : Char -> Bool) : TParser σ Unit := dumbspaces *>
   ( withBacktracking
-  $ withErrorMessage s!"kwOp '{s}'"
+  $ withErrorMessage s!"expected keyword operator '{s}'"
   $ string s *> notFollowedBy (tokenFilter badNext))
 
 /--
@@ -366,7 +390,7 @@ abbrev FORALL   : TParser σ Unit := kw "forall"
 abbrev WHERE    : TParser σ Unit := kw "where"
 abbrev FORALL'  : TParser σ Unit := spaces *>
                                      ( withBacktracking
-                                     $ withErrorMessage s!"kw '∀'"
+                                     $ withErrorMessage s!"expected keyword '∀'"
                                      $ void
                                      $ string "∀")
 abbrev EXTERN   : TParser σ Unit := kw "extern"
@@ -405,22 +429,22 @@ end Lexing
 
 namespace Parsing open Lexing Parser
 
-def alignedBindings (bindingParser : TParser σ α) : TParser σ $ Array α :=
+def alignedBindings (bindingParser : TParser σ α) (strict := true) : TParser σ $ Array α :=
   hspaces *> option? (lookAhead eol1) >>=
     fun
-    | some _ => withBlock true $ aligned1 bindingParser -- block layout
+    | some _ => withBlock strict $ aligned1 bindingParser -- block layout
                 -- inline block/ sepBy `;`/`and` (same semantics)
     | none   => withInlineBlock (p := aligned1 bindingParser) =<< currentColAbs
 
 /--
-`where`-block bindings. The `where` column is captured and passed to
-`bindingParser` so a binding's RHS may begin on the next line indented merely
-past `where` (rather than past the binding's own column) — see `eqRhs`.
+where-block bindings. The column is captured and passed to
+bindingParser so a binding's RHS may begin on the next line indented merely
+past where rather than past the binding's own column. See also `eqRhs`.
 -/
 @[inline]
 def whereBindings (bindingParser : Nat -> TParser σ α) : TParser σ $ Array α := do
   let col <- kwCol "where"
-  alignedBindings (bindingParser col)
+  alignedBindings (bindingParser col) false
 
 /--
 - Parse 1+ BARs

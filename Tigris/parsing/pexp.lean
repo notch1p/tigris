@@ -15,6 +15,16 @@ def updateIfKnownD (sym : Symbol) (impl : Expr)
       let l := l ++ Logging.warn "No prior infix declaration found, using prec 50, leftAssoc.\n"
       ({s with ops := ops.insert sym ⟨sym, 50, leftAssoc, η₂ impl⟩}, l)
 
+/-- Like updateIfKnownD but for the prefix table. -/
+def updateIfKnownPre (sym : Symbol) (impl : Expr)
+  : TParser σ Unit :=
+  modify fun (s@{pre, ..}, l) =>
+    if let some ⟨_, prec, _⟩ := pre.find? sym
+    then ({s with pre := pre.insert sym ⟨sym, prec, η₁ impl⟩}, l)
+    else
+      let l := l ++ Logging.warn "No prior prefix declaration found, using prec 80.\n"
+      ({s with pre := pre.insert sym ⟨sym, 80, η₁ impl⟩}, l)
+
 def updateInfix (sym : Symbol) (prec : Nat) (assoc : Associativity) (impl : Expr -> Expr -> Expr)
   : TParser σ Unit :=
   modify fun (s@{ops, ..}, l) =>
@@ -25,14 +35,15 @@ def unwrapAnn : Option Scheme -> Expr -> Expr
   | some sch, core => .Ascribe core (.TSch sch)
   | none, core => core
 
-def infixlDecl : TParser σ Binding := do
-  INFIXL; let i <- intExp let s <- strExp
+def infixlDecl : TParser σ Binding := withExpected "infixl operator declaration" do
+  let kwCol <- kwCol "infixl"
+  let i <- intExp let s <- strExp
   match s, i with
   | CS op, CI i =>
     let op := op.trimAscii.toString
     if reservedOp.find? op matches some _
     then error s!"this operator {op} may not be redefined\n"; throwUnexpected
-    if let some e <- option? $ ARROW *> parseExpr then
+    if let some e <- option? $ ARROW *> withInlineBlock kwCol parseExpr then
       updateInfix op i.toNat .leftAssoc $ η₂ e
       return (s!"({op})", e)
     else
@@ -41,14 +52,15 @@ def infixlDecl : TParser σ Binding := do
 
   | _, _ => return ("_", CUnit)
 
-def infixrDecl : TParser σ Binding := do
-  INFIXR; let i <- intExp let s <- strExp
+def infixrDecl : TParser σ Binding := withExpected "infixr operator declaration" do
+  let kwCol <- kwCol "infixr"
+  let i <- intExp let s <- strExp
   match s, i with
   | CS op, CI i =>
     let op := op.trimAscii.toString
     if reservedOp.find? op matches some _
     then error s!"this operator {op} may not be redefined\n"; throwUnexpected
-    if let some e <- option? $ ARROW *> parseExpr then
+    if let some e <- option? $ ARROW *> withInlineBlock kwCol parseExpr then
       updateInfix op i.toNat .rightAssoc $ η₂ e
       return (s!"({op})", e)
     else
@@ -56,28 +68,30 @@ def infixrDecl : TParser σ Binding := do
       return (s!"({op})", CUnit)
   | _, _ => return ("_", CUnit)
 
-def prefixDecl : TParser σ Binding := do
-  PREFIX; let i <- intExp let s <- strExp
+def prefixDecl : TParser σ Binding := withExpected "prefix operator declaration" do
+  let kwCol <- kwCol "prefix"
+  let i <- intExp let s <- strExp
   match s, i with
   | CS op , CI i =>
     let op := op.trimAscii.toString
     if reservedOp.find? op |>.isSome
     then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
-    ARROW let e <- parseExpr
+    ARROW let e <- withInlineBlock kwCol parseExpr
     modify fun (s@{pre,..}, l) =>
       let pre := pre.insert op ⟨op, i.toNat, η₁ e⟩
       ({s with pre}, l)
     return (s!"(ₚ{op})", e)
   | _, _ => return ("_", CUnit)
 
-def postfixDecl : TParser σ Binding := do
-  POSTFIX; let i <- intExp let s <- strExp
+def postfixDecl : TParser σ Binding := withExpected "postfix operator declaration" do
+  let kwCol <- kwCol "postfix"
+  let i <- intExp let s <- strExp
   match s, i with
   | CS op , CI i =>
     let op := op.trimAscii.toString
     if reservedOp.find? op |>.isSome
     then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
-    ARROW let e <- parseExpr
+    ARROW let e <- withInlineBlock kwCol parseExpr
     modify fun (s@{post,..}, l) =>
       let post := post.insert op ⟨op, i.toNat, η₁ e⟩
       ({s with post}, l)
@@ -110,7 +124,7 @@ def let1Common
           if op ∈ ["=",":=", ":", "|"] then setPosition pos *> ann >>= kont id pre
           else
             if reservedOp.find? op |>.isSome
-            then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
+            then error s!"operator {op} may not be redefined\n" *> throwUnexpected
             let pre <- funBinder'
             let op' := s!"«{op}»"
             updateIfKnownD op (Var op')
@@ -122,7 +136,7 @@ def let1Common
     | _ =>
       if let some op <- option? potentialOp' then
         if reservedOp.find? op |>.isSome
-        then error s!"this operator {op} may not be redefined\n" *> throwUnexpected
+        then error s!"operator {op} may not be redefined\n" *> throwUnexpected
         let pre <- funBinder'
         let op' := s!"«{op}»"
         updateIfKnownD op (Var op')
@@ -170,29 +184,18 @@ let x = f                 let x = f
   a -- correct                 a -- correct
 ```
 -/
-def letDeclDispatch : TParser σ $ Array Binding := do
+def letDeclDispatch : TParser σ $ Array Binding := withExpected "let-declaration" do
   let letCol <- kwCol "def" <|> kwCol "let"
-  let bs <- match <- test REC with
-            | false => withInlineBlock letCol
-                     $ sepBy1 AND
-                     $ let1Common
-                     $ letBody letCol
-            | true =>
-              let b <- withInlineBlock letCol
-                    $ sepBy1 AND
-                    $ let1Common
-                    $ letrecBody letCol
-              let some b' <- option? $ whereBindings whereRec
-                           | pure b
-              pure $ b' ++ b
-
+  let p <- test REC >>= fun | false => pure letBody | true => pure letrecBody
+  let b <- withInlineBlock letCol $ sepBy1 AND $ let1Common $ p letCol
+  let some b' <- option? $ whereBindings whereRec | pure b
+  let bs := b' ++ b
   option? (IN *> parseExpr) >>= fun -- only for REPL, avoids backtracking. not "true" letexp
   | some body => return #[("_", Let bs body)]
   | none => return bs
-where
-  whereRec (whereCol : Nat) := let1Common (letrecBody whereCol)
+where whereRec (whereCol : Nat) := let1Common (letrecBody whereCol)
 
-def letPatDecl : TParser σ (Pattern × Expr) := do
+def letPatDecl : TParser σ (Pattern × Expr) := withExpected "pattern declaration" do
   let letCol <- kwCol "def" <|> kwCol "let"
   if <- test REC then
     warn "found non-variable pattern on the left hand side,\nThis declaration will be treated as a letdecl\n"
@@ -202,7 +205,7 @@ def letPatDecl : TParser σ (Pattern × Expr) := do
 
 def value p := show TParser σ Binding from ("_", ·) <$> p
 
-def externDecl : TParser σ TopDecl := do
+def externDecl : TParser σ TopDecl := withExpected "extern declaration" do
   EXTERN; let id <- ID let name <- spaces *> strLit
   COLON let sch <- PType.tyScheme
   return .extBind id name sch
@@ -219,7 +222,7 @@ def instanceBinder (floorCol : Nat) : TParser σ Binding := do
     return (f, transMatch pre a)
 
 def instanceExp (ctor : Symbol) (fs : Array Binding)
-  : TParser σ (Array $ String × Expr) := do
+  : TParser σ (Array $ String × Expr) := withExpected "instance body" do
   let ({recordFields,..}, _) <- get
   let some order := recordFields.get? ctor | error s!"unknown record {ctor}\n"; throwUnexpected
   let mut mp : Std.HashMap String Expr := ∅
@@ -235,15 +238,14 @@ def instanceExp (ctor : Symbol) (fs : Array Binding)
     a.push (s, mp.get! s)
 
 open PType in
-def instanceDecl : TParser σ TopDecl := do
+def instanceDecl : TParser σ TopDecl := withExpected "instance declaration" do
   INSTANCE; optional COLON
   let (.Forall _ ctxPreds ty) <- tyScheme
-  let head <-
+  let (cname, args) <-
     match ty.getRightmost with
     | .TApp (.TCon cname) args => pure (cname, args)
     | .TCon cname              => pure (cname, [])
     | _ => error "not a valid class" *> throwUnexpected
-  let (cname, args) := head
   let fs <- first
     [ EQ *> braced (sepBy COMMA (instanceBinder 0))
     , whereBindings instanceBinder ]

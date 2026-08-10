@@ -39,16 +39,16 @@ def mkTupExpr (arr : Array Expr) : Expr :=
   | (_ + 2) => arr.foldr Prod' arr[arr.size - 1] (arr.size - 1)
 
 open TConst in
-@[inline] def funBinder : TParser σ Pattern := spaces *> first'
+@[inline] def funBinder : TParser σ Pattern := withExpected "binder" $ spaces *> first'
   #[ patRecordTyped
    , patRecord
    , PConst <$> PInt <$> intLit
    , PConst <$> PStr <$> strLit
    , parenthesized patProd
    , parenthesized parsePattern]
-  simpErrorCombine
+  -- simpErrorCombine
 in
-@[inline] def funBinderID : TParser σ Pattern := spaces *> first'
+@[inline] def funBinderID : TParser σ Pattern := withExpected "binder" $ spaces *> first'
   #[ patRecordTyped
    , patRecord
    , PConst <$> PInt <$> intLit
@@ -56,16 +56,16 @@ in
    , ID <&> fun i => if i.isUpperInit then PCtor i #[] else PVar i
    , parenthesized patProd
    , parenthesized parsePattern]
-  simpErrorCombine
+  -- simpErrorCombine
 in
-@[inline] def funBinder' : TParser σ Pattern := spaces *> first'
+@[inline] def funBinder' : TParser σ Pattern := withExpected "binder" $ spaces *> first'
   #[ patRecordTyped
    , patRecord
    , PConst <$> PInt <$> intLit
    , PConst <$> PStr <$> strLit
    , parenthesized patProd
    , parsePattern]
-  simpErrorCombine
+  -- simpErrorCombine
 
 def reorderRecord (ctor : Symbol) (fs : Array $ String × Expr)
   : TParser σ Expr := do
@@ -97,19 +97,18 @@ def resolveBareRecord (fs : Array $ String × Expr) : TParser σ Expr := do
        candidates are {cand}\n" *> reorderRecord ty fs
 
 mutual
-partial def parseExpr : TParser σ Expr := withErrorMessage "Term" parsePratt
+partial def parseExpr : TParser σ Expr := withExpected "term" parsePratt
 
-partial def atom : TParser σ Expr := spaces *>
+partial def atom : TParser σ Expr := withExpected "atom" spaces *>
   first' #[ recordExpTyped
-          , ascription
-          , parenthesized prodExp
+          , prodExp
           , letDispatch
           , funDispatch
           , recordExp
           , fixpointExp , condExp
           , matchExp    , intExp
           , strExp      , varExp]
-         simpErrorCombine
+         -- simpErrorCombine
 
 /--
 Funapp but respects crossLine called from `spaces`.
@@ -140,25 +139,32 @@ let x =
 
 since in the case we would like to parse the atom starting at a newline.
 
+Prefix/Infix mixing: If the next token after is also a prefix operator then
+we let it naturally fall through so parsePratt can pick it up as infix.
 -/
 partial def appSep : TParser σ (Expr -> Expr -> Expr) := do
   spaces
   if <- atEol then throwUnexpected
+  else if let some tok <- option? (lookAhead potentialOp) then
+    let ({pre,..}, _) <- get
+    if pre.matchPrefix tok 0 |>.isSome then throwUnexpected
+
   pure App
 
-partial def ascription : TParser σ Expr := parenthesized do
-  let e <- parseExpr
-  COLON
-  Ascribe e <$> PType.tyForall false ∅
-
-partial def prodExp : TParser σ Expr := do
+/-- fused type ascription -/
+partial def prodExp : TParser σ Expr := parenthesized do
   let es <- sepBy COMMA (parsePratt 0)
-  return match h : es.size with
-         | 0 => CUnit
-         | 1 => transShorthand es[0]
-         | _ + 2 =>
-           transShorthand $
-            es[0:es.size - 1].foldr Prod' es[es.size - 1]
+  test COLON >>=
+  fun
+  | true =>
+    match h : es.size with
+    | 1 => Ascribe (transShorthand es[0]) <$> PType.tyForall false ∅
+    | _ => error "type ascription applies to a single expression" *> throwUnexpected
+  | false =>
+    match h : es.size with
+    | 0     => pure CUnit
+    | 1     => pure $ transShorthand es[0]
+    | _ + 2 => pure $ transShorthand $ es[0:es.size - 1].foldr Prod' es.back
 
 partial def varExp      : TParser σ Expr :=
   ID <&> fun
@@ -296,7 +302,7 @@ Behaviors should be similar to Lean's do-notation.
 partial def letBodyOrIn (letCol : Nat) : TParser σ Expr :=
   (IN *> dumbspaces *> parseExpr) <|> (vspaces *> colEq letCol *> parseExpr)
 
-partial def letDispatch : TParser σ Expr := do
+partial def letDispatch : TParser σ Expr := withExpected "let-expression" do
   let letCol <- kwCol "let"
   match <- test REC with
   | false =>
@@ -341,11 +347,11 @@ partial def condExp     : TParser σ Expr := do
   THEN let e₁ <- parseExpr
   ELSE let e₂ <- parseExpr        return Cond c e₁ e₂
 
-partial def recordExp   : TParser σ Expr :=
+partial def recordExp   : TParser σ Expr := withExpected "record literal" $
   transShorthand <$> (resolveBareRecord =<< braced do sepBy COMMA do
     let f <- ID; EQ; let e <- parseExpr; return (f, e))
 
-partial def recordExpTyped : TParser σ Expr := parenthesized do
+partial def recordExpTyped : TParser σ Expr := parenthesized do withExpected "record literal" do
   let fs <- braced $ sepBy COMMA $ ID >>= fun f =>
     option? (EQ *> parseExpr) <&> fun
                                   | some e  => (f, e)

@@ -149,10 +149,6 @@ attribute [inline]
   mkSym predSym fieldAcc freshG
   noteArity declArity? ctorInfo?
 
-/-! CL-idiomatic layout. Since `Std.Format` alignment is margin-relative (not
-column-relative), continuation lines align only for forms that begin at the
-margin — which is exactly the case for line-broken bodies, so this dispatches on
-the head symbol into the standard indentation classes. -/
 namespace PP open Std.Format
 def joinSuffix' [Std.ToFormat α] (xs : Subarray α) (suffix : Format) :=
   xs.foldl (· ++ suffix ++ format ·) .nil

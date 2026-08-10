@@ -262,9 +262,14 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
     addEq tv tB
     return (.Fix (.Fun f tv tBody (tv ->' tB)) tv, tv, pB)
 
-  | Fix e | Fixcomb e => do
+  | Fix e => do
     let (te, t, p) <- inferExpr Γ e
     return (.Fix te t, t, p)
+  | Fixcomb e => do
+    let (te, t, p) <- inferExpr Γ e
+    let tv <- fresh
+    addEq t (tv ->' tv)
+    return (.Fix te tv, tv, p)
 
   | App e₁ e₂ => do
     let (tE₁, t₁, p₁) <- inferExpr Γ e₁

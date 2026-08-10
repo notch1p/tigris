@@ -126,5 +126,4 @@ def checkFile (s : System.FilePath) : IO Unit := do
   let s <- IO.FS.readFile s
   EIO.toIO .userError $ check s
 
-def main (args : List String) :=
-  args.forA fun p => checkFile p
+def main (args : List String) := args.forA fun p => checkFile p

@@ -107,4 +107,12 @@ lean_exe "tigrisl" where
   root := `Tigrisl
   needs := #[runtime.lean]
 
+--lean_exe «eval-direct» where
+--  root := `eval
+--  srcDir := "Tigris/TCNF/interpreter"
+--lean_exe «eval-cek» where
+--  root := `evalCEK
+--  srcDir := "Tigris/TCNF/interpreter"
+
 require Parser from git "https://github.com/fgdorais/lean4-parser"@"afcde96c3f0ccd84beb096fd3af5dd144b401e3c"
+

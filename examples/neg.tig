@@ -1,0 +1,12 @@
+class Neg a where
+  neg : a -> a
+
+-- (-) is already infix, we can mix those.
+prefix 65 "-" => neg
+
+instance Neg Int where
+  neg x = 0 - x
+
+let main = 
+  let x = 1
+  -x

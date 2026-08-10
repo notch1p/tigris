@@ -38,7 +38,8 @@ def execCases : List (String × System.FilePath × String) :=
   , (examples / "mutual"  , r"5")
   , (examples / "where"   , r"50")
   , (examples / "cont"    , r"42")
-  , (examples / "fun"     , r"(40 . 60)")]
+  , (examples / "fun"     , r"(40 . 60)")
+  , (examples / "neg"     , r"-1")]
   |>.map fun (p, s) => (name p, p.addExtension "tig", s)
 where examples := fp "examples"
       cases    := fp "tests" / "cases"
@@ -75,7 +76,7 @@ def main : IO Unit := do
             | .error e =>
               fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
             | .ok got =>
-              if got == expected then pass.modify .succ *> println s!"  ok\t{name} = {got}"
+              if got == expected then pass.modify .succ *> println s!"  ok\t{name}\t= {got}"
               else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {got}"
   else
     println! "== exec skipped (sbcl not found) =="
