@@ -108,8 +108,11 @@ lean_exe "tigrisl" where
   needs := #[runtime.lean]
 
 def lake2 : IO.Process.SpawnArgs where
-  cmd := "lake"
-  args := #["test", "--", _package.config.buildDir / _package.config.binDir |>.toString, "tigrisl", "tigrisi"]
+  cmd  := "lake"
+  args :=
+    let tigrisl := if System.Platform.isWindows then "tigrisl.exe" else "tigrisl"
+    let tigrisi := if System.Platform.isWindows then "tigrisi.exe" else "tigrisi"
+    #["test", "--", _package.config.buildDir / _package.config.binDir |>.toString, tigrisl, tigrisi]
 in script shortcut do
   liftM $ IO.println =<< IO.Process.run lake2
   return 0

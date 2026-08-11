@@ -3,7 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 typedef lean_obj_res OBJRES;
 typedef lean_obj_arg OWNED_ARG;
@@ -22,9 +26,52 @@ string_repeat_ascii(uint8_t c, size_t n) {
 OBJRES lean_mk_symlink(BORROWED_ARG p1, BORROWED_ARG p2) {
   lean_string_object* ps1 = lean_to_string(p1);
   lean_string_object* ps2 = lean_to_string(p2);
-  if (symlink(ps1->m_data, ps2->m_data) == 0) {
+#if defined(_WIN32)
+  // Try as a file symlink first; retry as directory if that fails.
+  if (CreateSymbolicLinkA(ps2->m_data, ps1->m_data, 0))
     return lean_io_result_mk_ok(lean_box(0));
+  DWORD err = GetLastError();
+  if (err == ERROR_INVALID_PARAMETER) {
+    if (CreateSymbolicLinkA(ps2->m_data, ps1->m_data,
+                            SYMBOLIC_LINK_FLAG_DIRECTORY))
+      return lean_io_result_mk_ok(lean_box(0));
+    err = GetLastError();
   }
+  char msg[256];
+  FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                 NULL, err, 0, msg, sizeof(msg), NULL);
+  switch (err) {
+    case ERROR_FILE_EXISTS:
+    case ERROR_ALREADY_EXISTS:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_already_exists(err, lean_mk_string(msg)));
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_no_such_thing(err, lean_mk_string(msg)));
+    case ERROR_ACCESS_DENIED:
+    case ERROR_PRIVILEGE_NOT_HELD:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_permission_denied(err, lean_mk_string(msg)));
+    case ERROR_DISK_FULL:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_resource_exhausted(err, lean_mk_string(msg)));
+    case ERROR_INVALID_PARAMETER:
+    case ERROR_INVALID_NAME:
+    case ERROR_BAD_PATHNAME:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_invalid_argument(err, lean_mk_string(msg)));
+    case ERROR_INVALID_FUNCTION:
+    case ERROR_NOT_SUPPORTED:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_unsupported_operation(err, lean_mk_string(msg)));
+    default:
+      return lean_io_result_mk_error(
+          lean_mk_io_error_other_error(err, lean_mk_string(msg)));
+  }
+#else
+  if (symlink(ps1->m_data, ps2->m_data) == 0)
+    return lean_io_result_mk_ok(lean_box(0));
   char* msg = strerror(errno);
   switch (errno) {
     case EACCES:
@@ -53,6 +100,7 @@ OBJRES lean_mk_symlink(BORROWED_ARG p1, BORROWED_ARG p2) {
       return lean_io_result_mk_error(
           lean_mk_io_error_other_error(errno, lean_mk_string(msg)));
   }
+#endif
 }
 
 enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {
@@ -106,8 +154,6 @@ LEAN_EXPORT OBJRES lean_disable_stdout_buffer(uint8_t i) {
 #if defined(_WIN32)
 
 // -------------------- Windows implementation --------------------
-#include <windows.h>
-
 static HANDLE g_ctrlEvent = NULL;
 
 static BOOL WINAPI ctrl_handler(DWORD dwCtrlType) {

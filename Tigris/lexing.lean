@@ -276,8 +276,10 @@ open ASCII in private def ID' : TParser σ String := withErrorMessage "expected 
     (foldl String.push "" $ tokenFilter fun | '«' | '»' => false | _ => true)
     <* (void $ char '»')
   else
-    let c <- Char.toString <$> alpha'
-    foldl String.push c alphanum''
+    let id <- foldl String.push (p := alphanum'') =<< Char.toString <$> alpha'
+    if id ∈ reserved
+    then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
+    pure id
 
 open ASCII in private def IDlower' : TParser σ String :=
   withErrorMessage "expected lowercase identifier" do
@@ -285,18 +287,13 @@ open ASCII in private def IDlower' : TParser σ String :=
     (foldl String.push "" $ tokenFilter fun | '«' | '»' => false | _ => true)
     <* (void $ char '»')
   else
-    let c <- Char.toString <$> lowercase'
-    foldl String.push c alphanum''
+    let id <- foldl String.push (p := alphanum'') =<< Char.toString <$> lowercase
+    if id ∈ reserved
+    then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
+    else pure id
 
-def IDlower : TParser σ Symbol := do
-  let id <- spaces *> IDlower'
-  if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
-  pure id
-
-def ID : TParser σ Symbol := do
-  let id <- spaces *> ID'
-  if reserved.contains id then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
-  pure id
+@[inline, always_inline] def IDlower : TParser σ Symbol := spaces *> IDlower'
+@[inline, always_inline] def ID : TParser σ Symbol := spaces *> ID'
 
 def intLit := @ASCII.parseInt
 def strLit : TParser σ String :=

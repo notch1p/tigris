@@ -90,9 +90,9 @@ def main (paths : List String) : IO UInt32 := do
   match paths with
   | bindir :: paths =>
     for p in paths do
-      let artp := s!"{bindir}/{p}"
+      let artp := System.FilePath.join.on System.FilePath.mk bindir p
       println! "linking {artp} -> {p}"
-      mk_symlink artp p
+      mk_symlink artp.toString p
     return 0
   | _ => return 0
 
