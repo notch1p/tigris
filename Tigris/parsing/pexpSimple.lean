@@ -11,22 +11,34 @@ def strExp      : TParser σ Expr := CS <$> (spaces *> strLit)
 
 def transMatch (pat : Array Pattern) (e : Expr) : Expr :=
   if pat.isEmpty then e else
-    let (ep, pat', _) :=
-      pat.foldl (init := (#[], #[], 0)) fun (ep, pat', i) s =>
-        match s with
-        | PVar .. | PWild => (ep, pat', i + 1)
-        | p => (ep.push (Var $ hole i), pat'.push p, i + 1)
+    let (ep, pat') := pat.size.fold (init := (#[], #[])) fun i _ (ep, pat') =>
+      match pat[i] with
+      | PVar .. | PWild => (ep, pat')
+      | p => (ep.push (Var $ hole i), pat'.push p)
 
     let hd := if ep.isEmpty then e else Match ep #[(pat', e)]
     pat.size.foldRev (init := hd) fun i _ a =>
       if let PVar s := pat[i] then Fun s a
       else Fun (hole i) a
 
-def pointedExp (discr : Array $ Array Pattern × Expr) : Expr :=
+--                  discriminant                        branch            guard        RHS
+def transPatMatrix (discr : Array Expr) (brs : Array ((Array Pattern × Option Expr) × Expr))
+  : Expr := Match discr $ go discr brs.size #[] Nat.le.refl
+where go discr i (acc : Array (Array Pattern × Expr)) (h : i <= brs.size) :=
+  match h' : i with
+  | 0 => acc
+  | i' + 1 =>
+    match brs[brs.size - i] with
+    | ((br, none), e) => go discr i' (acc.push (br, e)) $ Nat.le_of_succ_le h
+    | ((br, some g), e) =>  --  wrong for effectful discr since it is inlined here.
+      let k := Cond g e $ Match discr $ go discr i' #[] $ Nat.le_of_succ_le h
+      acc.push (br, k)
+
+def pointedExp (discr : Array $ (Array Pattern × Option Expr) × Expr) : Expr :=
   if h : discr.size = 0 then CUnit
-  else discr[0].1.size.foldRev
-        (init := Match (discr[0].1.mapIdx fun i _ => Var $ hole i) discr)
-        fun i _ a => Fun (hole i) a
+  else let s := discr[0].1.1
+    s.size.foldRev (fun i _ a => Fun (hole i) a) $
+    transPatMatrix (s.mapIdx fun i _ => Var $ hole i) discr
 
 def mkStmtsExpr (stmts : Array Expr) :=
   match h : stmts.size with
@@ -205,14 +217,13 @@ partial def primaryAtom (minPrec := 0) : TParser σ Expr := loop =<< atomPrefix 
     let some {impl,..} <- takePostfixOp? minPrec | return lhs
     loop $ impl lhs
 
-partial def matchDiscr  : TParser σ $ Array Pattern × Expr := do
-  let p <- sepBy1 COMMA parsePattern
+partial def matchDiscr  : TParser σ $ (Array Pattern × Option Expr) × Expr := do
+  let p <- (·, ·) <$> sepBy1 COMMA parsePattern <*> (option? $ WHERE *> parseExpr)
   ARROW let body <- parseExpr     return (p, body)
-
 partial def matchExp    : TParser σ Expr := do
   MATCH let e <- sepBy1 COMMA parseExpr; WITH
   let br <- barBranches matchDiscr
-                                  return Match e br
+  return transPatMatrix e br
 
 /--
 Local column overriding for `= <indented-rhs>` form. Applies to let/where block.
