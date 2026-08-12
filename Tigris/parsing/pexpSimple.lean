@@ -28,15 +28,10 @@ def pointedExp (discr : Array $ Array Pattern × Expr) : Expr :=
         (init := Match (discr[0].1.mapIdx fun i _ => Var $ hole i) discr)
         fun i _ a => Fun (hole i) a
 
-def mkProdPat (arr : Array Symbol) : Pattern :=
-  match h : arr.size with
-  | 0 => PWild | 1 => PVar arr[0]
-  | (_ + 2) => arr.foldr (PProd' ∘ PVar) (PVar arr[arr.size - 1]) (arr.size - 1)
-
-def mkTupExpr (arr : Array Expr) : Expr :=
-  match h : arr.size with
-  | 0 => CUnit | 1 => arr[0]
-  | (_ + 2) => arr.foldr Prod' arr[arr.size - 1] (arr.size - 1)
+def mkStmtsExpr (stmts : Array Expr) :=
+  match h : stmts.size with
+  | 0 => CUnit | 1 => stmts[0]
+  | n@(_ + 2) => stmts[:n - 1].foldr (fun s acc => Let #[("_", s)] acc) stmts.back
 
 open TConst in
 @[inline] def funBinder : TParser σ Pattern := withExpected "binder" $ spaces *> first'
@@ -103,6 +98,7 @@ partial def atom : TParser σ Expr := withExpected "atom" spaces *>
   first' #[ recordExpTyped
           , prodExp
           , letDispatch
+          , seqExp
           , funDispatch
           , recordExp
           , fixpointExp , condExp
@@ -164,7 +160,24 @@ partial def prodExp : TParser σ Expr := parenthesized do
     match h : es.size with
     | 0     => pure CUnit
     | 1     => pure $ transShorthand es[0]
-    | _ + 2 => pure $ transShorthand $ es[0:es.size - 1].foldr Prod' es.back
+    | n@(_ + 2) => pure $ transShorthand $ es[0:n - 1].foldr Prod' es.back
+
+partial def seqExp : TParser σ Expr := withExpected "do/begin block" $
+  mkStmtsExpr <$> first [DO *> doBlock, beginBlock]
+partial def blockExp : TParser σ Expr :=
+  test (lookAhead LET) >>= fun | true  => letDispatch true
+                               | false => parseExpr
+partial def doBlock : TParser σ (Array Expr) := alignedBindings blockExp -- layout aware
+partial def beginBlock : TParser σ (Array Expr) := do -- non-layout-aware begin...end
+  BEGIN; let ({indentStack, ..}, _) <- get
+  modify fun (pe, log) => ({pe with indentStack := [0]}, log)
+  try
+    let xs <- sepBy SEMICOLON blockExp <* END
+    modify fun (pe, log) => ({pe with indentStack}, log)
+    return xs
+  catch e =>
+    modify fun (pe, log) => ({pe with indentStack}, log)
+    throw e
 
 partial def varExp      : TParser σ Expr :=
   ID <&> fun
@@ -299,34 +312,35 @@ The body of a letexp, in one of the two forms:
 
 Behaviors should be similar to Lean's do-notation.
 -/
-partial def letBodyOrIn (letCol : Nat) : TParser σ Expr :=
-  (IN *> dumbspaces *> parseExpr) <|> (vspaces *> colEq letCol *> parseExpr)
-
-partial def letDispatch : TParser σ Expr := withExpected "let-expression" do
+partial def letBodyOrIn (letCol : Nat) (block? : Bool) : TParser σ Expr :=
+  if block? then
+    mkStmtsExpr <$> ((IN *> dumbspaces *> (beginBlock <|> (Array.singleton <$> parseExpr)))
+                 <|> (vspaces *> colEq letCol *> doBlock))
+  else (IN *> dumbspaces *> parseExpr) <|> (vspaces *> colEq letCol *> parseExpr)
+partial def letDispatch (block? := false) : TParser σ Expr := withExpected "let-expression" do
   let letCol <- kwCol "let"
   match <- test REC with
   | false =>
     match <- option? funBinder with
     | some pat =>
       EQ let e₁ <- withInlineBlock letCol parseExpr
-      let e₂ <- letBodyOrIn letCol
+      let e₂ <- letBodyOrIn letCol block?
       return Match #[e₁] #[(#[pat], e₂)]
     | none =>
-      -- let grp <- sepBy1 AND let1
       let grp <- alignedBindings (let1 letCol)
-      let e₂ <- letBodyOrIn letCol
+      let e₂ <- letBodyOrIn letCol block?
       return Let grp e₂
   | true =>
     match <- option? funBinder with
     | some pat =>
       EQ let e₁ <- withInlineBlock letCol parseExpr
-      let e₂ <- letBodyOrIn letCol
+      let e₂ <- letBodyOrIn letCol block?
       warn "found non-variable pattern on the left hand side,\nThis expression will be treated as a letexp\n"
       return Match #[e₁] #[(#[pat], e₂)]
     | none =>
       --let grp <- sepBy1 AND letrec1
       let grp <- alignedBindings (letrec1 letCol)
-      let e₂ <- letBodyOrIn letCol
+      let e₂ <- letBodyOrIn letCol block?
       return Let grp e₂
 partial def fixpointExp : TParser σ Expr := do
   REC;

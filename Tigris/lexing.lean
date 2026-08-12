@@ -187,11 +187,11 @@ def withBlock (strict : Bool) (p : TParser σ α) : TParser σ α := do
   let cur  <- currentCol
   if strict then
     if base <= cur then
-      error s!"expected indentation > {cur} to start a block, got {base}"
+      error s!"expected indentation > {cur} to start a block, got {base}\n"
       throwUnexpected
   else
     if base < cur then
-      error s!"expected indentation >= {cur} to start a block, got {base}"
+      error s!"expected indentation >= {cur} to start a block, got {base}\n"
       throwUnexpected
   pushCol base
   try
@@ -263,13 +263,16 @@ def reservedOp : Lean.Data.Trie Symbol := .ofList
   , ("_", "_")
   , (":", ":")
   , ("∀", "∀")]
-
-def reserved :=
-  #[ "mutual"  ,"infixl" , "infixr", "match" , "extern"
-   , "class"   , "forall", "data"  , "type"  , "with"
-   , "instance", "else"  , "then"  , "let"   , "prefix"
-   , "postfix" , "and"   , "rec"   , "fun"   , "end"
-   , "def"     , "fn"    , "in"    , "if"    , "where"]
+section open Lean.Data
+def reserved : Lean.Data.Trie Unit := ofKeys $
+  [ "mutual"  ,"infixl" , "infixr", "match" , "extern"
+  , "class"   , "forall", "data"  , "type"  , "with"
+  , "instance", "else"  , "then"  , "let"   , "prefix"
+  , "postfix" , "and"   , "rec"   , "fun"   , "end"
+  , "def"     , "fn"    , "in"    , "if"    , "where"
+  , "begin"   , "do"] where ofKeys := List.foldl (Trie.insert (val := ())) ∅
+def _root_.Lean.Data.Trie.contains (t : Trie α) (s : String) : Bool := t.find? s |>.isSome
+end
 
 open ASCII in private def ID' : TParser σ String := withErrorMessage "expected identifier" do
   if <- test $ char '«' then
@@ -277,7 +280,7 @@ open ASCII in private def ID' : TParser σ String := withErrorMessage "expected 
     <* (void $ char '»')
   else
     let id <- foldl String.push (p := alphanum'') =<< Char.toString <$> alpha'
-    if id ∈ reserved
+    if reserved.contains id
     then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
     pure id
 
@@ -288,7 +291,7 @@ open ASCII in private def IDlower' : TParser σ String :=
     <* (void $ char '»')
   else
     let id <- foldl String.push (p := alphanum'') =<< Char.toString <$> lowercase
-    if id ∈ reserved
+    if reserved.contains id
     then throwUnexpectedWithMessage none s!"expected identifier, not keyword '{id}'"
     else pure id
 
@@ -385,6 +388,7 @@ abbrev POSTFIX  : TParser σ Unit := kw "postfix"
 abbrev PREFIX   : TParser σ Unit := kw "prefix"
 abbrev FORALL   : TParser σ Unit := kw "forall"
 abbrev WHERE    : TParser σ Unit := kw "where"
+abbrev DO       : TParser σ Unit := kw "do"
 abbrev FORALL'  : TParser σ Unit := spaces *>
                                      ( withBacktracking
                                      $ withErrorMessage s!"expected keyword '∀'"
@@ -408,6 +412,7 @@ abbrev ARROW: TParser σ Unit := spaces *>
 abbrev COMMA: TParser σ Unit := kwOpExact ","
 abbrev EQ   : TParser σ Unit := kwOpExact ":=" <|> kwOpNoExtend "=" (fun c => c == '>' || c == '=')
 abbrev END  : TParser σ Unit := kwOpExact ";;" <|> kw "end"
+abbrev BEGIN: TParser σ Unit := kw "begin"
 abbrev COLON: TParser σ Unit := kwOpExact ":"
 abbrev UNDERSCORE : TParser σ Unit := kwOpExact "_"
 

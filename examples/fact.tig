@@ -8,9 +8,9 @@ infixl 65 "++" => append
 let fact n =
   let rec go acc
     | 0 -> acc
-    | m ->
+    | m -> do
       let an = acc * m
-      let _ = println $ "fact " ++ toString (n - m) ++ " = " ++ toString an
+      println $ "fact " ++ toString (n - m) ++ " = " ++ toString an
       go an @@ m - 1
   in go 1 n
 --   ^^^^^^ is let x = app ... in x in TCNF.
@@ -25,8 +25,8 @@ let fact n =
 
 postfix 50 "!" => fact
 
-let main =
-  let _ = println "Enter a number:"
+let main = do
+  println "Enter a number:"
   let x = read ()
   x ! -- x! is also a valid identifier. So we parenthesize it/use juxtaposition.
 

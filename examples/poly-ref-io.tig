@@ -24,8 +24,8 @@ instance Monad IO where
 -- every references to ioref do NOT create a new ref but all share the same one. 
 let ioref = 'Nil -- Besides, mkref === quote isn't better.
 
-let rec main =
-  let _ = f ()
+let rec main = do
+  f ()
   g () -- g fails since ioref is now 1 :: Nil
 where
   f _ = ioref >>= fun ref =>  -- ref is of metavariable type and does not generalize

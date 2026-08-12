@@ -10,7 +10,7 @@ prefix 90 "'" => mkref
 
 let ref = 'Nil
 
-let main = 
-  let _        = setf ref $ true :: Nil
+let main = do
+  setf ref $ true :: Nil
   let (x :: _) = deref ref
-  x + 1 -- fails since x is actually bool.
+  in x + 1 -- fails since x is actually bool.
