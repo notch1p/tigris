@@ -48,17 +48,18 @@ partial def elaborateDict
   | some (v, dty) => return .Var v dty
   | none =>
     match <- memoLookup p with
-    | some (nm, sch, _) => return .Var nm sch.body
+    | some d => return .Var d.name d.scheme.body
     | none =>
-      if !isGroundPred p then
-        throw $ .NoSynthesize s!"{p}: missing in-scope instance for dictionary\n"
+      unless isGroundPred p
+      do     throw $ .NoSynthesize s!"{p}: missing in-scope instance for dictionary\n"
+
       let dictExpr <- resolvePred Γfull p
       let (te, sch, _) <- runInferConstraintT dictExpr Γfull
       let fe <- elaborateWithScope Γsch scope ∅ te sch Γfull
       let dty := dictTypeOfPred p
-      let nm <- fresh s!"rd_{p.cls}_"
+      let (nm, idx) <- freshIdx s!"rd_{p.cls}_"
       let dsch : Scheme := .Forall [] [] dty
-      memoInsert p (nm, dsch, fe)
+      memoInsert p ⟨nm, idx, dsch, fe⟩
       return .Var nm dty
 
 partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γfull : Env) : TExpr -> F FExpr

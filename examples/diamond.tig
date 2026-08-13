@@ -1,0 +1,36 @@
+class C a where c : a -> Int
+instance C Int where c x = x
+class D a where d : a -> Int
+instance D Int where d x = x
+
+type Box a = Box a
+
+instance forall a [C a, D a], C (Box a) where
+  c (Box x) = d x
+instance forall a [C a, D a], D (Box a) where
+  d (Box x) = c x
+
+let main = c
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ Box
+         $ 1    -- 36 - 14 = 22

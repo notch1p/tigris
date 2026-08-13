@@ -53,10 +53,20 @@ open Resolve (resolvePred)
 abbrev FEnv := Std.TreeMap String Scheme
 abbrev DictScope := List (Pred × String)  -- predicate template + dict variable name
 
+structure DictEntry where
+  name   : String
+  /-- gensym counter -/
+  idx    : Nat
+  scheme : Scheme
+  fe     : FExpr
+
 structure FState where
   log    : Logger := ""
-  memo   : Std.HashMap Pred (String × Scheme × FExpr) := ∅
+  memo   : Std.HashMap Pred DictEntry := ∅
   gensym : Nat := 0
+  /-- nesting depth of withMemoScope where only the outermost scope resets the
+  memo and places the synthesized dictionary bindings -/
+  memoDepth : Nat := 0
 deriving Inhabited
 
 abbrev F := EStateM TypingError FState
@@ -65,13 +75,14 @@ abbrev Blocked := Std.HashSet String
 @[inline] def logAppend (s : String) : F Unit :=
   modify fun st => {st with log := st.log ++ s}
 
-@[inline] def fresh (pfx := "_rd") : F String :=
-  modifyGet fun st => (pfx ++ toString st.gensym, {st with gensym := st.gensym + 1})
+@[inline] def freshIdx (pfx : String) : F (String × Nat) :=
+  modifyGet fun st => ((pfx ++ toString st.gensym, st.gensym), {st with gensym := st.gensym + 1})
 
-@[inline] def memoLookup (p : Pred) : F (Option (String × Scheme × FExpr)) :=
-  get <&> (·.memo[p]?)
+@[inline] def fresh (pfx := "_rd") : F String := Prod.fst <$> freshIdx pfx
 
-@[inline] def memoInsert (p : Pred) (entry : String × Scheme × FExpr) : F Unit :=
+@[inline] def memoLookup (p : Pred) : F (Option DictEntry) := get <&> (·.memo[p]?)
+
+@[inline] def memoInsert (p : Pred) (entry : DictEntry) : F Unit :=
   modify fun st => {st with memo := st.memo.insert p entry}
 
 instance : MonadLift (Except TypingError) F where
@@ -315,15 +326,20 @@ partial def ηReduce : FExpr -> FExpr
 
 end Helper
 
-def withMemoScope (act : F FExpr) : F FExpr := fun st =>
-  match act {st with memo := ∅} with
-  | .error e st => .error e st
-  | .ok e st' =>
-    let binds := st'.memo.valuesArray.qsort (strLE.on Prod.fst)
-    let st := {st' with memo := st.memo}
-    if binds.isEmpty then .ok e st
-    else .ok (place binds e) st where
-place binds
+def withMemoScope (act : F FExpr) : F FExpr := do
+  let (memo, outer) <- modifyGet fun st@{memo, memoDepth,..} =>
+    let outer := memoDepth == 0
+    ((memo, outer), {st with memo := cond outer ∅ memo, memoDepth := memoDepth + 1})
+  let r <- try act finally modify fun st' => {st' with memoDepth := st'.memoDepth - 1}
+  if outer then
+    -- nested scopes shared the memo. we place every synthesized dictionary
+    -- once, at here. then restore the pre-scope memo.
+    let {memo,..} <- modifyGet fun st' => (st', {st' with memo})
+    let binds := memo.valuesArray.qsort (Nat.ble.on DictEntry.idx)
+      |>.map fun d => (d.name, d.scheme, d.fe)
+    if binds.isEmpty then pure r else pure $ place binds r
+  else pure r
+where place binds
   | .TyLam a b => .TyLam a (place binds b)
   | .Fix (.Fun self selfTy funChain _) fixTy =>
     let (params, core) := Helper.peelFun [] funChain

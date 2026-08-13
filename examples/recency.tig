@@ -1,0 +1,10 @@
+
+class C a where c : a -> Int
+class D a where d : a -> Int
+
+instance C Int where c x = x
+instance C Bool where c _ = 5
+instance D Int where d x = 100
+instance forall a [D a], C a where c x = d x + 1
+
+let main = (c 1, c true)
