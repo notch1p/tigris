@@ -8,6 +8,8 @@ private def checkInterrupt : EIO TypingError Unit :=
   | false => return ()
 local macro "withInterrupt!" x:doSeq : term => ``(do $x)
 
+protected def normalizeSch : Scheme -> Scheme := Prod.fst ∘ SysF.renameMVSch
+
 def computeLet (lv : LetValue .postCC) : EvaluatorCEK Value :=
   match lv with
   | .lit k         => return asConst k
@@ -127,14 +129,14 @@ def check (s : String) : LowerM Unit := do
   for d@{fvarId, arity, body, name,..} in decls.push main do
     if arity > 0 then
       if let some ty := E.E[name]? then
-        liftEIO (println! template name "<fun>" ty)
+        liftEIO $ println! template name "<fun>" $ Interpreter.normalizeSch ty
       globaldecls := globaldecls.insert fvarId d
       topvals := topvals.insert fvarId (.clos fvarId #[])
     else
       let st : IState := {globaldecls, topvals, locals := ∅, joins := ∅}
       let v <- loop body .halt |>.run st |>.adapt toString
       if let some ty := E.E[name]? then
-        liftEIO (println! template name v ty)
+        liftEIO $ println! template name v $ Interpreter.normalizeSch ty
       topvals := topvals.insert fvarId v
 
 def checkFile (s : System.FilePath) : IO Unit := do

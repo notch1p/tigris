@@ -211,30 +211,32 @@ partial def elaborateWithScope
 
 end
 
-def elaborate1 (e : TExpr) (sch : Scheme) (Γ : Env := ∅) : F FExpr := do
-  elaborateWithScope Γ.E [] ∅ e sch Γ
-
+def elaborate1 (e : TExpr) (sch : Scheme) (Γ : Env := ∅) : F (FExpr × Scheme) :=
+  elaborateWithScope Γ.E [] ∅ e sch Γ <&> fun fe =>
+    let (sch, sub) := renameMVSch sch
+    (applyFE sub fe, sch)
 end SysF
+
 open MLType SysF
 def runInferConstraintF (e : Expr) (Γ : Env)
   : Except TypingError (FExpr × Scheme × Logger) :=
   match runInferConstraintT e Γ with
   | .ok (te, sch, log) =>
     match elaborate1 te sch Γ |>.run {} with
-    | .ok fe st => return (fe, sch, log ++ st.log)
+    | .ok (fe, sch) st => return (fe, sch, log ++ st.log)
     | .error e _ => throw e
   | .error err => throw err
 
-def runInfer1F (e : TExpr) (sch : Scheme) (Γ : Env) : Except TypingError (FExpr × Logger) :=
+def runInfer1F (e : TExpr) (sch : Scheme) (Γ : Env) : Except TypingError (FExpr × Scheme × Logger) :=
   match elaborate1 e sch Γ |>.run {} with
   | .error e _ => throw e
-  | .ok fe st => return (fe, st.log)
+  | .ok (fe, sch) st => return (fe, sch, st.log)
 
 abbrev BindingF := Symbol × Scheme × FExpr
 
 inductive TopDeclF
   | idBind : Array BindingF -> TopDeclF
-  | patBind : Pattern × FExpr -> TopDeclF
+  | patBind : Pattern × Scheme × FExpr -> TopDeclF
 deriving Repr
 
 def inferToplevelF : Array TopDeclT × Env × Logger -> (_ : Std.HashMap String Nat := ∅) -> Except TypingError (Array TopDeclF × Logger × Std.HashMap String Nat)
@@ -243,11 +245,11 @@ def inferToplevelF : Array TopDeclT × Env × Logger -> (_ : Std.HashMap String 
       match b with
       | .idBind binds =>
         let (acc, L) <- binds.foldlM (init := (#[], L)) fun (acc, L) (id, sch, te) =>
-          runInfer1F te sch Γ <&> fun (fe, l) => (acc.push (id, sch, fe), L ++ l)
+          runInfer1F te sch Γ <&> fun (fe, sch, l) => (acc.push (id, sch, fe), L ++ l)
         return (bF.push $ .idBind acc, L, ctorsAcc)
       | .patBind (pat, sch, te) =>
-        runInfer1F te sch Γ <&> fun (fe, l) =>
-          (bF.push $ .patBind (pat, fe), L ++ l, ctorsAcc)
+        runInfer1F te sch Γ <&> fun (fe, sch, l) =>
+          (bF.push $ .patBind (pat, sch, fe), L ++ l, ctorsAcc)
       | .tyBind {ctors,..} =>
         return (bF, L, ctors.foldl (fun acc (name, _, ar) => acc.insert name ar) ctorsAcc)
 
@@ -257,13 +259,13 @@ def TopDeclF.unexpand : TopDeclF -> Format
     let (binds, recflag) := binds.foldl (init := (#[], false)) fun (acc, recflag) (id, sch, fe) =>
       match fe with
       | .Fix (.Fun _ _ body _) _ =>
-        (acc.push $ id <> ":" <> toString sch <> group ("=" ++ indentD (FExpr.unexpand body)), true)
+        (acc.push $ fill $ id ++ indentD (":" <> sch.renderFmt <> "=" <+> body.unexpand), true)
       | _ =>
-        (acc.push $ id <> ":" <> toString sch <> group ("=" ++ indentD (FExpr.unexpand fe)), recflag)
+        (acc.push $ fill $ id ++ indentD (":" <> sch.renderFmt <> "=" <+> fe.unexpand), recflag)
     let recStr := if recflag then .text " rec " else .text " "
-    "let" ++ recStr ++ joinSep' binds (line ++ "and ")
-  | .patBind (pat, e) =>
-    "let" <> pat.toStr <> "=" ++ indentD (FExpr.unexpand e)
+    group $ "let" ++ recStr ++ joinSep' binds (line ++ "and ")
+  | .patBind (pat, sch, e) =>
+    group $ "let" <> pat.toStr ++ indentD (":" <> sch.renderFmt <+> "=" <> nest 1 e.unexpand)
 in instance : ToFormat FExpr := ⟨FExpr.unexpand⟩
 in instance : ToFormat TopDeclF := ⟨TopDeclF.unexpand⟩
 in

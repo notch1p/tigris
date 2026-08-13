@@ -29,7 +29,8 @@ def hasSbcl : IO Bool := do
 def compileCases : List String :=
   [ "fact", "list", "opt", "op-let", "struct"
   , "typeclass4", "typeclass5", "typeclass6"
-  , "hkt-dict-parametricity", "hkt-eager-specialize" ]
+  , "hkt-dict-parametricity", "hkt-eager-specialize"
+  , "poly-ref", "poly-ref-io", "poly-ref-io-safe"]
 
 open System.FilePath renaming mk -> fp, fileStem -> fn in
 def execCases : List (String × System.FilePath × String) :=

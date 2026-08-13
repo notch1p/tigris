@@ -445,7 +445,7 @@ partial def lowerCtorApp (cname : String) (args : Array FExpr) (ar : Nat)
   else if args.size < ar then
     lowerMany args ρ fun supplied => do
       let missing := ar - args.size
-      let (missTys, finalTy) := resTy.decomposeArr'
+      let (missTys, finalTy) := resTy.decomposeArr
       let fv <- fresh
       let mut supplied := supplied
       let mut paramArr := #[]
@@ -573,7 +573,7 @@ def lowerNonRecTopDecl (name : String) (fe : FExpr) (fv : FVarId) (ρ : FVarEnv)
   let ctors <- NFState.ctors <$> get
   if let .Var str _ := core then
     if params.isEmpty && (ρ.find? str).isNone && str ∉ ctors then
-      let (argTys, finalTy) := core.getTy.decomposeArr'
+      let (argTys, finalTy) := core.getTy.decomposeArr
       let mut paramArr   := #[]
       let mut paramAtoms := #[]
       for aty in argTys do
@@ -661,11 +661,11 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
         ρ := ρ.insert name fv
         i := i + 1
     return (out, ρ)
-  | .patBind (.PVar x, fe) => do
+  | .patBind (.PVar x, _sch, fe) => do
     let fv <- match ρ₀.find? x with | some _ => fresh | none => internExtern x
     let body <- lower (stripTy fe) ρ₀ .ret
     return (#[{fvarId := fv, name := x, params := #[], ty := fe.getTy, body}], ρ₀.insert x fv)
-  | .patBind (pat, fe) => do
+  | .patBind (pat, _sch, fe) => do
     -- bind a scrutinee, then re-match it per bound variable.
     let fe := stripTy fe
     let fv <- fresh

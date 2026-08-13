@@ -47,7 +47,7 @@ def infixlDecl : TParser σ Binding := withExpected "infixl operator declaration
       updateInfix op i.toNat .leftAssoc $ η₂ e
       return (s!"({op})", e)
     else
-      updateInfix op i.toNat .leftAssoc $ η₂ $ Var s!"«{op}»"
+      updateInfix op i.toNat .leftAssoc $ η₂ $ Var s!"{op}"
       return (s!"({op})", CUnit)
 
   | _, _ => return ("_", CUnit)
@@ -64,7 +64,7 @@ def infixrDecl : TParser σ Binding := withExpected "infixr operator declaration
       updateInfix op i.toNat .rightAssoc $ η₂ e
       return (s!"({op})", e)
     else
-      updateInfix op i.toNat .rightAssoc $ η₂ $ Var s!"«{op}»"
+      updateInfix op i.toNat .rightAssoc $ η₂ $ Var s!"{op}"
       return (s!"({op})", CUnit)
   | _, _ => return ("_", CUnit)
 
@@ -126,10 +126,9 @@ def let1Common
             if reservedOp.find? op |>.isSome
             then error s!"operator {op} may not be redefined\n" *> throwUnexpected
             let pre <- funBinder'
-            let op' := s!"«{op}»"
-            updateIfKnownD op (Var op')
-            let (_, e) <- kont op' #[pid, pre] =<< ann
-            return (op', e)
+            updateIfKnownD op (Var op)
+            let (_, e) <- kont op #[pid, pre] =<< ann
+            return (op, e)
         else kont id pre =<< ann
       else
         kont id pre =<< ann
@@ -138,10 +137,9 @@ def let1Common
         if reservedOp.find? op |>.isSome
         then error s!"operator {op} may not be redefined\n" *> throwUnexpected
         let pre <- funBinder'
-        let op' := s!"«{op}»"
-        updateIfKnownD op (Var op')
-        let (_, e) <- kont op' #[id, pre] =<< ann
-        return (op', e)
+        updateIfKnownD op (Var op)
+        let (_, e) <- kont op #[id, pre] =<< ann
+        return (op, e)
       else throwUnexpected
 
 def letrecBody (floorCol : Nat) : Symbol -> Array Pattern -> Option Scheme -> TParser σ Binding :=

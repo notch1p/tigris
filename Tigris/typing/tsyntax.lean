@@ -67,7 +67,7 @@ termination_by te => te
 
 instance : Rewritable TExpr := ⟨applyTE, fvTE⟩
 
-partial def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : TExpr -> TExpr
+def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : TExpr -> TExpr
   | .CI i ty              => .CI i (f ty)
   | .CS s ty              => .CS s (f ty)
   | .CB b ty              => .CB b (f ty)
@@ -78,93 +78,18 @@ partial def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : TExpr
   | .Fix e ty             => .Fix (mapTypes f g e) (f ty)
   | .App fn arg ty        => .App (mapTypes f g fn) (mapTypes f g arg) (f ty)
   | .Let binds body ty    =>
-    let binds' := binds.map fun (x, sch, rhs) => (x, g sch, mapTypes f g rhs)
+    let binds' := binds.attach.map fun ⟨(x, sch, rhs), h⟩ =>
+      have := prod_sizeOf_lt_snd sch rhs <> prod_sizeOf_lt_snd x (sch, rhs) <> sizeOf_lt_of_mem h
+      (x, g sch, mapTypes f g rhs)
     .Let binds' (mapTypes f g body) (f ty)
   | .Cond c t e ty        => .Cond (mapTypes f g c) (mapTypes f g t) (mapTypes f g e) (f ty)
   | .Prod' l r ty         => .Prod' (mapTypes f g l) (mapTypes f g r) (f ty)
   | .Match scr br ty ex rd =>
     let scr' := scr.map (mapTypes f g)
-    let br'  := br.map (fun (ps, rhs) => (ps, mapTypes f g rhs))
+    let br'  := br.attach.map fun ⟨(ps, rhs), h⟩ =>
+      have := prod_sizeOf_lt_snd ps rhs <> sizeOf_lt_of_mem h
+      (ps, mapTypes f g rhs)
     .Match scr' br' (f ty) ex rd
   | .Ascribe e ty         => .Ascribe (mapTypes f g e) (f ty)
-
-def tv? : TV -> Bool
-  | .mkTV s => s.startsWith "?m."
-
-partial def alignAscribes : TExpr -> TExpr
-  | .Ascribe e sch@(.TSch (.Forall vs _ _)) =>
-    let e := alignAscribes e
-    let metas := fvTE e |>.foldl (fun a s => if tv? s then s :: a else a) []
-    if metas.length == vs.length then
-      let sub := List.foldl2 (·.insert · $ .TVar ·) ∅ metas vs
-      .Ascribe (applyTE sub e) sch
-    else .Ascribe e sch
-  | .Ascribe e ty => .Ascribe (alignAscribes e) ty
-  | .CI i ty              => .CI i ty
-  | .CS s ty              => .CS s ty
-  | .CB b ty              => .CB b ty
-  | .CUnit ty             => .CUnit ty
-  | .Var x ty             => .Var x ty
-  | .Fun p pTy b ty       => .Fun p pTy (alignAscribes b) ty
-  | .Fixcomb e ty         => .Fixcomb (alignAscribes e) ty
-  | .Fix e ty             => .Fix (alignAscribes e) ty
-  | .App fn arg ty        => .App (alignAscribes fn) (alignAscribes arg) ty
-  | .Let binds body ty    =>
-      let binds' := binds.map (fun (x, sch, rhs) => (x, sch, alignAscribes rhs))
-      .Let binds' (alignAscribes body) ty
-  | .Cond c t e ty        => .Cond (alignAscribes c) (alignAscribes t) (alignAscribes e) ty
-  | .Prod' l r ty         => .Prod' (alignAscribes l) (alignAscribes r) ty
-  | .Match scr br ty ex rd =>
-    let scr' := scr.map alignAscribes
-    let br'  := br.map fun (ps, rhs) => (ps, alignAscribes rhs)
-    .Match scr' br' ty ex rd
-
-def alignToScheme (te : TExpr) (sch : Scheme) : TExpr :=
-  match sch with
-  | .Forall qs _ _ =>
-    -- Claude: Only rename free *metavariables* (names starting with `?m.`). Already-
-    -- normalized TVars (e.g. `α`, `β`) may leak in here from inner bindings
-    -- whose schemes were already aligned -- they must not be touched, and they
-    -- must not confuse the count-based 1-to-1 mapping with `qs`.
-    let vs := (fvTE te).toList.filter tv?
-    if vs.length != qs.length then te
-    else
-      let sub : Subst := List.foldl2 (init := ∅) (fun s v q => s.insert v (MLType.TVar q)) vs qs
-      applyTE sub te
-
-def rebindTopSch (te : TExpr) (sch : Scheme) : TExpr :=
-  match te, sch with
-  | .Ascribe e (.TSch (.Forall vs ctx t)), .Forall qs _ _ =>
-    if vs.length == qs.length then
-      let sub :=
-        List.foldl2 (fun s v q => s.insert v (.TVar q)) ∅ vs qs
-      .Ascribe (applyTE sub e) $ .TSch $ .Forall qs ctx $ apply sub t
-    else te
-  | _, _ => te
-
-partial def alignLetBinds : TExpr -> TExpr
-  | .Let binds body ty =>
-    let binds := binds.map fun (x, sch, rhs) =>
-      let rhs := rhs.alignLetBinds.alignAscribes.alignToScheme sch |>.rebindTopSch sch
-      (x, sch, rhs)
-    .Let binds (alignLetBinds body) ty
-  | .Ascribe e ty         => .Ascribe (alignLetBinds e) ty
-  | .CI i ty              => .CI i ty
-  | .CS s ty              => .CS s ty
-  | .CB b ty              => .CB b ty
-  | .CUnit ty             => .CUnit ty
-  | .Var x ty             => .Var x ty
-  | .Fun p pTy b ty       => .Fun p pTy (alignLetBinds b) ty
-  | .Fixcomb e ty         => .Fixcomb (alignLetBinds e) ty
-  | .Fix e ty             => .Fix (alignLetBinds e) ty
-  | .App fn arg ty        => .App (alignLetBinds fn) (alignLetBinds arg) ty
-  | .Cond c t e ty        => .Cond (alignLetBinds c) (alignLetBinds t) (alignLetBinds e) ty
-  | .Prod' l r ty         => .Prod' (alignLetBinds l) (alignLetBinds r) ty
-  | .Match scr br ty ex rd =>
-    let scr := scr.map alignLetBinds
-    let br  := br.map fun (ps, rhs) => (ps, alignLetBinds rhs)
-    .Match scr br ty ex rd
-
-def deSkolemize (e : TExpr) : TExpr :=
-  mapTypes MLType.unSkolem MLType.unSkolemS e
+termination_by te => te
 end TExpr

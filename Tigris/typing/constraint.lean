@@ -185,7 +185,7 @@ def generalize (Γ : Env) (t : MLType) (res : List Pred) : Scheme :=
     let qVars := pvs.filter $ not ∘ envFV.contains
     !(qVars.filter tFV.contains).isEmpty
   let ctx := res.filter keep |>.rmDup
-  normalize (.Forall qs ctx t)
+  .Forall qs ctx t
 
 partial def inferPattern (Γ : Env) (expt : MLType) : Pattern -> InferC σ (Env × Array (String × MLType))
   | PWild => return (Γ, #[])
@@ -416,8 +416,7 @@ partial def inferMatch (Γ : Env) (discr : Array Expr) (br : Array (Array Patter
           return (Γnext, accBs ++ bs)
       let rigidsBr : List TV :=
         bound.foldl (init := []) fun acc (_, ty) =>
-          fv ty |>.foldr
-            (fun s a => if TExpr.tv? s then s :: a else a) acc
+          fv ty |>.foldr (fun s a => if s.tv? then s :: a else a) acc
       pushRigid rigidsBr
 --      let Γ <-
 --        pss.foldM (init := Γ)
@@ -444,8 +443,6 @@ def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Sch
       let te := apply sub te
       let ty := apply sub ty
       let ps := preds ++ wants.map (apply sub ∘ Prod.snd)
-      let te := TExpr.alignLetBinds te
---      let te := TExpr.alignAscribes te
       let sch := generalize Γ ty ps
       .ok (te, sch, log)
 
@@ -466,8 +463,7 @@ partial def normHK : MLType -> MLType
   | a ×'' b => normHK a ×'' normHK b
   | t => t
 
-partial def normHKPred (p : Pred) : Pred :=
-  p.mapArgs normHK
+partial def normHKPred := Pred.mapArgs normHK
 end
 def methodScheme (cls : Symbol) (param : Array $ String × Kind) (mty : MLType) : Scheme :=
   let binders := param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
@@ -477,10 +473,6 @@ def methodScheme (cls : Symbol) (param : Array $ String × Kind) (mty : MLType) 
 private def instQuantifiers (headArgs : List MLType) (ctx : List Pred) : List TV :=
   let (headArgs, ctx) := (headArgs.map normHK, ctx.map normHKPred)
   fv headArgs ∪ fv ctx |>.toList
-
-private def instanceScheme (ci : ClassInfo) (headArgs : List MLType) (ctx : List Pred) : Scheme :=
-  let (headArgs, ctx) := (headArgs.map normHK, ctx.map normHKPred)
-  .Forall (instQuantifiers headArgs ctx) ctx (MLType.mkApp (TCon ci.cname) headArgs)
 
 private def orderInstanceMethods
   (ci : ClassInfo)
@@ -537,10 +529,8 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
       let declaredCtx := apply sub ctxPreds |>.map normHKPred
       let qs := instQuantifiers args declaredCtx
       let bodyTy := MLType.mkApp (TCon ci.cname) args
-      let finalSch := /- normalizeWithRen -/ .Forall qs declaredCtx (normHK bodyTy)
-      let typedBody := typedBody
-        |>.mapTypes (normHK ∘ unSkolem) (unSkolemS)
-        |>.alignAscribes
+      let finalSch := .Forall qs declaredCtx (normHK bodyTy)
+      let typedBody := typedBody |>.mapTypes (normHK ∘ unSkolem) (unSkolemS)
       return ⟨iname, finalSch, typedBody, l, iname, ci.cname, args, ctxPreds⟩
 
 def inferToplevelC
@@ -549,7 +539,6 @@ def inferToplevelC
   b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
     match b with
     | .extBind s n sch => pure $
-      let sch := normalize sch
       (acc.push (.idBind #[(s, sch, .Var n sch.body)]) ,{E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let exprLet := Expr.Let group .CUnit
@@ -557,7 +546,7 @@ def inferToplevelC
       let (E, bs) := bs.foldl
         (fun (E, bs) (n, sc, te) =>
           ( {E with E := E.E.insert n sc}
-          , bs.push (n, sc, te |>.rebindTopSch sc)))
+          , bs.push (n, sc, te)))
         (E, #[])
       return (acc.push (.idBind bs), E, L ++ l)
     | .tyBind ty@{ctors, tycon, param, cls?} =>

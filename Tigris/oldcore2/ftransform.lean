@@ -142,7 +142,7 @@ def etaExpandParams (params : Array String) (core : FExpr) : (Array String × FE
   match findReturnedVar core with
   | none => (params, core)
   | some (v, vTy, rebuild) =>
-    let (argTys, _) := decomposeArr' vTy
+    let (argTys, _) := decomposeArr vTy
     if argTys.isEmpty then
       (params, core)
     else
@@ -632,7 +632,7 @@ partial def lowerModule (decls : Array TopDeclF) (ctors : Std.HashMap String Nat
               lowerRecFun fid selfN ps core ρ ctors
             let ρ := recs.foldl (fun acc (fid, _, _, _) => acc.insert fid fid) ρ
             .letRec funIRs <$> build (i + 1) ρ (some recs.back.1) ctors
-      | .patBind (pat, e) =>
+      | .patBind (pat, _, e) =>
         lowerF e ρ ctors fun scr => do
           let onOk ρ := build (i + 1) ρ last? ctors
           let onFail := pure $ .seq #[] $ .matchFail #["Toplevel"]
@@ -707,7 +707,7 @@ open IRf
 @[inline] def toLamModuleF (decls : Array TopDeclF) (ctors : Std.HashMap String Nat) : (LModule × LModule) :=
   let decls := decls.map fun
     | .idBind b => .idBind $ b.map fun (id, sch, fe) => (id, sch, HelperF.stripTy fe)
-    | .patBind (pat, fe) => .patBind (pat, HelperF.stripTy fe)
+    | .patBind (pat, sch, fe) => .patBind (pat, sch, HelperF.stripTy fe)
   runST fun _ => lowerModule decls ctors |>.run' (0, ∅, ∅)
 
 @[inline] def toLamF (ctors : Std.HashMap String Nat) (e : FExpr) : LExpr :=

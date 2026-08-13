@@ -12,17 +12,16 @@ def strip : String.Slice -> String.Slice :=
   ∘ .dropEndWhile (pat := fun c => c.isWhitespace || c == ';')
   ∘ .dropWhile    (pat := not ∘ Char.isWhitespace)
 
-def parsePred (s : String.Slice) (pe : PEnv) : IO Pred :=
+def parsePred (s : String.Slice) (pe : PEnv) : IO (List TV × Pred × List Pred) :=
   match runST fun _ => parseInstScheme <* Parser.endOfInput |>.run s |>.run' (pe, "") with
   | Parser.Result.ok _ p => return p
   | Parser.Result.error _ e => throwServerError $ toString e
-where parseInstScheme {σ} : TParser σ Pred :=
-  Parsing.PType.tyExp >>= fun ty =>
+where parseInstScheme {σ} : TParser σ (List TV × Pred × List Pred) :=
+  Parsing.PType.tyScheme >>= fun (.Forall vs preds ty) =>
     match ty.getRightmost with
-    | .TApp (.TCon cname) args => return ⟨cname, args⟩
-    | .TCon cname              => return ⟨cname, []⟩
-    | ty => Parser.throwUnexpectedWithMessage
-              (msg := s!"not a valid class: {ty} is not of form C a₁ ...")
+    | .TApp (.TCon cname) args => return (vs, ⟨cname, args⟩, preds)
+    | .TCon cname              => return (vs, ⟨cname, []⟩, preds)
+    | ty => Parser.throwUnexpectedWithMessage (msg := s!"not a valid class: {ty} is not of form C a₁ ...")
 
 def main (fs : List String) : IO Unit := do
   setStdoutBuf false
@@ -80,10 +79,22 @@ def main (fs : List String) : IO Unit := do
     else if buf.startsWith "#s" then
       try
         let sbuf := strip buf
-        let p <- parsePred sbuf es.PE
-        let (.Ascribe (.Var inst) ty) <- Resolve.resolvePred es.E p |> IO.ofExcept
-                                       | throwServerError "#synth: impossible"
-        println! inst ++ TCNF.PP.colon ++ format ty |>.fill
+        let (vs, p, ctx) <- parsePred sbuf es.PE
+        if vs.isEmpty then
+          let (.Ascribe (.Var inst) _) <- Resolve.resolvePred es.E p |> IO.ofExcept
+                                         | throwServerError "#synth: impossible"
+          println! inst
+        else
+          -- mirror inferInstanceDecl
+          let sk := vs.foldl (fun s v => s.insert v (ConstraintInfer.mkSkol v)) (∅ : Subst)
+          let inst <- Resolve.matchHead es.E {p with args := Rewritable.apply sk p.args }
+                   |> IO.ofExcept
+          let headTy := MLType.mkApp (.TCon p.cls) p.args
+          let sch := .Forall vs ctx headTy
+          let some isch := es.E.E[inst]? | throwServerError "#synth: impossible"
+          let _ <- ConstraintInfer.unify (.TSch sch) (.TSch isch) |> IO.ofExcept
+          let (fe, _) <- runInfer1F (.Var inst headTy) sch es.E |> IO.ofExcept
+          println! format fe
       catch e => println! e
     else if buf.startsWith "#d" then
       let sbuf := strip buf

@@ -336,7 +336,7 @@ def withMemoScope (act : F FExpr) : F FExpr := do
     -- once, at here. then restore the pre-scope memo.
     let {memo,..} <- modifyGet fun st' => (st', {st' with memo})
     let binds := memo.valuesArray.qsort (Nat.ble.on DictEntry.idx)
-      |>.map fun d => (d.name, d.scheme, d.fe)
+              |>.map fun d => (d.name, d.scheme, d.fe)
     if binds.isEmpty then pure r else pure $ place binds r
   else pure r
 where place binds
@@ -349,39 +349,94 @@ where place binds
     .Fix newSelfFun fixTy
   | other => .Let binds other other.getTy
 
+open Rewritable (apply applyS applyT applyP)
+/--
+stable renaming of MVs are now done before pretty-printer instead of at
+normalization. Previsouly the raw ?mNs and greek renamed TVs are tangled up, now
+internally it should be raw.
+-/
+def renameMVSch : Scheme -> Scheme × Subst
+  | .Forall tvs ps body =>
+    let (sub, tvs') := tvs.foldlIdx (init := (∅, [])) fun i (sub, acc) tv =>
+      if tv.toStr.startsWith "?m." then
+        let tv' := .mkTV (gensym i)
+        (sub.insert tv (.TVar tv'), tv' :: acc)
+      else (sub, tv :: acc)
+    let rec renameBody
+      | .TSch inner =>
+        let (inner, _) := renameMVSch inner
+        apply sub (.TSch inner)
+      | t => apply sub t
+    (.Forall tvs'.reverse (ps.map (applyP sub)) (renameBody body), sub)
+
+partial def applyFE (sub : Subst) : FExpr -> FExpr
+  | .CI i ty => .CI i (apply sub ty)
+  | .CS s ty => .CS s (apply sub ty)
+  | .CB b ty => .CB b (apply sub ty)
+  | .CUnit ty => .CUnit (apply sub ty)
+  | .Var x ty => .Var x (apply sub ty)
+  | .Fun p pTy body ty => .Fun p (apply sub pTy) (applyFE sub body) (apply sub ty)
+  | .App f a ty => .App (applyFE sub f) (applyFE sub a) (apply sub ty)
+  | .TyLam a body =>
+    let res := Helper.peelTyLamTV [a] body
+    let (sub', tvs') := res.1.foldlIdx (init := (∅, [])) fun i (sub, acc) tv =>
+      if tv.toStr.startsWith "?m." then
+        let tv' := .mkTV (gensym i)
+        (sub.insert tv (.TVar tv'), tv' :: acc)
+      else (sub, tv :: acc)
+    Helper.wrapTyLams tvs'.reverse $ applyFE sub' $ applyFE sub res.2
+  | .TyApp f arg => .TyApp (applyFE sub f) (apply sub arg)
+  | .Let binds body ty =>
+    let binds := binds.map fun (n, sch, fe) =>
+      let (sch, sub') := renameMVSch sch
+      (n, apply sub sch, applyFE (sub' ∪' sub) fe)
+    .Let binds (applyFE sub body) (apply sub ty)
+  | .Prod' l r ty => .Prod' (applyFE sub l) (applyFE sub r) (apply sub ty)
+  | .Cond c t e ty => .Cond (applyFE sub c) (applyFE sub t) (applyFE sub e) (apply sub ty)
+  | .Match discr branches resTy ex rd =>
+    .Match (discr.map (applyFE sub))
+      (branches.map fun (pats, e) => (pats, applyFE sub e))
+      (apply sub resTy) ex rd
+  | .Fix e ty => .Fix (applyFE sub e) (apply sub ty)
+  | .Proj src mname idx ty => .Proj (applyFE sub src) mname idx (apply sub ty)
+
 local instance : Std.ToFormat Pattern where
   format := .text ∘ Pattern.toStr
 open Std Std.Format in
 partial def FExpr.unexpand : FExpr -> Format
   | .CI i _ | .CB i _ | .CS i _ => repr i
   | .CUnit _ => format ()
-  | .App f a _ => parenL? f ++ group (indentD (parenR? a))
-  | .Proj src mname i _ => parenL? src ++ sbracket (format i ++ ", " ++ format mname)
-  | .Cond c t e _ =>
+  | .App f a@(.App ..) _ => fill $ parenL? f ++ (indentD (parenR? a))
+  | .App f a _ => fill $ parenL? f ++ indentD (unexpand a)
+  | .Proj src mname i _ => parenL? src ++ sbracket (format i ++ "," <> format mname)
+  | .Cond c t e _ => group $
     "if" <> unexpand c <+> "then" ++ indentD (unexpand t)
     <+> "else" ++ indentD (unexpand e)
   | .Fix e _ => "rec" <> unexpand e
   | .Var x _ => format x
-  | .Prod' p q _ => paren $ unexpand p <> "," <> unexpand q
+  | .Prod' p q _ => bracket "⟨" (unexpand p ++ "," <+> unexpand q) "⟩"
   | .Fun param pTy body _ =>
-    group $ "fun" <> param <> ":" <> pTy.toStr <> "=>" ++ group (indentD (unexpand body))
+    fill $ "fun" <> param ++ indentD (":" <> pTy.renderFmt <> "=>" <+> unexpand body)
   | .Match discr branches .. =>
     let discr := discr.map unexpand
     let br := branches.map fun (pats, e) =>
-      "|" <> joinSep' pats ", " <> "=>" ++ group (indentD (unexpand e))
-    group $ "match" <> joinSep' discr ", " <> "with" <+> joinSep' br line
+      group $ "|" <> joinSep' pats ("," ++ line) <> "=>" ++ indentD (unexpand e)
+    group $ "match" <> joinSep' discr ("," ++ line) <> "with" ++ "\n" ++ joinSep' br "\n"
   | .Let binds body _ =>
     let (binds, recflag) := binds.foldl (init := (#[], false)) fun (acc, recflag) (id, sch, fe) =>
       match fe with
       | .Fix (.Fun _ _ body _) _ =>
-        (acc.push $ id <> ":" <> toString sch <> group ("=" ++ indentD (unexpand body)), true)
+        (acc.push $ fill $ id ++ indentD (":" <> sch.renderFmt <> "=" <+> unexpand body), true)
       | _ =>
-        (acc.push $ id <> ":" <> toString sch <> group ("=" ++ indentD (unexpand fe)), recflag)
+        (acc.push $ fill $ id ++ indentD (":" <> sch.renderFmt <> "=" <+> unexpand fe), recflag)
     let recStr := if recflag then .text " rec " else .text " "
-    "let" ++ recStr ++ joinSep' binds (line ++ "and ") <+> "in" <> unexpand body
+    group $ "let" ++ recStr ++ joinSep' binds (line ++ "and ") <+> "in" <>
+      match body with
+      | .Fun .. => unexpand body
+      | _ => nest 3 $ unexpand body
   | .TyLam a body =>
     let (tvs, body) := Helper.peelTyLam [a.elimStr] body
-    group $ paren $ "Λ" <> joinSep tvs " " ++ "." ++ indentD (unexpand body)
+    group $ "Λ" <> joinSep tvs " " ++ "." ++ indentD (unexpand body)
   | .TyApp f ty => parenL? f ++ "@" ++ parenT ty
 where
 parenR?
@@ -391,5 +446,5 @@ parenL?
   | p@(.Fun ..) | p@(.Cond ..) | p@(.Let ..) | p@(.Match ..) => paren (unexpand p)
   | p => unexpand p
 parenT
-  | t@(TVar _) | t@(TCon _) | t@(TApp _ []) => text t.toStr
-  | t => paren t.toStr
+  | t@(TVar _) | t@(TCon _) | t@(TApp _ []) => t.renderFmt
+  | t => paren t.renderFmt

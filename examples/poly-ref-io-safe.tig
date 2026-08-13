@@ -26,7 +26,7 @@ let ioref _ = 'Nil -- thus we manually make it lazy.
 
 let rec main = do
   f ()
-  g () -- g fails since ioref is now 1 :: Nil
+  g () -- g succeeds since ioref stays Nil
 where
   f _ = ioref () >>= fun ref =>  -- ref is of metavariable type and does not generalize
     setf ref $ 1 :: Nil          -- subsequent usage refines that to List Int 

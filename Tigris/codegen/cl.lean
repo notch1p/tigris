@@ -202,7 +202,7 @@ def emitDeclaims (m : Module .postCC) : CGM (Array Sexp) := do
     let nm <- valSym d.fvarId
     if d.arity >= 1 then
       let argTs := d.params.map fun p => clType tys p.ty |>.getD "t"
-      let (allArgs, fin) := d.ty.decomposeArr'
+      let (allArgs, fin) := d.ty.decomposeArr
       let retTy := allArgs.drop d.params.size |>.foldr .TArr fin
       let retT  := clType tys retTy |>.getD "t"
 

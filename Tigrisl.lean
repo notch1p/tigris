@@ -39,7 +39,7 @@ def mkSBCL (ifile ofile sbcl : String) (blockCompile? : Bool) : Process.SpawnArg
            , "--eval"
            , s!"(compile-file {repr ifile} \
                   :block-compile {toCLbool blockCompile?} \
-                  :output-file {repr ofile} 
+                  :output-file {repr ofile}
                   :verbose t)"]
 where toCLbool
       | true => "t"
@@ -169,18 +169,14 @@ def main (fp : List String) : IO Unit := do
 
             if lambda? || legacy? then
               let (ir, cc) <- do
-                if legacy? then
-                  let (decls, _, l) <- ofExcept $ MLType.inferToplevelT decls MLType.defaultE
-                  print l
-                  pure $ IR.toLamModuleT decls
-                else
-                  let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
-                  let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-                  print logger
-                  if sysf? then
-                    h.putStrLn ";; == System F IR ==\n"
-                    h.putStrLn $ Std.Format.pretty (width := 80) $ unexpandDeclsF decls
-                  pure $ IR.toLamModuleF decls ctors
+                if legacy? then println "--legacy is broken, whatever."
+                let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
+                let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+                print logger
+                if sysf? then
+                  h.putStrLn ";; == System F IR ==\n"
+                  h.putStrLn $ Std.Format.pretty (width := 80) $ unexpandDeclsF decls
+                pure $ IR.toLamModuleF decls ctors
 
               let mod := CPS.toCPS cc
 

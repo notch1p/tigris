@@ -35,9 +35,9 @@
 ; ftype
 (declaim (ftype (function (integer) t) |B-25|))
 
-(declaim (ftype (function (clos clos t t) t) |«`on`»-2|))
+(declaim (ftype (function (t t) integer) |^-2|))
 
-(declaim (ftype (function (t t) integer) |«^»-3|))
+(declaim (ftype (function (clos clos t t) t) |`on`-3|))
 
 (declaim (type clos |boxedAdd-16|))
 
@@ -47,19 +47,19 @@
 (defun |B-25| (|η-18|)
   |η-18|)
 
-(defun |«`on`»-2| (|f-4| |g-5| |x-6| |y-7|)
-  (let* ((|app-8| (gapply1 |g-5| |x-6|))
-         (|app-9| (gapply1 |g-5| |y-7|)))
-     (gapply2 |f-4| |app-8| |app-9|)))
+(defun |^-2| (|?x₀-4| |?x₁-5|)
+  (%int+ |?x₀-4| |?x₁-5|))
 
-(defun |«^»-3| (|?x₀-11| |?x₁-12|)
-  (%int+ |?x₀-11| |?x₁-12|))
+(defun |`on`-3| (|f-9| |g-10| |x-11| |y-12|)
+  (let* ((|app-13| (gapply1 |g-10| |x-11|))
+         (|app-14| (gapply1 |g-10| |y-12|)))
+     (gapply2 |f-9| |app-13| |app-14|)))
 
 (defparameter |boxedAdd-16|
   (let* ((|B-17| (%clos (function |B-25|) 1)))
      (%clos (lambda (|g0| |g1|)
-         (|«`on`»-2| (%clos (function |«^»-3|) 2) |B-17| |g0| |g1|))
+         (|`on`-3| (%clos (function |^-2|) 2) |B-17| |g0| |g1|))
        2)))
 
 (defparameter |main-21|
-  (|«`on`»-2| (%clos (function |«^»-3|) 2) (%clos (function |B-25|) 1) 20 30))
+  (|`on`-3| (%clos (function |^-2|) 2) (%clos (function |B-25|) 1) 20 30))

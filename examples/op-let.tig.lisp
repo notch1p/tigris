@@ -52,14 +52,14 @@
   (|f0| nil))
 
 ; ftype
-(declaim (ftype (function (|List| |List|) integer) |«<+>»-2|))
+(declaim (ftype (function (|List| |List|) integer) |<+>-2|))
 
-(declaim (ftype (function (|Option| |Option|) |Option|) |«<*>»-12|))
+(declaim (ftype (function (|Option| |Option|) |Option|) |<*>-12|))
 
 (declaim (type cons |main-21|))
 
 ; body
-(defun |«<+>»-2| (|xs-3| |ys-4|)
+(defun |<+>-2| (|xs-3| |ys-4|)
   (case (|List/tag| |xs-3|)
     (0
       (case (|List/tag| |ys-4|)
@@ -74,12 +74,12 @@
              (let* ((|f-7| (|Cons/f0| |ys-4|))
                     (|f-8| (|Cons/f1| |ys-4|)))
                 (let* ((|π-9| (%int+ |f-5| |f-7|))
-                       (|app-10| (|«<+>»-2| |f-6| |f-8|)))
+                       (|app-10| (|<+>-2| |f-6| |f-8|)))
                    (%int+ |π-9| |app-10|))))
            (t 0))))
     (t 0)))
 
-(defun |«<*>»-12| (|?x₀-13| |?x₁-14|)
+(defun |<*>-12| (|?x₀-13| |?x₁-14|)
   (labels ((|fail-15| ()
              (error 'match-failure :discr (list |?x₀-13| |?x₁-14|))))
      (case (|Option/tag| |?x₀-13|)
@@ -99,10 +99,10 @@
          (|con-25| (|mk/Nil|))
          (|con-26| (|mk/Cons| 290 |con-25|))
          (|con-27| (|mk/Cons| 374 |con-26|))
-         (|app-28| (|«<+>»-2| |con-24| |con-27|))
+         (|app-28| (|<+>-2| |con-24| |con-27|))
          (|con-29| (|mk/Some| 2))
          (|con-30| (|mk/Some| 3))
-         (|app-31| (|«<*>»-12| |con-29| |con-30|))
+         (|app-31| (|<*>-12| |con-29| |con-30|))
          (|con-32| (|mk/Some| 4))
-         (|app-33| (|«<*>»-12| |app-31| |con-32|)))
+         (|app-33| (|<*>-12| |app-31| |con-32|)))
      (cons |app-28| |app-33|)))

@@ -46,14 +46,14 @@ def evaluate1 (s : String.Slice) : EvalM Unit := do
     fun is@{globaldecls,topvals,..} d@{fvarId, arity, body, name,..} => do
       if arity > 0 then
         if let some ty := E.E[name]? then
-          println! template name "<fun>" ty
+          println! template name "<fun>" $ Interpreter.normalizeSch ty
         return {is with
           globaldecls := globaldecls.insert fvarId d
           topvals     := topvals.insert fvarId (.clos fvarId #[])}
       else
         let v <- loop body .halt |>.run {is with globaldecls, topvals} |>.adapt toString
         if let some ty := E.E[name]? then
-          println! template name v ty
+          println! template name v $ Interpreter.normalizeSch ty
         return {is with topvals := topvals.insert fvarId v}
 
   modify (fun s => {s with is})

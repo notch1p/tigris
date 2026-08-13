@@ -166,9 +166,10 @@ partial def Kind.unify : Kind -> Kind -> Except String KSubst
   | k₁, k₂ => throw s!"cannot unify kinds {k₁} with {k₂}"
 
 inductive TV where
-  | mkTV : String -> TV deriving Repr, Ord, Hashable
-
+  | mkTV : String -> TV
+deriving Repr, Ord, Hashable
 def TV.elimStr | (mkTV s) => s
+def TV.tv? | mkTV s => s.startsWith "?m."
 instance : BEq TV := ⟨fun (.mkTV s) (.mkTV s') => s == s'⟩
 instance : ToString TV := ⟨fun (.mkTV s) => s⟩
 instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩
@@ -187,32 +188,25 @@ inductive MLType where
   | TyLam : TV -> MLType -> MLType
   /-- essentially a `TForall`. but more convenient -/
   | TSch  : Scheme -> MLType -- only allow rank-1 for now.
-deriving Repr, BEq, Ord, Inhabited, Hashable
+
+inductive Scheme where
+  | Forall : List TV -> List Pred -> MLType -> Scheme
 
 structure Pred where
   cls  : String
   args : List MLType := []
-deriving BEq, Inhabited, Repr, Ord, Hashable
-
-inductive Scheme where
-  | Forall : List TV -> List Pred -> MLType -> Scheme deriving Repr, BEq, Ord
 end
+deriving instance Repr, BEq, Ord for Scheme
+deriving instance Repr, BEq, Ord, Inhabited, Hashable for MLType
+deriving instance BEq, Inhabited, Repr, Ord, Hashable for Pred
 
 def MLType.getRightmost : MLType -> MLType
   | TArr _ t₂ => getRightmost t₂
   | t => t
-
 def MLType.decomposeArr : MLType -> (List MLType × MLType)
+  | .TSch (.Forall _ _ps t) => decomposeArr t
   | .TArr a b =>
     let (as, r) := decomposeArr b
-    (a :: as, r)
-  | t => ([], t)
-def MLType.decomposeArr' : MLType -> (List MLType × MLType)
-  | .TSch (.Forall _ _ps t) =>
-    /-let (as, r) := -/ decomposeArr' t
-    --(ps.map (fun {cls, args} => TApp cls args) ++ as, r)
-  | .TArr a b =>
-    let (as, r) := decomposeArr' b
     (a :: as, r)
   | t => ([], t)
 

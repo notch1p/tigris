@@ -82,4 +82,17 @@ partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
 @[inline] def resolvePred (env : Env) (p : Pred) : Except TypingError Expr :=
   runEST fun _ => Resolve.resolve env p |>.run' ∅
 
+/-- search for an instance C α₁ ... where C matches p.cls, ignoring
+contexts. p's args must be rigid so that only instance variables are bindable. -/
+def matchHead (env : Env) (p : Pred) : Except TypingError String := do
+  let some insts := env.instInfo[p.cls]?
+    | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
+
+  let some i := insts.findSomeRev? fun info =>
+                  if unifyHead p.args info.args |>.isOk
+                  then some info.iname
+                  else none
+    | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
+  return i
+
 end Resolve

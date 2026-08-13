@@ -53,7 +53,8 @@ def Pred.renderFmt : Pred -> Std.Format
 
 def Scheme.renderFmt : Scheme -> Std.Format
   | .Forall _ [] t' => t'.renderFmt
-  | .Forall _ pred t' => toString (pred.map Pred.renderFmt) <> t'.renderFmt
+  | .Forall _ pred t' =>
+    sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line)) <> t'.renderFmt
 def Scheme.toStr : Scheme -> String
   | .Forall [] [] t => t.toStr
   | .Forall [] pred t => toString (pred.map Pred.toStr) ++ " " ++ t.toStr
@@ -237,57 +238,6 @@ def gensym (n : Nat) : String :=
   let s := Char.ofNat $ r + 0x03b1
   if q == 0 then s.toString
   else s.toString ++ q.toSubscriptString
-def strLE x y := decide $ String.le x y
-partial def normalize : Scheme -> Scheme
-  | .Forall tvs ps body =>
-    let ts := tvs
-    let ord := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
-    let rename a := ord.lookup a |>.getD a
-    let rec normtype (blocked : Std.HashSet TV)
-      | a ->' b => normtype blocked a ->' normtype blocked b
-      | a ×'' b => normtype blocked a ×'' normtype blocked b
-      | .TVar a => .TVar $ if a ∈ blocked then a else rename a
-      | .TApp h as =>
-        -- Claude: Re-normalize through `mkApp` in case renaming uncovered a redex
-        -- (a variable that was renamed to a TyLam under another binder).
-        mkApp (normtype blocked h) $ as.map $ normtype blocked
-      | .TyLam x body =>
-        -- Binder shadows: don't rename `x` inside.
-        .TyLam x $ normtype (blocked.insert x) body
-      | .TSch $ .Forall tvs ps ty =>
-        let blocked := blocked.insertMany tvs
-        let ps := ps.map fun p => p.mapArgs $ normtype blocked
-        .TSch $ .Forall tvs ps $ normtype blocked ty
-      | t => t
-
-    let ps := ps.map fun p => p.mapArgs $ normtype ∅
-  .Forall (ord.map Prod.snd) ps (normtype ∅ body)
-
-partial def normalizeWithRen : Scheme -> (Scheme × Subst)
-  | .Forall tvs ps body =>
-    let ts := tvs
-    let ord : List (TV × TV) := ts.mapIdx (fun i tv => (tv, TV.mkTV (gensym i)))
-    let rename a := ord.lookup a |>.getD a
-    let rec normtype (blocked : Std.HashSet TV)
-      | a ->' b => normtype blocked a ->' normtype blocked b
-      | a ×'' b => normtype blocked a ×'' normtype blocked b
-      | .TVar a => .TVar $ if a ∈ blocked then a else rename a
-      | .TApp h as => mkApp (normtype blocked h) (as.map (normtype blocked))
-      | .TyLam x body => .TyLam x (normtype (blocked.insert x) body)
-      | .TSch (.Forall tvs ps ty) =>
-        let blocked := blocked.insertMany tvs
-        let ps := ps.map fun p => p.mapArgs (normtype blocked)
-        .TSch (.Forall tvs ps (normtype blocked ty))
-      | t => t
-    let ps' := ps.map fun p => p.mapArgs (normtype ∅)
-    let body' := normtype ∅ body
-    let vs' := ord.map Prod.snd
-    let renSub : Subst := ord.foldl (init := ∅) (fun s (a,b) => s.insert a (MLType.TVar b))
-    (.Forall vs' ps' body', renSub)
-
-def normalizeT (t : MLType) : MLType :=
-  match normalize (.Forall [] [] t) with
-  | .Forall _ _ t' => t'
 
 mutual
 partial def unSkolem : MLType -> MLType

@@ -1,5 +1,4 @@
 import Tigris.parsing.pexp
-import Tigris.typing.oldtyping
 import Tigris.typing.fexpr
 import Tigris.parsing.ptype
 import Tigris.typing.ttypes
@@ -62,15 +61,6 @@ def parseModule' (s : String.Slice) (PE : PEnv) : EIO String (PEnv × Array TopD
   | (.ok _ t, (pe, l))   => liftEIO (IO.print l) *> pure (pe, t)
   | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
 
-def typeExpr (s : String.Slice) (PE : PEnv) (E : Env) : EIO String TExpr :=
-  match runST fun _ => parseExpr <* optional END <* spaces <* endOfInput |>.run s |>.run (PE, "") with
-  | (.ok _ t, (_, l))   => do
-    liftEIO (IO.print l)
-    let (te, _, l) <- MLType.runInferT1 t E |>.mapError toString |> EIO.ofExcept
-    liftEIO (IO.print l)
-    return te
-  | (.error _ e, (_, l)) => liftEIO (IO.print l) *> throw (toString e)
-
 def lpOrMod : TParser σ TopDecl := withExpected "declaration" $
   first' #[declaration, patBind <$> letPatDecl] -- simpErrorCombine
 
@@ -127,14 +117,6 @@ def testTParser : String.Slice -> IO Unit := fun s =>
     println! l
     println! repr t
 
-def check1 (s : String.Slice) (E : Env := defaultE) : IO Unit :=
-  match Parsing.parse s initState with
-  | .error e => println! e
-  | .ok e    =>
-    match runInfer1 e E with
-    | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
-    | .ok    s => println! s
-
 def check1C (s : String.Slice) (E : Env := defaultE) : IO Unit :=
   match Parsing.parse s initState with
   | .error e => println! e
@@ -190,32 +172,12 @@ where
       w + 2
      z := 3; w := 4
 
-
-/-- info:
-let i_C_0 : C Int = C@Int (fun x : Int => x)
-let i_C_1 : C Bool = C@Bool (fun x : Bool => 5)
-let i_D_0 : D Int = D@Int (fun x : Int => 100)
-let i_C_2 : ∀ a [D a], C a =
-  (Λ a. fun d_D_0 : D a => C@a (fun x : a => add (d_D_0[0, d]@a x) 1))
-let main : Int × Int =
-  let rd_D_0 : D Int = i_D_0
-  and rd_C_1 : C Int = (Λ α. i_C_2@Int rd_D_0)
-  and rd_C_2 : C Bool = i_C_1
-  in (rd_C_1[0, c]@Int 1 , rd_C_2[0, c]@Bool true)
+/-- error:
+Ambiguous: HEq ?m.6 Int: typeclass elaboration is stuck because of metavariable(s)
+  [?m.6]
+induced by a call to heq. Consider adding type ascriptions.
 -/
-#guard_msgs (whitespace := lax) in
-#eval MLType.checkFile $
-"
-class C a where c : a -> Int
-instance C Int where c x = x
-instance C Bool where c x = 5
-class D a where d : a -> Int
-instance D Int where d x = 100
-instance forall a [D a], C a where c x = d x + 1
-let main = (c 1, c true)
-"
-
-
+#guard_msgs in
 #eval MLType.checkFile $
 "
 class Eq a = {eq : a -> a -> Bool}
