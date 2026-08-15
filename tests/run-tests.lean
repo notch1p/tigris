@@ -44,6 +44,7 @@ def execCases : List (String × System.FilePath × String) :=
   , (examples/"fun"        , r"(40 . 60)")
   , (examples/"neg"        , r"-1")
   , (examples/"diamond"    , r"1")
+  , (examples/"statem"     , r"(42 . 2)")
   , (examples/"recency"    , r"(101 . 5)")]
   |>.map fun (p, s) => (name p, p.addExtension "tig", s)
 where examples := fp "examples"

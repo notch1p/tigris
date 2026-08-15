@@ -134,13 +134,131 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
   | t, u =>
     throw (.NoUnify t u)
 
-def solveAll (cs : List Constraint) : Except TypingError (Subst × List (Nat × Pred)) := do
+def unifyHead (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError Subst := do
+  if goalArgs.length != instArgs.length then
+    throw (.NoUnify
+      (MLType.mkApp (MLType.TCon "_goal") goalArgs)
+      (MLType.mkApp (MLType.TCon "_inst") instArgs))
+  else
+    List.foldlM2
+      (fun s g i => (· ∪' s) <$> unify (apply s g) (apply s i))
+      (∅ : Subst)
+      goalArgs instArgs
+
+/-- refines 1 pred if there exists exactly 1 matching instance.
+Returns on multiple matches to solveAll which, in this case,
+does nothing and let SysF elab paas handles it. -/
+def refineStep (env : Env) (p : Pred) : Except TypingError (Subst × List Pred) := do
+  let some insts := env.instInfo[p.cls]?
+    | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
+
+  let found : Option (Subst × List Pred) <- insts.foldrM (init := none) fun info found => do
+
+    let qs := info.args.foldl (· ∪ fv ·) ∅ ∪ info.ctx.foldl (· ∪ fvP ·) ∅
+    let (ren, _) : Subst × Nat := qs.foldl (init := (∅, 0)) fun (s, i) q =>
+      (s.insert q $ .TVar $ .mkTV s!"?inst.{info.iname}.{i}", i + 1)
+
+    match unifyHead p.args (info.args.map (apply ren)) with
+    | .error _ => return none
+    | .ok sub =>
+      match found with
+      | some _ => throw $ .Ambiguous s!"{p}: multiple instances match\n" -- return to solveAll.
+      | none => return some (sub, info.ctx.map (apply (sub ∪' ren)))
+
+  match found with
+  | some r => return r
+  | none => throw $ .NoSynthesize s!"{p}: no matching instance found\n"
+
+def solveEqs (cs : List Constraint) : Except TypingError (Subst × List (Nat × Pred)) :=
   cs.foldrM (init := (∅, [])) fun s (sub, pending) =>
     match s with
-    | .eq t u => do
-      unify (apply sub t) (apply sub u) <&> (· ∪' sub, pending)
-    | .pr eid p =>
-      return (sub, (eid, apply sub p) :: pending)
+    | .eq t u => unify (apply sub t) (apply sub u) <&> (· ∪' sub, pending)
+    | .pr eid p => return (sub, (eid, apply sub p) :: pending)
+
+/--
+Solve equations and refine pending class predicates, similar to GHC's
+wanted-pool (goals, really) model of interleaving solving/resolution.
+each round retries the deferred (previsouly failed, or worklist in GHC jargon) equations
+with the current substitution, then refines one predicate when exactly one
+instance matches then we recursively work on its context (subgoals) together with others.
+see also the classic OutsideIn(x).
+
+Below we describe the need for this approach.
+Consider example/statem.tig. To type the program, we must solve
+
+  ?m Int ~ Int -> Int × Int
+
+One easily sees that ?m |-> StateM Int being a valid solution yet this equivalence
+can't be solved under HM pattern unification because of principality requirement
+as ?m args ~ t₂ only unifies iff args are TVs (or skolems, unify@107).
+(Note that realistically StateM has gone because of expander. We keep it for brevity)
+
+Since RHS is fixed, we can only eliminate the synonym TApp on the LHS, which,
+simply means that ?m |-> StateM Int must be known (from unification) before
+the TApp occurence of ?m Int -- To solve that is to match the predicate
+Monad (m |-> ?m) against Monad (StateM s), which, must come earlier (through refinement)
+since previously it only happens in SysF elab. We now describe refinement controlling.
+
+It's not always a good idea to refine predicates. The bottom of entrypoint.lean:
+Tigris/Lean/GHC all blocks instance resolution when there are MVs -- indeed ambiguous.
+Though, the unique instance (HAdd Int Int Int) matches, gets picked up and
+fixes c to Int which otherwise is impossible to deduce since the concrete return
+type of (hadd 2 3) can't be known without type ascription. Thus, we permit refinement
+iff all of the conditions below is true for a given pred p, a list of deferred equations eqs:
+
+1. eqs is nonempty: the whole point of refinement in advance: to solve equations;
+2. refineStep succeeds;
+3. no such TV occuring in both p and the result type exists (*): such TVs are dictionary
+   params which must be generalized -- in other words, preds that otherwise would
+   be dropped by automatic generalization are safe to refine. listEq from typeclass4.tig
+   is one such case where fix a to Int in Eq a erroneously made it monomorphic.
+
+(*) in practice we use a view to compute the complete set of result fv. otherwise
+    if a subst reveals that ?m |-> List ?m' we wouldn't be able to catch RHS ?m'.
+    This wouldn't be a problem for real generalization and otherwise (3)
+    can accidentally satisfy. This is the subtle problem in listEq. See also
+> Vytiniotis D. et al, "Let Should Not Be Generalised."
+
+Decidability. Table resolution with ground predicates (canonical) is decidable, as is done in SysF elab. see also
+> Selsam D. et al "Tabled typeclass resolution."
+> https://lean-lang.org/doc/reference/latest/Type-Classes/Instance-Synthesis/#The-Lean-Language-Reference--Type-Classes--Instance-Synthesis--Instance-Search-Summary
+
+However, the direct implication of refine in advance is that we have to
+deal with non-ground predicates (otherwise why refine at all). For cycles at this stage
+we must set a maximum recursion depth though cycles surpassing this depth
+still get handled by SysF elab so correctness unaffected. Besides, its likely
+not going to loop for most programs (must satisfy (1) first).
+-/
+partial def solveAll (env : Env) (resultFV : Subst -> Std.TreeSet TV) (cs : List Constraint)
+  : Except TypingError (Subst × List (Nat × Pred)) :=
+  let (sub₀, eqs₀, pending₀) := cs.foldr (init := (∅, [], []))
+    fun | .eq t u  , (sub, eqs, pending) => (sub, (t, u) :: eqs, pending)
+        | .pr eid p, (sub, eqs, pending) => (sub, eqs, (eid, p) :: pending)
+  go 64 sub₀ ∅ eqs₀ pending₀ []
+where
+  shouldRefine (sub : Subst) (p : Pred) := not $ p.args.foldl (· ∪ fv ·) ∅ |>.any (· ∈ resultFV sub)
+
+  go (fuel : Nat) (sub : Subst) (seen : Std.HashSet Pred)
+     (eqs : List (MLType × MLType)) (queue : List (Nat × Pred)) (done : List (Nat × Pred))
+    : Except TypingError (Subst × List (Nat × Pred)) :=
+    let (sub, eqs) := eqs.foldl (init := (sub, [])) fun (sub, rest) (t, u) =>
+      match unify (apply sub t) (apply sub u) with
+      | .ok s => (s ∪' sub, rest)
+      | .error _ => (sub, (t, u) :: rest)
+    match queue with
+    | [] =>
+      match eqs with
+      | [] => return (sub, done.map fun (eid, q) => (eid, applyP sub q))
+      | (t, u) :: _ => throw (.NoUnify (apply sub t) (apply sub u))
+    | (eid, p) :: rest =>
+      let p := applyP sub p
+      if p ∈ seen || fuel == 0 || eqs.isEmpty || !shouldRefine sub p
+      then go fuel sub seen eqs rest ((eid, p) :: done)
+      else match refineStep env p with
+        | .error _ => go fuel sub (seen.insert p) eqs rest ((eid, p) :: done)
+        | .ok (sub', ctx) =>
+          let sub := sub' ∪' sub
+          go (fuel - 1) sub (seen.insert p) eqs (rest ++ ctx.map fun q => (0, q)) ((eid, applyP sub' p) :: done)
 
 @[inline] def mkSkol v := MLType.TCon $ "?sk." ++ TV.toStr v
 
@@ -311,7 +429,7 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
     let inst := apply sub t
 
     let (cs0, rigid) <- get <&> fun st => (st.cst, st.rTV)
-    match solveAll $ .eq teMono inst :: cs0 with
+    match solveAll Γ (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs0 with
     | .error _ => throw (.NoUnify teMono inst)
     | .ok (sub, _) =>
       let bad :=
@@ -324,7 +442,7 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
       () <$ freshEvidence (apply sub p)
 
     let skTy <- skolemizeTSch sch
-    solveAll (.eq teMono skTy :: cs0) $> (.Ascribe te sch, inst, preds)
+    (.Ascribe te sch, inst, preds) <$ solveAll Γ (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs0)
 
   | Ascribe e ty => do
     let (e, te, p) <- inferExpr Γ e
@@ -373,18 +491,20 @@ partial def inferGroup (Γ : Env) (binds : Array (String × Expr))
 
   let csAll <- get <&> (·.cst)
   let localCs := csAll.take (csAll.length - startCs)
-  match solveAll localCs with
+  -- the complete fv set of the result types of each RHS.
+  let view := fun s => fv $ apply s $ Array.seq2 (Prod.fst ∘ .snd ∘ .snd) tyRec tyNon
+  match solveAll Γ view localCs with
   | .error err => throw err
   | .ok (sub, wants) =>
-    let applyAll {α} [Rewritable α] : α -> α := apply sub
     let predsFor evStart evEnd :=
       wants.foldr (init := []) fun (eid, p) acc =>
-        if evStart <= eid && eid < evEnd then (applyAll p) :: acc else acc
+        if evStart <= eid && eid < evEnd
+        then apply sub p :: acc else acc
     let gen := fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
-      let ty := applyAll ty
-      let sch := generalize Γ ty (applyAll ps ++ predsFor l r)
-      (extend Γ n sch, bindsTyped.push (n, sch, applyAll te))
-    return (tyNon.foldl (init := tyRec.foldl (init := (Γ, #[])) gen) gen)
+      let ty := apply sub ty
+      let sch := generalize Γ ty (apply sub ps ++ predsFor l r)
+      (extend Γ n sch, bindsTyped.push (n, sch, apply sub te))
+    return Array.seq2fold gen (Γ, #[]) tyRec tyNon
 
 partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
   : InferC σ (TExpr × MLType × List Pred) := do
@@ -433,11 +553,25 @@ end ConstraintInfer
 
 open MLType ConstraintInfer Rewritable
 
+/-- elim all type abbreviation -/
+partial def expandExpr (E : Env) : Expr -> Expr
+  | c@(.CI ..) | c@(.CS ..) | c@(.CB ..) | c@(.CUnit) | c@(.Var ..) => c
+  | .App e₁ e₂ => .App (expandExpr E e₁) (expandExpr E e₂)
+  | .Cond e₁ e₂ e₃ => .Cond (expandExpr E e₁) (expandExpr E e₂) (expandExpr E e₃)
+  | .Let ae e₂ => .Let (ae.map fun (s, e) => (s, expandExpr E e)) (expandExpr E e₂)
+  | .Fix e => .Fix (expandExpr E e)
+  | .Fixcomb e => .Fixcomb (expandExpr E e)
+  | .Fun a e => .Fun a (expandExpr E e)
+  | .Prod' e₁ e₂ => .Prod' (expandExpr E e₁) (expandExpr E e₂)
+  | .Match aginst discr =>
+    .Match (aginst.map (expandExpr E)) (discr.map fun (ps, e) => (ps, expandExpr E e))
+  | .Ascribe e ty => .Ascribe (expandExpr E e) (MLType.expandT (fun S => E.synTy[S]?) ty)
+
 def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Scheme × Logger) :=
-  match runEST fun _ => inferExpr Γ e |>.run {} with
+  match runEST fun _ => inferExpr Γ (expandExpr Γ e) |>.run {} with
   | .error err => .error err
   | .ok ((te, ty, preds), {log,cst,..}) =>
-    match solveAll cst with
+    match solveAll Γ (fun sub => fv (apply sub te)) cst with
     | .error err => .error err
     | .ok (sub, wants) =>
       let te := apply sub te
@@ -537,9 +671,11 @@ def inferToplevelC
   (b : Array TopDecl) (E : Env)
   : Except TypingError (Array TopDeclT × Env × Logger) :=
   b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
+    let syn := (E.synTy[·]?)
     match b with
-    | .extBind s n sch => pure $
-      (acc.push (.idBind #[(s, sch, .Var n sch.body)]) ,{E with E := E.E.insert s sch}, L)
+    | .extBind s n sch =>
+      let sch := MLType.expandS syn sch
+      pure (acc.push (.idBind #[(s, sch, .Var n sch.body)]), {E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let exprLet := Expr.Let group .CUnit
       let (.Let bs _ _, _, l) <- runInferConstraintT exprLet E | throw (.Impossible "unexpected shape after let inference\n")
@@ -549,20 +685,28 @@ def inferToplevelC
           , bs.push (n, sc, te)))
         (E, #[])
       return (acc.push (.idBind bs), E, L ++ l)
-    | .tyBind ty@{ctors, tycon, param, cls?} =>
-      let (acc, E) :=
-        ctors.foldl (init := (acc, E)) fun (acc, {E, tyDecl, clsInfo, instInfo}) (cname, fields, _) =>
-          let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
-          if h : cls? ∧ ctors.size ≠ 0 then
-            let methods : Array MethodInfo := Prod.fst $ ctors[0].snd.fst.foldl (init := (#[], 0))
-                fun (a, i) (mname, mty) =>
-                  (a.push ⟨mname, mty, i⟩, i + 1)
-            let cls := ⟨tycon, cname, param, methods⟩
-            let E := methodSchemes cls |>.foldl (fun E (n, sch) => E.insert n sch) E
-            ( acc
-            , ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo.insert tycon cls, instInfo⟩)
-          else (acc, ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo⟩)
-      return (acc.push (.tyBind ty), E, L)
+    | .tyBind ty@{ctors, tycon, param, cls?, rhs} =>
+      match rhs with
+      | some rhs => -- synonym
+        let tvs := param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []
+        let E := {E with synTy := E.synTy.insert tycon (tvs, rhs)}
+        return (acc.push (.tyBind ty), E, L)
+      | none =>
+        let ty := {ty with ctors := ctors.map fun (cname, fields, ar) =>
+                    (cname, fields.map fun (f, t) => (f, MLType.expandT syn t), ar)}
+        let (acc, E) :=
+          ctors.foldl (init := (acc, E)) fun (acc, {E, tyDecl, clsInfo, instInfo, synTy, ..}) (cname, fields, _) =>
+            let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
+            if h : cls? ∧ ctors.size ≠ 0 then
+              let methods : Array MethodInfo := Prod.fst $ ctors[0].snd.fst.foldl (init := (#[], 0))
+                  fun (a, i) (mname, mty) =>
+                    (a.push ⟨mname, mty, i⟩, i + 1)
+              let cls := ⟨tycon, cname, param, methods⟩
+              let E := methodSchemes cls |>.foldl (fun E (n, sch) => E.insert n sch) E
+              ( acc
+              , ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo.insert tycon cls, instInfo, synTy⟩)
+            else (acc, ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo, synTy⟩)
+        return (acc.push (.tyBind ty), E, L)
     | .patBind (pat, expr) => do
       let (e, sch@(.Forall _ ps te), l₁) <- runInferConstraintT expr E
       let l :=
@@ -571,7 +715,7 @@ def inferToplevelC
             s!"pattern binding does not support addition of constraints (it is dropped.)\n"
         else ""
       let ((E, b), {log := l₂, cst,..}) <- runEST fun _ => inferPattern E te pat |>.run {}
-      let (subst, _) <- solveAll cst
+      let (subst, _) <- solveAll E (fun sub => fv (apply sub e)) cst
       let E := apply subst E
       let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
       let l₃ :=
@@ -582,6 +726,8 @@ def inferToplevelC
         else ""
       return (acc.push $ .patBind (pat, sch, e), E, L ++ l₁ ++ l ++ l₂ ++ l₃)
     | .instBind inst => do
+      let inst := {inst with ctxPreds := inst.ctxPreds.map (MLType.expandP syn)
+                             args     := inst.args.map (MLType.expandT syn)}
       let (some ci) := E.clsInfo[inst.cname]?
         | throw (.Undefined inst.cname)
       let existing := E.instInfo.getD ci.cname #[]

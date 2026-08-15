@@ -9,6 +9,7 @@ namespace Parsing open Lexing Parser PType TopDecl
 def declaration : TParser σ TopDecl := first'
   #[ instanceDecl
    , externDecl
+   , tyBind <$> tySyn
    , tyBind <$> tyDecl false
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl
@@ -20,13 +21,15 @@ def declaration : TParser σ TopDecl := first'
 --  simpErrorCombine
 
 def tydecl : TParser σ TopDecl := first'
- #[ tyBind <$> tyDecl false
-   , tyBind <$> tyEmpty]
+ #[ tyBind <$> tySyn
+  , tyBind <$> tyDecl false
+  , tyBind <$> tyEmpty]
 --  simpErrorCombine
 
 def declarationFile : TParser σ TopDecl := first'
   #[ instanceDecl
    , externDecl
+   , tyBind <$> tySyn
    , tyBind <$> tyDecl false
    , idBind <$> letDeclDispatch
    , (idBind ∘ Array.singleton) <$> infixlDecl

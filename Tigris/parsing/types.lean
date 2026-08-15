@@ -311,6 +311,8 @@ structure TyDecl where
   param : Array (String × Kind)
   ctors : Array $ Symbol × List (Symbol × MLType) × Nat
   cls?  : Bool := false -- class?
+  /-- RHS when this is a type abbreviation (`abbrev`) -/
+  rhs   : Option MLType := none
 deriving Repr
 
 structure InstanceDecl where

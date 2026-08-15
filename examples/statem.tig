@@ -1,0 +1,13 @@
+class Monad (m : Type -> Type) where
+  pure : forall a, a -> m a
+  bind : forall a b, m a -> (a -> m b) -> m b
+
+abbrev StateM s a = s -> (s * a)
+
+instance forall s, Monad (StateM s) where
+  pure x st   = (st, x)
+  bind m f st =
+    let (st2, x) = m st
+    f x st2
+
+let main = (bind (pure 1) (fun x => pure (x + 1)) : StateM Int Int) 42

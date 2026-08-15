@@ -1,6 +1,6 @@
 import Tigris.utils
 
-def dummyTyDecl : TyDecl := ⟨"__dummy", #[], #[], false⟩
+def dummyTyDecl : TyDecl := ⟨"__dummy", #[], #[], false, none⟩
 
 instance : Inhabited TyDecl := ⟨dummyTyDecl⟩
 
@@ -43,7 +43,7 @@ def MLType.renderFmt : MLType -> Std.Format
     nestD $ group
     $ joinSep (hFmt :: ls.map fun s => parenthesize s (MLType.renderFmt s)) line
   | .TyLam x body =>
-    nestD $ group $ "Λ" <> format x <> "." <+> MLType.renderFmt body
+    nestD $ group $ "Λ" <> format x ++ "." <+> MLType.renderFmt body
   | .TSch sch => sch.renderFmt
 
 def Pred.toStr : Pred -> String
@@ -151,9 +151,13 @@ structure Env where
   tyDecl : TyMap
   clsInfo : ClassMap
   instInfo : InstanceMap
+  /--
+    type synonyms. In practice, we pass the lookup function (view) `(synTy[·]?)` instead.
+  -/
+  synTy : Std.HashMap String (List TV × MLType) := ∅
 deriving Repr
 
-instance : EmptyCollection Env := ⟨∅, ∅, ∅, ∅⟩
+instance : EmptyCollection Env := ⟨∅, ∅, ∅, ∅, ∅⟩
 abbrev Logger := String -- This is NOT how one should do logging.
                         -- but Lean doesn't really have a WriterT or MonadWriter
                         -- Lake has something similar, but that's in the build system.
@@ -213,6 +217,43 @@ partial def applyS : Subst -> Scheme -> Scheme
     .Forall tvs (ps.map (applyP s)) (applyT s t)
 end
 
+namespace MLType
+
+mutual
+/--
+Expand synonym applications. Works a bit like funapp lowering:
+full applications simply subst; partial applications eta-expands w/ TyLam.
+-/
+partial def expandT (syn : String -> Option (List TV × MLType)) : MLType -> MLType
+  | a ->' b => expandT syn a ->' expandT syn b
+  | a ×'' b => expandT syn a ×'' expandT syn b
+  | TCon S =>
+    match syn S with
+    | some (ps, rhs) => ps.foldr MLType.TyLam $ expandT syn rhs
+    | none => TCon S
+  | TApp (TCon S) as =>
+    match syn S with
+    | none => mkAppT (expandT syn (TCon S)) (as.map (expandT syn))
+    | some (ps, rhs) =>
+      let asl := as.length; let psl := ps.length
+      if asl >= psl then
+        let (used, rest) := as.splitAt psl
+        let sub := List.foldl2 Std.TreeMap.insert ∅ ps used
+        rest.foldl (mkAppT · [expandT syn ·]) $ expandT syn $ applyT sub rhs
+      else
+        let sub := List.foldl2 Std.TreeMap.insert ∅ ps as
+        ps.drop asl |>.foldr MLType.TyLam $ expandT syn $ applyT sub rhs
+  | TApp h as => mkAppT (expandT syn h) (as.map (expandT syn))
+  | TyLam x body => TyLam x (expandT syn body)
+  | TSch sch => TSch (expandS syn sch)
+  | t => t -- TVar
+
+partial def expandP (syn : String -> Option (List TV × MLType)) : Pred -> Pred := Pred.mapArgs (expandT syn)
+partial def expandS (syn : String -> Option (List TV × MLType)) : Scheme -> Scheme
+  | .Forall tvs ps t => .Forall tvs (ps.map (expandP syn)) (expandT syn t)
+end
+end MLType
+
 instance : Rewritable MLType := ⟨applyT, fvT⟩
 instance : Rewritable Pred := ⟨applyP, fvP⟩
 instance : Rewritable Scheme := ⟨applyS, fvS⟩
@@ -223,6 +264,9 @@ instance : Rewritable Scheme := ⟨applyS, fvS⟩
 instance [Rewritable α] : Rewritable (List α) where
   apply := List.map ∘ apply
   fv    := List.foldr (fv · ∪ ·) ∅
+instance [Rewritable α] : Rewritable (Array α) where
+  apply := Array.map ∘ apply
+  fv    := Array.foldr (fv · ∪ ·) ∅
 instance : Rewritable Env where
   apply s e := {e with E := e.E.map fun _ v => apply s v}
   fv      e := fv e.E.values
@@ -295,7 +339,7 @@ def mkCurriedE (e : List (String × Scheme)) : Env :=
         if sym.startsWith "__"
         then p :: (sym.drop 2 |>.toString, .Forall c ps $ curry ty) :: a
         else p :: a
-  , ∅, ∅, ∅⟩ -- TODO: modify clsInfo and instInfo
+  , ∅, ∅, ∅, ∅⟩ -- TODO: modify clsInfo and instInfo
 
 
 abbrev defaultE : Env := mkCurriedE dE

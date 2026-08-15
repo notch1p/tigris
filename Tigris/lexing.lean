@@ -270,7 +270,7 @@ def reserved : Lean.Data.Trie Unit := ofKeys $
   , "instance", "else"  , "then"  , "let"   , "prefix"
   , "postfix" , "and"   , "rec"   , "fun"   , "end"
   , "def"     , "fn"    , "in"    , "if"    , "where"
-  , "begin"   , "do"] where ofKeys := List.foldl (Trie.insert (val := ())) ∅
+  , "begin"   , "do"    , "abbrev"] where ofKeys := List.foldl (Trie.insert (val := ())) ∅
 def _root_.Lean.Data.Trie.contains (t : Trie α) (s : String) : Bool := t.find? s |>.isSome
 end
 
@@ -382,6 +382,7 @@ abbrev REC      : TParser σ Unit := kw "rec"
 abbrev MATCH    : TParser σ Unit := kw "match"
 abbrev WITH     : TParser σ Unit := kw "with"
 abbrev TYPE     : TParser σ Unit := kw "type" <|> kw "data"
+abbrev ABBREV   : TParser σ Unit := kw "abbrev"
 abbrev MUTUAL   : TParser σ Unit := kw "mutual"
 abbrev AND                       := @alignedMany1.AND
 abbrev POSTFIX  : TParser σ Unit := kw "postfix"

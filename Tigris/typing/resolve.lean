@@ -10,18 +10,6 @@ Tabled Typeclass Resolution, similar to Lean 4's. See also
 
 namespace Resolve open MLType ConstraintInfer Rewritable
 
-def unifyHead (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError Subst := do
-  if goalArgs.length != instArgs.length then
-    throw (.NoUnify
-      (MLType.mkApp (MLType.TCon "_goal") goalArgs)
-      (MLType.mkApp (MLType.TCon "_inst") instArgs))
-  else
-    List.foldlM2
-      (fun s g i =>
-        (· ∪' s) <$> unify (apply s g) (apply s i))
-      (∅ : Subst)
-      goalArgs instArgs
-
 structure ResolveState where
   /-- per-call table of each pred's resolution outcome -/
   done   : Std.HashMap Pred (Except TypingError Expr)
@@ -39,11 +27,11 @@ instance : MonadLift (Except TypingError) (EST TypingError σ) where
   | .error e => throw e
   | .ok e => return e
 
-@[inline] def markVisited (p : Pred) : ResolveM σ Unit := modify fun st => {st with inProg := st.inProg.insert p}
-@[inline] def unmarkVisited (p : Pred) : ResolveM σ Unit := modify fun st => {st with inProg := st.inProg.erase p}
-@[inline] def already? (p : Pred) : ResolveM σ Bool := get <&> fun {inProg,..} => p ∈ inProg
-@[inline] def cacheResult (p : Pred) (r : Except TypingError Expr) : ResolveM σ Unit :=
-  modify fun st => {st with done := st.done.insert p r}
+@[inline] def markVisited : Pred -> ResolveM σ Unit := (modify fun st => {st with inProg := st.inProg.insert ·})
+@[inline] def unmarkVisited : Pred -> ResolveM σ Unit := (modify fun st => {st with inProg := st.inProg.erase ·})
+@[inline] def already? : Pred -> ResolveM σ Bool := (get <&> fun {inProg,..} => · ∈ inProg)
+@[inline] def cacheResult : Pred -> Except TypingError Expr -> ResolveM σ Unit :=
+  (modify fun st => {st with done := st.done.insert · ·})
 
 def classParamNames (env : Env) (cls : String) : Std.HashSet String :=
   match env.clsInfo[cls]? with

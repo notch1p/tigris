@@ -251,6 +251,19 @@ where
       error "value constructor must begin with an uppercase letter\n"
       throwUnexpected
 
+/-- recursive abbreviation is a parse error. -/
+def tySyn : TParser σ TyDecl := withExpected "type abbreviation" do
+  ABBREV
+  let tycon <- ID
+  if tycon.isUpperInit then
+    let param <- parseParams; EQ
+    let rhs <- tyExp param -- tyExp checks for unbound types
+    registerTy tycon (kindOfParams param.ordered) false
+    return { tycon, param := param.ordered, ctors := #[], rhs := some rhs }
+  else
+    error "type constructor must begin with an uppercase letter\n"
+    throwUnexpected
+
 end PType
 
 end Parsing
