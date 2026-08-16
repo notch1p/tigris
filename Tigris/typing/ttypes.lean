@@ -110,8 +110,11 @@ inductive TypingError
   | NoRankN
   | Ambiguous (msg : String)
   | Impossible (s : String)
-  | Duplicates (t : TV) (T : MLType) deriving Repr
+  | Duplicates (t : TV) (T : MLType)
+  | KindMismatch (k₁ k₂ : Kind)
+deriving Repr
 open Logging
+
 instance : ToString TypingError where
   toString
   | .Ambiguous msg => s!"Ambiguous: {msg}"
@@ -120,6 +123,7 @@ instance : ToString TypingError where
   | .Interrupted   => s!"Interrupted."
   | .InvalidPat s  => s!"Invalid Pattern: {s}"
   | .NoUnify t₁ t₂ => s!"Can't unify type\n  {t₁}\nwith\n  {t₂}."
+  | .KindMismatch k₁ k₂ => s!"Kind mismatch: {k₁} vs {k₂}."
   | .NoSynthesize s => s!"failed to synthesize {s}"
   | .Undefined s   => s!"Symbol\n  {s}\nis not in scope."
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"

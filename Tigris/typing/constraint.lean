@@ -2,6 +2,7 @@ import Tigris.typing.ttypes
 import Tigris.typing.tsyntax
 import Tigris.typing.exhaust
 import Tigris.typing.scc
+import Tigris.typing.kinds
 
 namespace ConstraintInfer open MLType Rewritable Pattern Expr
 
@@ -19,6 +20,7 @@ structure CState where
   log : Logger          := ""
   rTV : Rigids          := ∅
   rTVs : List Rigids    := []
+  ke  : KindEnv         := ∅
 deriving Inhabited
 
 abbrev InferC σ := StateRefT CState (EST TypingError σ)
@@ -48,9 +50,6 @@ def elimForall : MLType -> InferC σ MLType
 @[inline] def addEq (t₁ t₂ : MLType) : InferC σ Unit := do
   modify fun st@{cst,..} => {st with cst := .eq t₁ t₂ :: cst}
 
-@[inline] def appendLog (s : String) : InferC σ Unit :=
-  modify fun st@{log,..} => {st with log := log ++ s}
-
 @[inline] def pushRigid (vs : List TV) : InferC σ Unit :=
   let s := vs.foldl .insert ∅
   modify fun st => {st with rTV := st.rTV ∪ s, rTVs := s :: st.rTVs}
@@ -66,30 +65,29 @@ private def bindTV (a : TV) (t : MLType) : Except TypingError Subst :=
   else if a ∈ fv t then throw (.Duplicates a t)
   else pure {(a, t)}
 
-partial def unify : MLType -> MLType -> Except TypingError Subst
+private partial def unifyGo (ke : KindEnv) : MLType -> MLType -> Except TypingError (Subst × KindEnv)
   | t₁ ×'' t₂, u₁ ×'' u₂
   | t₁ ->' t₂, u₁ ->' u₂ => do
-    let s₁ <- unify t₁ u₁
-    let s₂ <- unify (apply s₁ t₂) (apply s₁ u₂)
-    return (s₂ ∪' s₁)
-  | TVar a, t | t, TVar a => bindTV a t
-  | TCon a, TCon b =>
-    if a == b then return ∅
-    else throw (.NoUnify (TCon a) (TCon b))
-  | MLType.TyLam x₁ b₁, MLType.TyLam x₂ b₂ => do
+    let (s₁, ke) <- unifyGo ke t₁ u₁
+    let (s₂, ke) <- unifyGo ke (apply s₁ t₂) (apply s₁ u₂)
+    return (s₂ ∪' s₁, ke)
+  | TVar a, t | t, TVar a => (·, ke) <$> bindTV a t
+  | TCon a, TCon b => if a == b then return (∅, ke) else throw (.NoUnify (TCon a) (TCon b))
+  | TyLam x₁ b₁, TyLam x₂ b₂ =>
     -- α-equiv.
-    let renameSub : Subst := (∅ : Subst).insert x₂ (TVar x₁)
-    unify b₁ (apply renameSub b₂)
+    let renameSub : Subst := {(x₂, (TVar x₁))}
+    unifyGo ke b₁ (apply renameSub b₂)
   | t₁@(TApp h₁ as₁), t₂@(TApp h₂ as₂) => do
     -- Claude: Spine unification with peeling. Length-equalize from the right so the
     -- shorter spine is matched against a prefix of the longer one's head.
     let n₁ := as₁.length
     let n₂ := as₂.length
     if n₁ == n₂ then
-      let headSub <- unify h₁ h₂
+      let (headSub, ke) <- unifyGo ke h₁ h₂
       List.foldlM2
-        (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
-        headSub as₁ as₂
+        (fun (acc, ke) x y => (· ∪' acc, ·).uncurry <$> unifyGo ke (apply acc x) (apply acc y))
+        (headSub, ke)
+        as₁ as₂
     else if n₁ > n₂ then
       -- Claude: Length-equalize: fuse the prefix of `as₁` into the head and unify
       -- the resulting "fused head" against `h₂`, then zip the suffix args
@@ -98,17 +96,17 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
       let d := n₁ - n₂
       let (as₁, as₁') := as₁.splitAt d
       let h₁' := mkApp h₁ as₁
-      (do let headSub <- unify h₁' h₂
+      (do let (headSub, ke) <- unifyGo ke h₁' h₂
           List.foldlM2
-            (fun acc x y => (· ∪' acc) <$> unify (apply acc x) (apply acc y))
-            headSub as₁' as₂)
+            (fun (acc, ke) x y => (· ∪' acc, ·).uncurry <$> unifyGo ke (apply acc x) (apply acc y))
+            (headSub, ke) as₁' as₂)
         <|> throw (.NoUnify t₁ t₂)
-    else unify t₂ t₁
+    else unifyGo ke t₂ t₁
   | t₁@(TApp h₁ as₁), t₂ => do
     -- Claude: Pattern-fragment: head is a TVar and args are skolems/rigids -> bind the
     -- head to a TyLam abstraction of t₂. Otherwise, if there are zero args,
     -- unify against the head.
-    if as₁.isEmpty then unify h₁ t₂
+    if as₁.isEmpty then unifyGo ke h₁ t₂
     else
       match h₁ with
       | TVar v =>
@@ -121,59 +119,65 @@ partial def unify : MLType -> MLType -> Except TypingError Subst
                         else throw (.NoUnify t₁ t₂)
             | _ => throw (.NoUnify t₁ t₂)
         let body := binders.foldr (init := t₂) fun b acc => .TyLam b acc
-        bindTV v body
+        (·, ke) <$> bindTV v body
       | _ => throw (.NoUnify t₁ t₂)
-  | t₁, t₂@(TApp ..) => unify t₂ t₁
+  | t₁, t₂@(TApp ..) => unifyGo ke t₂ t₁
   | ts₁@(.TSch (.Forall tvs₁ ps₁ t₁)), ts₂@(.TSch (.Forall tvs₂ ps₂ t₂)) => do
-    if ps₁.length != ps₂.length || tvs₁.length != tvs₂.length then
-      throw (.NoUnify ts₁ ts₂)
+    if ps₁.length != ps₂.length || tvs₁.length != tvs₂.length then throw (.NoUnify ts₁ ts₂)
+
     let renameSub : Subst := List.foldl2 (·.insert · $ .TVar ·) ∅ tvs₂ tvs₁
     let ps₂ := apply renameSub ps₂
     if ps₁ != ps₂ then throw $ .NoUnify ts₁ ts₂
-    unify t₁ (apply renameSub t₂)
-  | t, u =>
-    throw (.NoUnify t u)
+    unifyGo ke t₁ (apply renameSub t₂)
+  | t, u => throw (.NoUnify t u)
 
-def unifyHead (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError Subst := do
+/--
+check and unifying for kind first then structural unifying MLType.
+
+an important assumption worth noting is that subterms of well-kind types are well kinded.
+therefore it suffices to check kinds at toplevel and pattern unification need not
+to be mutually recursive with it. Faster.
+-/
+def unify (ke : KindEnv) : MLType -> MLType -> Except TypingError (Subst × KindEnv) :=
+  fun t₁ t₂ => do
+    let (ke, k₁) <- kindOf ke t₁
+    let (ke, k₂) <- kindOf ke t₂
+    let ke <- KindEnv.kindUnify ke k₁ k₂
+    unifyGo ke t₁ t₂
+
+def unifyHead (ke : KindEnv) (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError (Subst × KindEnv) := do
   if goalArgs.length != instArgs.length then
-    throw (.NoUnify
-      (MLType.mkApp (MLType.TCon "_goal") goalArgs)
-      (MLType.mkApp (MLType.TCon "_inst") instArgs))
+    throw (.NoUnify (mkApp (MLType.TCon "_goal") goalArgs)
+                    (mkApp (MLType.TCon "_inst") instArgs))
   else
     List.foldlM2
-      (fun s g i => (· ∪' s) <$> unify (apply s g) (apply s i))
-      (∅ : Subst)
+      (fun (s, ke) g i => (· ∪' s, ·).uncurry <$> unify ke (apply s g) (apply s i))
+      ((∅ : Subst), ke)
       goalArgs instArgs
 
 /-- refines 1 pred if there exists exactly 1 matching instance.
 Returns on multiple matches to solveAll which, in this case,
 does nothing and let SysF elab paas handles it. -/
-def refineStep (env : Env) (p : Pred) : Except TypingError (Subst × List Pred) := do
+def refineStep (env : Env) (ke : KindEnv) (p : Pred) : Except TypingError (Subst × KindEnv × List Pred) := do
   let some insts := env.instInfo[p.cls]?
     | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
 
-  let found : Option (Subst × List Pred) <- insts.foldrM (init := none) fun info found => do
+  let found : Option (Subst × KindEnv × List Pred) <- insts.foldrM (init := none) fun info found => do
 
     let qs := info.args.foldl (· ∪ fv ·) ∅ ∪ info.ctx.foldl (· ∪ fvP ·) ∅
     let (ren, _) : Subst × Nat := qs.foldl (init := (∅, 0)) fun (s, i) q =>
       (s.insert q $ .TVar $ .mkTV s!"?inst.{info.iname}.{i}", i + 1)
 
-    match unifyHead p.args (info.args.map (apply ren)) with
+    match unifyHead ke p.args (info.args.map (apply ren)) with
     | .error _ => return none
-    | .ok sub =>
+    | .ok (sub, ke) =>
       match found with
       | some _ => throw $ .Ambiguous s!"{p}: multiple instances match\n" -- return to solveAll.
-      | none => return some (sub, info.ctx.map (apply (sub ∪' ren)))
+      | none => return some (sub, ke, info.ctx.map (apply (sub ∪' ren)))
 
   match found with
   | some r => return r
   | none => throw $ .NoSynthesize s!"{p}: no matching instance found\n"
-
-def solveEqs (cs : List Constraint) : Except TypingError (Subst × List (Nat × Pred)) :=
-  cs.foldrM (init := (∅, [])) fun s (sub, pending) =>
-    match s with
-    | .eq t u => unify (apply sub t) (apply sub u) <&> (· ∪' sub, pending)
-    | .pr eid p => return (sub, (eid, apply sub p) :: pending)
 
 /--
 Solve equations and refine pending class predicates, similar to GHC's
@@ -229,36 +233,41 @@ we must set a maximum recursion depth though cycles surpassing this depth
 still get handled by SysF elab so correctness unaffected. Besides, its likely
 not going to loop for most programs (must satisfy (1) first).
 -/
-partial def solveAll (env : Env) (resultFV : Subst -> Std.TreeSet TV) (cs : List Constraint)
-  : Except TypingError (Subst × List (Nat × Pred)) :=
+partial def solveAll (env : Env) (ke : KindEnv) (resultFV : Subst -> Std.TreeSet TV) (cs : List Constraint)
+  : Except TypingError (Subst × KindEnv × List (Nat × Pred)) :=
   let (sub₀, eqs₀, pending₀) := cs.foldr (init := (∅, [], []))
     fun | .eq t u  , (sub, eqs, pending) => (sub, (t, u) :: eqs, pending)
         | .pr eid p, (sub, eqs, pending) => (sub, eqs, (eid, p) :: pending)
-  go 64 sub₀ ∅ eqs₀ pending₀ []
+  go 64 sub₀ ke ∅ eqs₀ pending₀ []
 where
-  shouldRefine (sub : Subst) (p : Pred) := not $ p.args.foldl (· ∪ fv ·) ∅ |>.any (· ∈ resultFV sub)
+  shouldRefine (sub : Subst) (p : Pred) := p.args.foldl (· ∪ fv ·) ∅ |>.any (· ∈ resultFV sub)
 
-  go (fuel : Nat) (sub : Subst) (seen : Std.HashSet Pred)
+  go (fuel : Nat) (sub : Subst) (ke : KindEnv) (seen : Std.HashSet Pred)
      (eqs : List (MLType × MLType)) (queue : List (Nat × Pred)) (done : List (Nat × Pred))
-    : Except TypingError (Subst × List (Nat × Pred)) :=
-    let (sub, eqs) := eqs.foldl (init := (sub, [])) fun (sub, rest) (t, u) =>
-      match unify (apply sub t) (apply sub u) with
-      | .ok s => (s ∪' sub, rest)
-      | .error _ => (sub, (t, u) :: rest)
+    : Except TypingError (Subst × KindEnv × List (Nat × Pred)) :=
+    let (sub, ke, eqs) := eqs.foldl (init := (sub, ke, [])) fun (sub, ke, rest) (t, u) =>
+      match unify ke (apply sub t) (apply sub u) with
+      | .ok (s, ke) => (s ∪' sub, ke, rest)
+      | .error _ => (sub, ke, (t, u) :: rest)
     match queue with
     | [] =>
       match eqs with
-      | [] => return (sub, done.map fun (eid, q) => (eid, applyP sub q))
-      | (t, u) :: _ => throw (.NoUnify (apply sub t) (apply sub u))
+      | [] => return (sub, ke, done.map fun (eid, q) => (eid, applyP sub q))
+      | (t, u) :: _ =>
+        -- re-run to recover the true failure (a kind error would otherwise
+        -- be masked by the retry loop deferring every failure)
+        match unify ke (apply sub t) (apply sub u) with
+        | .error err => throw err
+        | .ok _ => throw (.NoUnify (apply sub t) (apply sub u))
     | (eid, p) :: rest =>
       let p := applyP sub p
-      if p ∈ seen || fuel == 0 || eqs.isEmpty || !shouldRefine sub p
-      then go fuel sub seen eqs rest ((eid, p) :: done)
-      else match refineStep env p with
-        | .error _ => go fuel sub (seen.insert p) eqs rest ((eid, p) :: done)
-        | .ok (sub', ctx) =>
+      if p ∈ seen || fuel == 0 || eqs.isEmpty || shouldRefine sub p
+      then go fuel sub ke seen eqs rest ((eid, p) :: done)
+      else match refineStep env ke p with
+        | .error _ => go fuel sub ke (seen.insert p) eqs rest ((eid, p) :: done)
+        | .ok (sub', ke, ctx) =>
           let sub := sub' ∪' sub
-          go (fuel - 1) sub (seen.insert p) eqs (rest ++ ctx.map fun q => (0, q)) ((eid, applyP sub' p) :: done)
+          go (fuel - 1) sub ke (seen.insert p) eqs (rest ++ ctx.map fun q => (0, q)) ((eid, applyP sub' p) :: done)
 
 @[inline] def mkSkol v := MLType.TCon $ "?sk." ++ TV.toStr v
 
@@ -428,21 +437,23 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
     let sub <- vs.foldlM (Std.TreeMap.insert · · <$> fresh) (∅ : Subst)
     let inst := apply sub t
 
-    let (cs0, rigid) <- get <&> fun st => (st.cst, st.rTV)
-    match solveAll Γ (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs0 with
-    | .error _ => throw (.NoUnify teMono inst)
-    | .ok (sub, _) =>
-      let bad :=
-        sub.any (fun tv rhs =>
-          tv ∈ rigid && rhs != MLType.TVar tv)
-      if bad then throw (.NoUnify teMono inst)
+    let (cs₀, rigid) <- get <&> fun st => (st.cst, st.rTV)
+    let {ke,..} <- get
+    match solveAll Γ ke (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs₀ with
+    | .error err => throw err
+    | .ok (sub, ke, _) =>
+      modify ({· with ke})
+      if sub.any (fun tv rhs => tv ∈ rigid && rhs != MLType.TVar tv)
+      then throw (.NoUnify teMono inst)
       else addEq teMono inst
 
-    for p in ps do
-      () <$ freshEvidence (apply sub p)
+    ps.forM fun p => () <$ freshEvidence (apply sub p)
 
     let skTy <- skolemizeTSch sch
-    (.Ascribe te sch, inst, preds) <$ solveAll Γ (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs0)
+    let {ke,..} <- get
+    match solveAll Γ ke (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs₀) with
+    | .error err => throw err
+    | .ok (_, ke, _) => (.Ascribe te sch, inst, preds) <$ modify ({· with ke})
 
   | Ascribe e ty => do
     let (e, te, p) <- inferExpr Γ e
@@ -493,9 +504,11 @@ partial def inferGroup (Γ : Env) (binds : Array (String × Expr))
   let localCs := csAll.take (csAll.length - startCs)
   -- the complete fv set of the result types of each RHS.
   let view := fun s => fv $ apply s $ Array.seq2 (Prod.fst ∘ .snd ∘ .snd) tyRec tyNon
-  match solveAll Γ view localCs with
+  let {ke,..} <- get
+  match solveAll Γ ke view localCs with
   | .error err => throw err
-  | .ok (sub, wants) =>
+  | .ok (sub, ke, wants) =>
+    modify ({· with ke})
     let predsFor evStart evEnd :=
       wants.foldr (init := []) fun (eid, p) acc =>
         if evStart <= eid && eid < evEnd
@@ -568,12 +581,12 @@ partial def expandExpr (E : Env) : Expr -> Expr
   | .Ascribe e ty => .Ascribe (expandExpr E e) (MLType.expandT (fun S => E.synTy[S]?) ty)
 
 def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Scheme × Logger) :=
-  match runEST fun _ => inferExpr Γ (expandExpr Γ e) |>.run {} with
+  match runEST fun _ => inferExpr Γ (expandExpr Γ e) |>.run {ke := KindEnv.ofEnv Γ} with
   | .error err => .error err
-  | .ok ((te, ty, preds), {log,cst,..}) =>
-    match solveAll Γ (fun sub => fv (apply sub te)) cst with
+  | .ok ((te, ty, preds), {log,cst,ke,..}) =>
+    match solveAll Γ ke (fun sub => fv (apply sub te)) cst with
     | .error err => .error err
-    | .ok (sub, wants) =>
+    | .ok (sub, _, wants) =>
       let te := apply sub te
       let ty := apply sub ty
       let ps := preds ++ wants.map (apply sub ∘ Prod.snd)
@@ -647,9 +660,10 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
     let (typedBody, inferredSch, l) <- runInferConstraintT rawBody E
     let (.Forall _ _ infRes) := inferredSch
     let wantHeadSk := MLType.mkApp (TCon ci.cname) argsSk
-    match unify infRes wantHeadSk with
+    let ke := KindEnv.ofEnv E
+    match unify ke infRes wantHeadSk with
     | .error _ => throw (.NoUnify infRes wantHeadSk)
-    | .ok sub =>
+    | .ok (sub, _) =>
       let detectedSpecialized :=
         args.any fun
           | MLType.TVar v | MLType.TApp (MLType.TVar v) [] =>
@@ -675,6 +689,8 @@ def inferToplevelC
     match b with
     | .extBind s n sch =>
       let sch := MLType.expandS syn sch
+      -- declaration-time kind check: extern schemes never go through unify
+      () <$ kindOf (KindEnv.ofEnv E) sch.body
       pure (acc.push (.idBind #[(s, sch, .Var n sch.body)]), {E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let exprLet := Expr.Let group .CUnit
@@ -689,11 +705,20 @@ def inferToplevelC
       match rhs with
       | some rhs => -- synonym
         let tvs := param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []
-        let E := {E with synTy := E.synTy.insert tycon (tvs, rhs)}
+        -- also register the declared kind so `KindEnv.ofEnv` sees it
+        let E := {E with tyDecl := E.tyDecl.insert tycon ty, synTy := E.synTy.insert tycon (tvs, rhs)}
+        () <$ kindOf (KindEnv.ofEnv E) rhs
         return (acc.push (.tyBind ty), E, L)
       | none =>
         let ty := {ty with ctors := ctors.map fun (cname, fields, ar) =>
                     (cname, fields.map fun (f, t) => (f, MLType.expandT syn t), ar)}
+        -- declaration-time kind check: an ill-kinded field (e.g. an
+        -- unsaturated tycon, possible now that application parses maximally)
+        -- must fail here, not silently at first use
+        let E' := {E with tyDecl := E.tyDecl.insert tycon ty}
+        for (cname, fields, _) in ty.ctors do
+          let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
+          () <$ kindOf (KindEnv.ofEnv E') s.body
         let (acc, E) :=
           ctors.foldl (init := (acc, E)) fun (acc, {E, tyDecl, clsInfo, instInfo, synTy, ..}) (cname, fields, _) =>
             let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
@@ -714,8 +739,8 @@ def inferToplevelC
           Logging.warn
             s!"pattern binding does not support addition of constraints (it is dropped.)\n"
         else ""
-      let ((E, b), {log := l₂, cst,..}) <- runEST fun _ => inferPattern E te pat |>.run {}
-      let (subst, _) <- solveAll E (fun sub => fv (apply sub e)) cst
+      let ((E, b), {log := l₂, cst, ke,..}) <- runEST fun _ => inferPattern E te pat |>.run {ke := KindEnv.ofEnv E}
+      let (subst, _, _) <- solveAll E ke (fun sub => fv (apply sub e)) cst
       let E := apply subst E
       let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
       let l₃ :=

@@ -116,12 +116,13 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
               else throw $ stuckMessage classPred x
           let ar := ci.methods.size
           let methodTyFull := Helper.normHK $ apply sub m.mty
+          let ke <- get <&> (·.ke)
           let (projTy, wrapPoly) :=
             match peelSch1 methodTyFull with
             | some (innerB, innerP, innerTy) =>
               if innerP.isEmpty then
-                match unify innerTy (monoOfTSch ty) with
-                | .ok sub => (apply sub innerTy, pure ∘ id)
+                match unify ke innerTy (monoOfTSch ty) with
+                | .ok (sub, _) => (apply sub innerTy, pure ∘ id)
                 | .error _ => (innerTy, pure ∘ wrapTyLams innerB)
               else
                 let rec wrapPreds (i : Nat) (acc : FExpr) : List Pred -> FExpr
@@ -222,13 +223,13 @@ def runInferConstraintF (e : Expr) (Γ : Env)
   : Except TypingError (FExpr × Scheme × Logger) :=
   match runInferConstraintT e Γ with
   | .ok (te, sch, log) =>
-    match elaborate1 te sch Γ |>.run {} with
+    match elaborate1 te sch Γ |>.run {ke := KindEnv.ofEnv Γ} with
     | .ok (fe, sch) st => return (fe, sch, log ++ st.log)
     | .error e _ => throw e
   | .error err => throw err
 
 def runInfer1F (e : TExpr) (sch : Scheme) (Γ : Env) : Except TypingError (FExpr × Scheme × Logger) :=
-  match elaborate1 e sch Γ |>.run {} with
+  match elaborate1 e sch Γ |>.run {ke := KindEnv.ofEnv Γ} with
   | .error e _ => throw e
   | .ok (fe, sch) st => return (fe, sch, st.log)
 

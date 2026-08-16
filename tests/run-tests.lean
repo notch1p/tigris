@@ -32,6 +32,18 @@ def compileCases : List String :=
   , "hkt-dict-parametricity", "hkt-eager-specialize"
   , "poly-ref", "poly-ref-io", "poly-ref-io-safe"]
 
+def normalizeMsg :=
+  String.Slice.foldl
+    (fun a c => if c.isWhitespace then a.push ' ' else a.push c)
+    ""
+
+/-- (stem, expected error substring): must fail to compile with an error
+containing the substring. -/
+def errorCases : List (String × String) :=
+  [ ("kind-error-instance", "Kind mismatch")
+  , ("kind-error-overapp", "Kind mismatch")
+  , ("kind-error-juxta", "Kind mismatch") ]
+
 open System.FilePath renaming mk -> fp, fileStem -> fn in
 def execCases : List (String × System.FilePath × String) :=
   [ (cases/"r1"            , r"(42 15 . 2)")
@@ -67,7 +79,17 @@ def main (paths : List String) : IO UInt32 := do
       | .ok _ =>
         pass.modify .succ *> println s!"  ok\t{name}"
       | .error e =>
-        fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
+        fail.modify .succ *> eprintln s!"  X\t{name}: {normalizeMsg e}"
+
+  println! "== errors =="
+  waitAll =<< errorCases.mapM fun (name, expected) =>
+    .asTask $ compileFile s!"{execCases.examples}/{name}.tig" >>=
+      fun
+      | .ok _ =>
+        fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", but got compiled"
+      | .error e =>
+        if e.startsWith expected then pass.modify .succ *> println s!"  ok\t{name}\t{normalizeMsg e}"
+        else fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
 
   if <- hasSbcl then
     println! "== exec =="
@@ -75,7 +97,7 @@ def main (paths : List String) : IO UInt32 := do
       .asTask $ compileFile path >>=
         fun
         | .error e =>
-          fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
+          fail.modify .succ *> eprintln s!"  X\t{name}: {normalizeMsg e}"
         | .ok cl =>
           runSbcl cl >>=
             fun
@@ -83,7 +105,7 @@ def main (paths : List String) : IO UInt32 := do
               fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
             | .ok got =>
               if got == expected then pass.modify .succ *> println s!"  ok\t{name}\t= {got}"
-              else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {got}"
+              else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {normalizeMsg got}"
   else
     println! "== exec skipped (sbcl not found) =="
 

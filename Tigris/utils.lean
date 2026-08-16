@@ -168,12 +168,12 @@ open Associativity in def opTablePrim : List (Symbol × BinaryEntry) :=
   , (DIV , ⟨DIV, 70 , leftAssoc  , link "div"⟩)]
 
 def opTable : BinaryTable := .ofList opTablePrim
-def tyTable : TyArity :=
-  .ofList [ ("Int"   , .type, true)
-          , ("String", .type, true)
-          , ("Bool"  , .type, true)
-          , ("Unit"  , .type, true)
-          , ("Empty" , .type, true)]
+def tyTable : TyNames :=
+  .ofList [ ("Int"   , true)
+          , ("String", true)
+          , ("Bool"  , true)
+          , ("Unit"  , true)
+          , ("Empty" , true)]
 def initState : PEnv := {ops := opTable, tys := tyTable, undTy := []}
 
 namespace Parser.Error

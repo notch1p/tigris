@@ -1,0 +1,3 @@
+class Functor (f : Type -> Type) = {fmap : forall a b, (a -> b) -> f a -> f b}
+
+instance Functor Int = {fmap f = 0}

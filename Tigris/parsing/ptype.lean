@@ -23,7 +23,7 @@ namespace Parsing
 namespace PType open Parsing Lexing MLType Parser Parser.Char Lexing
 variable {σ}
 
-def getTyArity (name : String) : TParser σ $ Option (Kind × Bool) := do
+def getTyFlag (name : String) : TParser σ $ Option Bool := do
   get <&> (·.1.tys.find? name)
 
 mutual
@@ -62,50 +62,21 @@ def parseParams : TParser σ ParamInfo := do
   let kinds := ps.foldl (fun m (n, k) => m.insert n k) {}
   return {ordered := ps, kinds}
 
-def getLocalTyArity (pinfo : ParamInfo) (name : String)
-  : TParser σ (Option (Kind × Bool)) := do
-  match pinfo.kinds[name]? with
-  | some k =>
-    if k.arity = 0 then pure none
-    else
-      pure (some (k, false))
-  | none => getTyArity name
-
-def registerTy (name : String) (kind : Kind) (mt : Bool) (flag := true) : TParser σ Unit := do
-  if let true <- modifyGet fun orig@(st@{tys,..}, l) =>
+def registerTy (name : String) (mt : Bool) (flag := true) : TParser σ Unit := do
+  if <- modifyGet fun orig@(st@{tys,..}, l) =>
     match tys.find? name with
     | none =>
-      (true, {st with tys := tys.insert name (kind, flag)}, l)
-    | some (kind', k) =>
-      -- Claude: Reconcile via kind unification -- exact equality is too strict if
-      -- the registered/expected kinds mention `kvar`s during inference.
-      match Kind.unify kind' kind with
-      | .ok _ =>
-        if mt then
-          if !k && flag then (true, {st with tys := tys.insert name (kind, flag)}, l)
-          else (true, orig)
-        else
-          let err := Logging.error
-            s!"types are dynamically scoped: for this reason {name} may not be redefined.\n"
-          (false, st, l ++ err)
-      | .error _ =>
-        let err := Logging.error $
-          if mt then
-            s!"mutual inductive type {name} kind mismatch,\n\
-              expected {kind'} but received {kind}\n"
-          else s!"type {name} kind mismatch: {kind'} vs {kind}\n"
+      (true, {st with tys := tys.insert name flag}, l)
+    | some k =>
+      if mt then
+        if !k && flag then (true, {st with tys := tys.insert name flag}, l)
+        else (true, orig)
+      else
+        let err := Logging.error
+          s!"types are dynamically scoped: for this reason {name} may not be redefined.\n"
         (false, st, l ++ err)
   then return ()
   else throwUnexpected
-
-@[inline] def registerTyArity (name : String) (arity : Nat) (mt : Bool) (flag := true) : TParser σ Unit :=
-  let rec mk : Nat -> Kind
-    | 0     => .type
-    | n + 1 => .karr .type (mk n)
-  registerTy name (mk arity) mt flag
-
-@[inline] def kindOfParams (ps : Array (String × Kind)) : Kind :=
-  ps.foldr (fun (_, k) acc => .karr k acc) .type
 
 mutual
 /--
@@ -126,23 +97,16 @@ partial def tyApps (mt : Bool) (param : ParamInfo) : TParser σ MLType := withEx
   let hd <- tyAtom mt param
   match hd with
   | .TCon h =>
-    match <- getTyArity h with
-    | some (k, _) =>
-      let args <- takeUpTo k.arity $ tyAtom mt param
-      return MLType.mkApp (.TCon h) args.toList
+    match <- getTyFlag h with
+    | some _ => .mkApp (.TCon h) <$> Array.toList <$> takeMany (tyAtom mt param) -- btype
     | none =>
       if mt then -- Forward reference
         modify fun (pe@{undTy,..}, s) => ({pe with undTy := h :: undTy}, s)
         let args <- takeMany $ tyAtom mt param
-        registerTyArity h args.size mt false
-        return MLType.mkApp (.TCon h) args.toList
-      else
-        error s!"undefined type {h}\n"
-        throwUnexpected
-  | .TVar v =>
-    let k := param.kinds.getD v.toStr .type
-    let args <- takeUpTo k.arity $ tyAtom mt param
-    return MLType.mkApp (.TVar v) args.toList
+        registerTy h mt false
+        return .mkApp (.TCon h) args.toList
+      else error s!"undefined type {h}\n"; throwUnexpected
+  | .TVar v => .mkApp (.TVar v) <$> Array.toList <$> takeMany (tyAtom mt param)
   | _ => return hd
 
 partial def tyProd (mt : Bool) (param : ParamInfo) : TParser σ MLType := do
@@ -208,7 +172,7 @@ def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool) (offside? : Bool)
     error "duplicated fields not allowed in structure definition\n"
     throwUnexpected
 
-  registerTy tycon (kindOfParams param.ordered) mt
+  registerTy tycon mt
 
   modify fun (st@{recordFields,..}, l) =>
     ({st with recordFields := recordFields.insert tycon fids}, l)
@@ -227,12 +191,12 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withExpected "type declaration" do
             let tydecl <- tyRecord tycon param mt false <* kwOpExact "}"
             return {tydecl with cls?}
           else
-            registerTy tycon (kindOfParams param.ordered) mt
+            registerTy tycon mt
             let hd <- (optional BAR *> ctor mt param)
             let tl <- takeMany (BAR *> ctor mt param)
             return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}
       , WHERE *> tyRecord tycon param mt true <&> fun tydecl => {tydecl with cls?}
-      , registerTy tycon (kindOfParams param.ordered) mt *>
+      , registerTy tycon mt *>
         pure {tycon, param := param.ordered, ctors := {}}
       ]
 
@@ -243,9 +207,9 @@ where
   ctor mt param := do
     let cname <- ID
     if cname.isUpperInit then
-      let args <- takeMany (parenthesized (tyForall mt param) <|> (tyForall mt param))
-      let namedArgs := Prod.fst $ args.foldr (init := ([], 0)) fun s (a, i) =>
-        ((s!"cname_{i}", s) :: a, i + 1)
+      -- atype
+      let args <- takeMany (parenthesized (tyForall mt param) <|> tyAtom mt param)
+      let (namedArgs, _) := args.foldr (fun s (a, i) => ((s!"cname_{i}", s) :: a, i + 1)) ([], 0)
       return (cname, namedArgs, args.size)
     else
       error "value constructor must begin with an uppercase letter\n"
@@ -258,7 +222,7 @@ def tySyn : TParser σ TyDecl := withExpected "type abbreviation" do
   if tycon.isUpperInit then
     let param <- parseParams; EQ
     let rhs <- tyExp param -- tyExp checks for unbound types
-    registerTy tycon (kindOfParams param.ordered) false
+    registerTy tycon false
     return { tycon, param := param.ordered, ctors := #[], rhs := some rhs }
   else
     error "type constructor must begin with an uppercase letter\n"

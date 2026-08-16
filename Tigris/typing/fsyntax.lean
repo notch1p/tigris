@@ -2,6 +2,7 @@ import Tigris.typing.ttypes
 import Tigris.typing.tsyntax
 import Tigris.typing.constraint
 import Tigris.typing.resolve
+import Tigris.typing.kinds
 
 def String.isSkolemOf (h : String) (v : TV) : Bool :=
   let h' := Substring.Raw.mk h ⟨4⟩ h.rawEndPos
@@ -67,6 +68,7 @@ structure FState where
   /-- nesting depth of withMemoScope where only the outermost scope resets the
   memo and places the synthesized dictionary bindings -/
   memoDepth : Nat := 0
+  ke     : KindEnv := ∅
 deriving Inhabited
 
 abbrev F := EStateM TypingError FState
@@ -113,7 +115,9 @@ def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType
   let schemeBody := apply rn schemeBody
   let ctx := apply rn ctx
 
-  let sub <- unify (monoOfTSch schemeBody) (monoOfTSch instTy)
+  let ke <- get <&> (·.ke)
+  let (sub, ke) <- unify ke (monoOfTSch schemeBody) (monoOfTSch instTy)
+  modify fun st => {st with ke := ke}
   return (qs.map (fun a => apply sub (TVar a)), sub, apply sub ctx |>.map Helper.normHKPred)
 
 @[inline] def wrapTyLams (qs : List TV) (e : FExpr) : FExpr := qs.foldr .TyLam e

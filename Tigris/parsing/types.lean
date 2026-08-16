@@ -109,13 +109,17 @@ inductive Kind where
   | type
   | karr : Kind -> Kind -> Kind
   | kvar : Nat -> Kind
+with
+  @[computed_field] arity : Kind -> Nat
+    | .karr _ b => 1 + arity b
+    | _         => 0
+  @[computed_field] isArr : Kind -> Bool
+    | .karr .. => true | _ => false
 deriving Repr, BEq, Ord, Inhabited, Hashable
 
 instance : OfNat Kind n where
   ofNat := n.fold (fun _ _ => Kind.karr .type) .type
 
-@[inline] def Kind.isArr : Kind -> Bool
-  | .karr .. => true | _ => false
 def Kind.toStr : Kind -> String
   | .type        => "Type"
   | .karr a b    =>
@@ -123,11 +127,8 @@ def Kind.toStr : Kind -> String
   | .kvar n      => s!"?k.{n}"
 instance : ToString Kind := ⟨Kind.toStr⟩
 
-/-- Arity = number of left-spine arrows. `Kind.arity Type = 0`,
-    `Kind.arity (Type → Type) = 1`, `Kind.arity (Type → Type → Type) = 2`. -/
-@[inline] def Kind.arity : Kind -> Nat
-  | .karr _ b => 1 + arity b
-  | _         => 0
+@[inline] def kindOfParams (ps : Array (String × Kind)) : Kind :=
+  ps.foldr (Kind.karr ∘ Prod.snd) .type
 
 /-- Kind substitution. -/
 abbrev KSubst := Std.TreeMap Nat Kind
@@ -273,8 +274,13 @@ structure UnaryEntry where
 abbrev BinaryTable := Lean.Data.Trie BinaryEntry
 abbrev PrefixTable := Lean.Data.Trie UnaryEntry
 abbrev PostfixTable := Lean.Data.Trie UnaryEntry
-/-- `Bool` indicates forward referencing. -/
-abbrev TyArity := Lean.Data.Trie (Kind × Bool)
+/-- Value is true when the entry comes from a real
+declaration rather than a mutual-block forward reference.
+
+Previously we stored tyctor's arity here and use that information to direct
+tyapp parsing. Now tyapp is dumb (a/b-type just like Haskell2010report)
+and arity (kind) checking is done by typechecker. -/
+abbrev TyNames := Lean.Data.Trie Bool
 
 open Lean.Data.Trie in
 def Lean.Data.Trie.ofList (arr : List (String × α)) : Trie α :=
@@ -289,7 +295,7 @@ structure PEnv where
   ops   : BinaryTable
   pre   : PrefixTable := ∅
   post  : PostfixTable := ∅
-  tys   : TyArity
+  tys   : TyNames
   undTy : List Symbol -- undefined types (used in mutual rectypes definition)
   recordFields : Std.HashMap Symbol (Array Symbol) := {}
   indentStack  : List Nat := [0]

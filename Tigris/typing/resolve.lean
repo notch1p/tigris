@@ -54,7 +54,8 @@ partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
       -- newest declaration first so we find from right.
       let res? : Option Expr <- insts.findSomeRevM? fun info => do
         try
-          let sub <- unifyHead p.args info.args
+          let ke := KindEnv.ofEnv env
+          let (sub, _) <- unifyHead ke p.args info.args
           let ctx := apply sub info.ctx
           ctx.forM fun s => resolve env s $> ()
           let specializedHead := MLType.mkApp (.TCon p.cls) p.args
@@ -77,7 +78,7 @@ def matchHead (env : Env) (p : Pred) : Except TypingError String := do
     | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
 
   let some i := insts.findSomeRev? fun info =>
-                  if unifyHead p.args info.args |>.isOk
+                  if (unifyHead (KindEnv.ofEnv env) p.args info.args).isOk
                   then some info.iname
                   else none
     | throw $ .NoSynthesize s!"{p}: no matching instance found\n"

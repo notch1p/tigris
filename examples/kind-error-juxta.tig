@@ -1,0 +1,7 @@
+type T a = MkT a
+
+-- `MkX T Int Bool` is unambiguously 3 fields [T, Int, Bool] under maximal
+-- juxtaposition; the first field `T` is unsaturated (kind Type -> Type in a
+-- Type position) so this declaration is ill-kinded. For two fields, write
+-- `MkX (T Int) Bool`.
+type X = MkX T Int Bool

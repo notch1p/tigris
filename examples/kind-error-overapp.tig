@@ -1,0 +1,3 @@
+abbrev F (g : Type -> Type) (a : Type) := g a
+
+let x : F Int = 0
