@@ -16,7 +16,9 @@ attribute [simp, grind <-] prod_sizeOf_lt_fst prod_sizeOf_lt_snd
 
 @[inline, reducible] def Function.on (g : β -> β -> γ) (f : α -> β)
   : α -> α -> γ := fun x y => g (f x) (f y)
-
+@[inline, reducible] def Function.on'
+  (g : β -> γ -> τ) (f : α -> β) (f' : δ -> γ)
+  : α -> δ -> τ := fun x y => g (f x) (f' y)
 abbrev Symbol := String
 
 namespace Logging open PrettyPrint Text

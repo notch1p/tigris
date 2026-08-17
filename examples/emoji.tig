@@ -1,0 +1,15 @@
+type List a = Nil | Cons a (List a)
+infixr 65 "::" => Cons
+
+let rec reverse xs = reverse/go xs Nil
+where reverse/go acc
+  | x :: xs => reverse/go xs $ x :: acc
+  | _       => acc
+
+let foo =
+  let «😋» = true
+      «😱» = false
+      f : (∀ α, List α -> List α) -> List Bool × List String = 
+        fun x => ( x $ «😋» :: «😱» :: Nil
+                 , x $ "😋" :: "😱" :: Nil)
+  f reverse

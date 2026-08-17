@@ -1,0 +1,4 @@
+-- rank-2 runST shape
+let id x = x
+let run : (forall s, s -> s) -> Int = fun f => f 1
+let main = run id

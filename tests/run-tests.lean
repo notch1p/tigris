@@ -37,19 +37,15 @@ def normalizeMsg :=
     (fun a c => if c.isWhitespace then a.push ' ' else a.push c)
     ""
 
-/-- (stem, expected error substring): must fail to compile with an error
-containing the substring. -/
-def errorCases : List (String × String) :=
-  [ ("kind-error-instance", "Kind mismatch")
-  , ("kind-error-overapp", "Kind mismatch")
-  , ("kind-error-juxta", "Kind mismatch") ]
-
 open System.FilePath renaming mk -> fp, fileStem -> fn in
 def execCases : List (String × System.FilePath × String) :=
   [ (cases/"r1"            , r"(42 15 . 2)")
   , (cases/"tc"            , r"5050")
   , (cases/"seq"           , r"6")
   , (cases/"expr"          , r"260")
+  , (cases/"let"           , r"(1 . T)")
+  , (cases/"nested"        , r"1")
+  , (examples/"runst"      , r"1")
   , (examples/"mutual"     , r"5")
   , (examples/"where"      , r"50")
   , (examples/"cont"       , r"42")
@@ -57,13 +53,22 @@ def execCases : List (String × System.FilePath × String) :=
   , (examples/"neg"        , r"-1")
   , (examples/"diamond"    , r"1")
   , (examples/"statem"     , r"(42 . 2)")
-  , (examples/"recency"    , r"(101 . 5)")]
+  , (examples/"recency"    , r"(101 . 5)")
+  , (examples/"rankn"      , r"(1 . T)")]
   |>.map fun (p, s) => (name p, p.addExtension "tig", s)
 where examples := fp "examples"
       cases    := fp "tests" / "cases"
       name p   := fn p |>.getD p.toString
-open IO (mkRef)
+in open execCases in
+def errorCases : List (String × System.FilePath × String) :=
+  [ (error/"inst", "Kind mismatch")
+  , (error/"juxta", "Kind mismatch")
+  , (error/"overapp", "Kind mismatch")
+  , (error/"infer", "Can't unify") ]
+  |>.map fun (p, s) => (name p, p.addExtension "tig", s)
+where error := cases/fp "error"
 
+open IO (mkRef)
 def main (paths : List String) : IO UInt32 := do
   let pass <- mkRef 0
   let fail <- mkRef 0
@@ -82,13 +87,13 @@ def main (paths : List String) : IO UInt32 := do
         fail.modify .succ *> eprintln s!"  X\t{name}: {normalizeMsg e}"
 
   println! "== errors =="
-  waitAll =<< errorCases.mapM fun (name, expected) =>
-    .asTask $ compileFile s!"{execCases.examples}/{name}.tig" >>=
+  waitAll =<< errorCases.mapM fun (name, path, expected) =>
+    .asTask $ compileFile path >>=
       fun
       | .ok _ =>
         fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", but got compiled"
       | .error e =>
-        if e.startsWith expected then pass.modify .succ *> println s!"  ok\t{name}\t{normalizeMsg e}"
+        if e.startsWith expected then pass.modify .succ *> println s!"  ok\t{name}\t\t{normalizeMsg e}"
         else fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
 
   if <- hasSbcl then
@@ -104,7 +109,7 @@ def main (paths : List String) : IO UInt32 := do
             | .error e =>
               fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
             | .ok got =>
-              if got == expected then pass.modify .succ *> println s!"  ok\t{name}\t= {got}"
+              if got == expected then pass.modify .succ *> println s!"  ok\t{name}\t\t==> {got}"
               else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {normalizeMsg got}"
   else
     println! "== exec skipped (sbcl not found) =="

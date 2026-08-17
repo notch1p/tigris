@@ -194,7 +194,7 @@ Consider example/statem.tig. To type the program, we must solve
 
 One easily sees that ?m |-> StateM Int being a valid solution yet this equivalence
 can't be solved under HM pattern unification because of principality requirement
-as ?m args ~ t₂ only unifies iff args are TVs (or skolems, unify@107).
+as ?m args ~ t₂ only unifies iff args are TVs (or skolems, see unify).
 (Note that realistically StateM has gone because of expander. We keep it for brevity)
 
 Since RHS is fixed, we can only eliminate the synonym TApp on the LHS, which,
@@ -359,6 +359,43 @@ partial def inferPattern (Γ : Env) (expt : MLType) : Pattern -> InferC σ (Env 
         argTys args
 
 mutual
+/--
+> `[jones2007]` Jones SP, et al. "Practical type inference for arbitrary-rank types."
+Bidirectional check mode similar to [jones2007] but simpler since some rules (e.g. lambda with annotated param)
+require syntax we currently do not have. The rule (Fig. 8, pp 24) from that paper we concern,
+
+Γ, x : σ |-ₚ t <== σ'
+---------------------- Abs2
+Γ |- λx, t <== σ -> σ'
+
+the parameter is bound with the raw domain σ (it may itself be a forall), which
+is what lets a rank-n argument instantiate at each use.
+Top-level foralls are skolemized rigid. See also Ascribe branch.
+-/
+partial def checkExpr (Γ : Env) (exp : MLType) (e : Expr)
+  : InferC σ (TExpr × MLType × List Pred) := do
+  match exp with
+  | .TSch (.Forall vs ps body) =>
+    if ps.isEmpty then
+      let sub := vs.foldl (fun s v => s.insert v (mkSkol v)) ∅
+      checkExpr Γ (apply sub body) e
+    else throw .NoRankN
+  | _ =>
+    match exp, e with
+    | a ->' b, Fun x e => do
+      -- abs2 (raw binding): the domain is bound as-is; a free MV stays mono
+      let sch : Scheme <- match a with
+        | .TSch (.Forall vs ps t) =>
+          if ps.isEmpty then pure (.Forall vs [] t) else throw TypingError.NoRankN
+        | t => pure (.Forall [] [] t)
+      let (tBody, tB, pB) <- checkExpr (extend Γ x sch) b e
+      return (.Fun x a tBody (a ->' tB), a ->' tB, pB)
+    | _, _ => do
+      let (te, t, p) <- inferExpr Γ e
+      let t <- elimForall t
+      addEq t exp
+      return (.Ascribe te exp, exp, p)
+
 partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pred)
   | Var x => do
     match Γ.E[x]? with
@@ -402,12 +439,22 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
     let (tE₁, t₁, p₁) <- inferExpr Γ e₁
     let t₁ <- elimForall t₁
     match t₁ with
-    | a@(.TSch $ .Forall ..) ->' b =>
-      let (tE₂, t₂, p₂) <- inferExpr Γ e₂
-      let t₂ <- elimForall t₂
-      let aSk <- skolemizeTSch a
-      addEq t₂ aSk
-      return (.App tE₁ tE₂ b, b, p₁ ++ p₂)
+    | a ->' b =>
+      if containsTSch a then do
+        /- embedded forall instantiates at each use,
+           and skolemizes a top forall before checking
+
+           Γ |- t ==> α -> α';  Γ |-ₚ u <== α;  |-ᵢ α' <= ρ
+           ------------------------------------------------  App
+           Γ |- t u : ρ
+        -/
+        let (tE₂, _, p₂) <- checkExpr Γ a e₂
+        return (.App tE₁ tE₂ b, b, p₁ ++ p₂)
+      else do
+        let (tE₂, t₂, p₂) <- inferExpr Γ e₂
+        let tv <- fresh
+        addEq t₁ (t₂ ->' tv)
+        return (.App tE₁ tE₂ tv, tv, p₁ ++ p₂)
     | _ =>
       let (tE₂, t₂, p₂) <- inferExpr Γ e₂
       let tv <- fresh
@@ -431,34 +478,67 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
 
   | Match discr br => inferMatch Γ discr br
 
-  | Ascribe e sch@(.TSch $ .Forall vs ps t) => do
-    let (te, teTy, preds) <- inferExpr Γ e
-    let teMono <- elimForall teTy
-    let sub <- vs.foldlM (Std.TreeMap.insert · · <$> fresh) (∅ : Subst)
-    let inst := apply sub t
+  | Ascribe e sch@(.TSch $ .Forall vs ps t) =>
+    if containsTSch t then do
+      /- rank-n annotation (the let-annotation parser wraps every annotation
+         in a top TSch, so `(forall a, ...) -> ...` lands here with a nested
+         TSch in the body): check mode -- the paper's annot/checkSigma. The
+         top-level context is evidenced; nested contexts are rejected by
+         checkExpr.
 
-    let (cs₀, rigid) <- get <&> fun st => (st.cst, st.rTV)
-    let {ke,..} <- get
-    match solveAll Γ ke (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs₀ with
-    | .error err => throw err
-    | .ok (sub, ke, _) =>
-      modify ({· with ke})
-      if sub.any (fun tv rhs => tv ∈ rigid && rhs != MLType.TVar tv)
-      then throw (.NoUnify teMono inst)
-      else addEq teMono inst
+          tvs ∉ fv Γ;  pr(σ) = ∀tvs, ρ;  Γ |- t <== ρ
+          ------------------------------------------- Gen2
+          Γ |-ₚ t <== σ
 
-    ps.forM fun p => () <$ freshEvidence (apply sub p)
+          Γ |-ₚ t <== α;  |-ᵢ α <= ρ
+          ------------------------- Annot
+          Γ |- (t : α) : ρ
 
-    let skTy <- skolemizeTSch sch
-    let {ke,..} <- get
-    match solveAll Γ ke (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs₀) with
-    | .error err => throw err
-    | .ok (_, ke, _) => (.Ascribe te sch, inst, preds) <$ modify ({· with ke})
+          NOTE: parenthesized (x : α) is type ascription. not a judgement.
 
-  | Ascribe e ty => do
-    let (e, te, p) <- inferExpr Γ e
-    addEq te ty
-    return (.Ascribe e ty, ty, p)
+          The pr (prenex conversion, floating foralls) is
+          the coercion counterpart of its deep skolemization (|-dsk)
+          Since we don't do deep skolemization (lambda parameters bind their raw domain,
+          other positions unify structurally), so nothing is floated and no pr is needed.
+          Dually the paper's skolem-escape check is unnecessary here: the skolems are
+          TCons with no fvs, so they cannot escape into a polytype (by construction).
+      -/
+      let sub <- vs.foldlM (Std.TreeMap.insert · · <$> fresh) ∅
+      for p in ps do () <$ freshEvidence (apply sub p)
+      let (te, _, p) <- checkExpr Γ (apply sub t) e
+      return (.Ascribe te sch, apply sub t, p)
+    else do
+      let (te, teTy, preds) <- inferExpr Γ e
+      let teMono <- elimForall teTy
+      let sub <- vs.foldlM (Std.TreeMap.insert · · <$> fresh) (∅ : Subst)
+      let inst := apply sub t
+
+      let (cs₀, rigid) <- get <&> fun st => (st.cst, st.rTV)
+      let {ke,..} <- get
+      match solveAll Γ ke (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs₀ with
+      | .error err => throw err
+      | .ok (sub, ke, _) =>
+        modify ({· with ke})
+        if sub.any (fun tv rhs => tv ∈ rigid && rhs != MLType.TVar tv)
+        then throw (.NoUnify teMono inst)
+        else addEq teMono inst
+
+      ps.forM fun p => () <$ freshEvidence (apply sub p)
+
+      let skTy <- skolemizeTSch sch
+      let {ke,..} <- get
+      match solveAll Γ ke (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs₀) with
+      | .error err => throw err
+      | .ok (_, ke, _) => (.Ascribe te sch, inst, preds) <$ modify ({· with ke})
+
+  | Ascribe e ty =>
+    if containsTSch ty then do -- the TSch branch above keeps its wanted-pool structure
+      let (te, _, p) <- checkExpr Γ ty e
+      return (.Ascribe te ty, ty, p)
+    else do
+      let (e, te, p) <- inferExpr Γ e
+      addEq te ty
+      return (.Ascribe e ty, ty, p)
 
 /--
 infers/checks/generalizes a group in topo order from dependency analysis.
@@ -712,11 +792,9 @@ def inferToplevelC
       | none =>
         let ty := {ty with ctors := ctors.map fun (cname, fields, ar) =>
                     (cname, fields.map fun (f, t) => (f, MLType.expandT syn t), ar)}
-        -- declaration-time kind check: an ill-kinded field (e.g. an
-        -- unsaturated tycon, possible now that application parses maximally)
-        -- must fail here, not silently at first use
         let E' := {E with tyDecl := E.tyDecl.insert tycon ty}
         for (cname, fields, _) in ty.ctors do
+          for (_, t) in fields do if badTSch t then throw .NoRankN
           let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
           () <$ kindOf (KindEnv.ofEnv E') s.body
         let (acc, E) :=
@@ -734,6 +812,7 @@ def inferToplevelC
         return (acc.push (.tyBind ty), E, L)
     | .patBind (pat, expr) => do
       let (e, sch@(.Forall _ ps te), l₁) <- runInferConstraintT expr E
+      () <$ validateNoRankN sch
       let l :=
         if !ps.isEmpty then
           Logging.warn
@@ -753,6 +832,7 @@ def inferToplevelC
     | .instBind inst => do
       let inst := {inst with ctxPreds := inst.ctxPreds.map (MLType.expandP syn)
                              args     := inst.args.map (MLType.expandT syn)}
+      for a in inst.args do if badTSch a then throw .NoRankN
       let (some ci) := E.clsInfo[inst.cname]?
         | throw (.Undefined inst.cname)
       let existing := E.instInfo.getD ci.cname #[]

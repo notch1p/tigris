@@ -13,21 +13,22 @@ def arr? | _ ->' _ => true | _ => false
 def prod? | _ ×'' _ => true | _ => false
 def app? | MLType.TApp .. => true | _ => false
 def lam? | MLType.TyLam .. => true | _ => false
-def parenthesize s := paren? (arr? s || prod? s || app? s || lam? s)
+def sch? | MLType.TSch .. => true | _ => false
+def parenthesize s := paren? (arr? s || prod? s || app? s || lam? s || sch? s)
 open Std.Format Std.ToFormat in
+
 mutual
 def MLType.toStr : MLType -> String
   | .TVar a => toString a
   | .TCon a => a
-  | a ->' b =>
-    paren (arr? a) (MLType.toStr a) ++ " → " ++ MLType.toStr b
-  | a ×'' b => paren (prod? a) (MLType.toStr a) ++ " × " ++ MLType.toStr b
+  | a ->' b => paren (arr? a || sch? a || lam? a) (MLType.toStr a) ++ " → " ++ MLType.toStr b
+  | a ×'' b => paren (prod? a || arr? a || sch? a || lam? a) (MLType.toStr a) ++ " × " ++ MLType.toStr b
   | .TApp h [] => MLType.toStr h
   | .TApp h (l :: ls) =>
-    let hd := paren (arr? l || prod? l || app? l || lam? l) $ MLType.toStr l
-    let hStr := paren (arr? h || prod? h || lam? h) (MLType.toStr h)
+    let hd := paren (arr? l || prod? l || app? l || lam? l || sch? l) $ MLType.toStr l
+    let hStr := paren (arr? h || prod? h || lam? h || sch? h) (MLType.toStr h)
     ls.foldl (init := s!"{hStr} {hd}") fun a s =>
-      a ++ " " ++ paren (arr? s || prod? s || app? s || lam? s) (MLType.toStr s)
+      a ++ " " ++ paren (arr? s || prod? s || app? s || lam? s || sch? s) (MLType.toStr s)
   | .TyLam x body =>
     "Λ" ++ toString x ++ ". " ++ MLType.toStr body
   | .TSch sch => sch.toStr
@@ -35,29 +36,30 @@ def MLType.toStr : MLType -> String
 def MLType.renderFmt : MLType -> Std.Format
   | .TCon a
   | .TVar a => format a
-  | a ->' b => nestD $ group $ paren? (arr? a) (MLType.renderFmt a) <> "→" <+> MLType.renderFmt b
-  | a ×'' b => nestD $ group $ paren? (prod? a) (MLType.renderFmt a) <> "×" <+> MLType.renderFmt b
+  | a ->' b => group $ paren? (arr? a || sch? a || lam? a) (MLType.renderFmt a) <> "→" ++ indentD (MLType.renderFmt b)
+  | a ×'' b => group $ paren? (prod? a || arr? a || sch? a || lam? a) (MLType.renderFmt a) <> "×" ++ indentD (MLType.renderFmt b)
   | .TApp h [] => MLType.renderFmt h
   | .TApp h ls =>
-    let hFmt := paren? (arr? h || prod? h || lam? h) (MLType.renderFmt h)
-    nestD $ group
-    $ joinSep (hFmt :: ls.map fun s => parenthesize s (MLType.renderFmt s)) line
+    let hFmt := paren? (arr? h || prod? h || lam? h || sch? h) (MLType.renderFmt h)
+    group $ hFmt ++ indentD (joinSep (ls.map fun s => parenthesize s (MLType.renderFmt s)) line)
   | .TyLam x body =>
-    nestD $ group $ "Λ" <> format x ++ "." <+> MLType.renderFmt body
+    nestD $ group $ "Λ" ++ format x ++ "." <+> MLType.renderFmt body
   | .TSch sch => sch.renderFmt
-
 def Pred.toStr : Pred -> String
-  | {cls, args} => cls ++ args.foldl (· ++ " " ++ MLType.toStr ·) ""
+  | {cls, args} => cls ++ args.foldl (init := "") fun a t => a ++ " "
+      ++ paren (arr? t || prod? t || app? t || lam? t || sch? t) (MLType.toStr t)
 def Pred.renderFmt : Pred -> Std.Format
-  | {cls, args} => cls ++ args.foldl (· ++ " " ++ MLType.renderFmt ·) ""
+  | {cls, args} => cls <> joinSep (args.map fun t => parenthesize t$ MLType.renderFmt t) " "
 
 def Scheme.renderFmt : Scheme -> Std.Format
-  | .Forall _ [] t' => t'.renderFmt
-  | .Forall _ pred t' =>
-    sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line)) <> t'.renderFmt
+  | .Forall [] [] t => group $ t.renderFmt
+  | .Forall [] pred t => group $ sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line)) <> t.renderFmt
+  | .Forall tv pred t =>
+    let preds := if pred.isEmpty then .text " " else sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line))
+    group $ "∀" ++ (joinSep tv " ") ++ preds ++ "," ++ indentD t.renderFmt
 def Scheme.toStr : Scheme -> String
   | .Forall [] [] t => t.toStr
-  | .Forall [] pred t => toString (pred.map Pred.toStr) ++ " " ++ t.toStr
+  | .Forall [] pred t => pretty (width := 0xFFFF) (sbracket (joinSep (pred.map Pred.toStr) ", ")) ++ " " ++ t.toStr
   | .Forall (t :: ts) pred t' =>
     let preds := if pred.isEmpty then "" else " " ++ toString (pred.map Pred.toStr)
     s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'.toStr}"
@@ -127,7 +129,7 @@ instance : ToString TypingError where
   | .NoSynthesize s => s!"failed to synthesize {s}"
   | .Undefined s   => s!"Symbol\n  {s}\nis not in scope."
   | .WrongCardinal n => error s!"Incorrect cardinality. Expected {n}"
-  | .NoRankN => s!"Rank-n types are not supported yet."
+  | .NoRankN => s!"Rank-n types must have empty predicate contexts."
   | .NoMatchL v pat =>
     s!"The ctor/constant {v} cannot be matched against\nany of the patterns: {pat}."
   | .NoMatch e v arr =>
@@ -360,9 +362,17 @@ def containsTSch : MLType -> Bool
   | .TyLam _ body => containsTSch body
   | _ => false
 
+/-- check for predicates in nested foralls. we don't handle those yet -/
+def badTSch : MLType -> Bool
+  | .TSch (.Forall _ ps _) => !ps.isEmpty
+  | a ->' b | a ×'' b => badTSch a || badTSch b
+  | .TApp h xs => badTSch h || xs.attach.any fun ⟨x, _⟩ => badTSch x
+  | .TyLam _ body => badTSch body
+  | _ => false
+
 def validateNoRankN : Scheme -> Except TypingError Unit
   | .Forall _ ps t =>
-    if t.containsTSch || ps.any (List.any (p := containsTSch) ∘ Pred.args) then
+    if badTSch t || ps.any (List.any (p := badTSch) ∘ Pred.args) then
       throw .NoRankN
     else return ()
 

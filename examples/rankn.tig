@@ -1,0 +1,4 @@
+-- canonical example from  [jones2007]
+let id x = x
+let f : (forall a, a -> a) -> Int * Bool = fun x => (x 1, x true)
+let main = f id

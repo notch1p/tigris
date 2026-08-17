@@ -1,6 +1,6 @@
 ;; == System F IR ==
 
-let i_Functor_0 : Functor (Sum a) =
+let i_Functor_0 : ∀a, Functor (Sum a) =
   Λ a.
     Functor@(Sum a)
       Λ a b.
@@ -10,12 +10,12 @@ let i_Functor_0 : Functor (Sum a) =
             | Inl a => Inl@a@b a
             | Inr b => Inr@a@b (f b)
 
-let main : [Functor Sum α] Sum Int Int × Sum α Int =
+let main : ∀α[Functor (Sum α)], Sum Int Int × Sum α Int =
   Λ α.
     let rd_Functor_0 : Functor (Sum Int) = i_Functor_0@Int
     in fun d_Functor_0 : Functor (Sum α) =>
-      let a : Sum Int α = Λ α. Inl@Int@α 2
-      and b : Sum α Int = Λ α. Inr@α@Int 1
+      let a : ∀α, Sum Int α = Λ α. Inl@Int@α 2
+      and b : ∀α, Sum α Int = Λ α. Inr@α@Int 1
       in ⟨rd_Functor_0[0, fmap]@(Sum Int) fun ?x₀ : Int => mul 2 ?x₀ a@Int,
           d_Functor_0[0, fmap]@(Sum α) fun ?x₀ : Int => add 1 ?x₀ b@α⟩
 ;; == TCNF IR ==

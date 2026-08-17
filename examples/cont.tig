@@ -1,3 +1,5 @@
+-- realistically the performance should be (almost) the same as with type abbreviation
+-- since we do GHC-like newtype optimization
 type Cont a r = Cont ((a -> r) -> r)
 
 let return x = Cont fun k => k x

@@ -105,8 +105,11 @@ def List.foldl2 (f : γ -> α -> β -> γ) (init : γ) : List α -> List β -> �
   | x :: xs, y :: ys => foldl2 f (f init x y) xs ys
   | _, _ => init
 
-@[inline] def List.all2 (pred : α -> β -> Bool) : List α -> List β -> Bool :=
-  List.foldl2 (· && pred · ·) true
+def List.all2 (pred : α -> β -> Bool) : List α -> List β -> Bool
+  | [], [] => true
+  | a :: as, b :: bs =>
+    if pred a b then as.all2 pred bs else false
+  | _, _ => false
 
 def List.foldlM2 [Monad m] (f : γ -> α -> β -> m γ) (init : γ)
   : (xs : List α) -> (ys : List β) -> m γ

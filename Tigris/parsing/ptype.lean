@@ -118,8 +118,15 @@ partial def tyArrow (mt : Bool) (param : ParamInfo) : TParser σ MLType := do
   let lhs <- tyProd mt param
   (ARROW *> tyArrow mt param >>= fun rhs => pure $ TArr lhs rhs) <|> pure lhs
 
-partial def tyAtom (mt : Bool) (param : ParamInfo) : TParser σ MLType :=
-  tyCtor param <|> parenthesized (tyArrow mt param)
+/-- Nested forall (rank-n): binders only. only the outermost tyforall can have predicates. -/
+partial def tyForallN (mt : Bool) (param : ParamInfo) : TParser σ MLType :=
+  (optionD ((FORALL <|> FORALL') *> parseParams) ∅) >>= fun param' =>
+    if param'.ordered.isEmpty then tyCtor param <|> parenthesized (tyArrow mt param)
+    else do
+      let param := param ∪ param'; COMMA
+      .TSch <$> .Forall (param'.ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) [] <$> tyArrow mt param
+
+partial def tyAtom (mt : Bool) (param : ParamInfo) : TParser σ MLType := tyForallN mt param
 end
 
 def tyEmpty : TParser σ TyDecl := do

@@ -138,7 +138,12 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
           let projWithDicts <-
             others.foldlM (fun acc p => Helper.mkApp acc <$> elaborateDict Γsch scope p Γfull) projMono
           tArgs.foldl .TyApp <$> wrapPoly projWithDicts
-  | .Fun p pTy body ty => (.Fun p pTy · ty) <$> elaborate Γsch scope (blocked.insert p) Γfull body
+  | .Fun p pTy body ty =>
+    -- a rank-n parameter binds a scheme and must be instantiated via TyApp in the body
+    let Γsch := match pTy with
+      | .TSch (.Forall vs ps t) => Γsch.insert p (.Forall vs ps t)
+      | _ => Γsch
+    (.Fun p pTy · ty) <$> elaborate Γsch scope (blocked.insert p) Γfull body
   | .Fix e ty | .Fixcomb e ty => (.Fix · ty) <$> elaborate Γsch scope blocked Γfull e
   | .App f a ty =>
     .App (ty := ty)

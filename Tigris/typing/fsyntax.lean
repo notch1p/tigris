@@ -122,19 +122,24 @@ def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType
 
 @[inline] def wrapTyLams (qs : List TV) (e : FExpr) : FExpr := qs.foldr .TyLam e
 @[inline] def mkApp (f a : FExpr) : FExpr :=
-  .App f a $ match f.getTy with | _ ->' b => b | other => other
+  -- decomposeArr peels a leading TSch and the arrow spine, so a rank-n head
+  -- yields the codomain instead of the whole scheme
+  .App f a $ Prod.snd $ decomposeArr f.getTy
 
-partial def eqSkolem : MLType -> MLType -> Bool
+def eqSkolem : MLType -> MLType -> Bool
   | .TVar v, .TVar w => v == w
   | .TVar v, .TCon h | .TCon h, .TVar v => h.isSkolemOf v
   | .TApp h₁ as₁, .TApp h₂ as₂ =>
-    eqSkolem h₁ h₂
-    && as₁.length == as₂.length
-    && List.all2 eqSkolem as₁ as₂
+    if eqSkolem h₁ h₂ then
+      List.all2 (fun ⟨t, _⟩ ⟨t', _⟩ => eqSkolem t t')
+      as₁.attach
+      as₂.attach
+    else false
   | .TyLam x b₁, .TyLam y b₂ => x == y && eqSkolem b₁ b₂
   | t₁ ->' t₂, u₁ ->' u₂ | t₁ ×'' t₂, u₁ ×'' u₂ => eqSkolem t₁ u₁ && eqSkolem t₂ u₂
   | .TCon a, .TCon b => a == b
   | _, _ => false
+termination_by t₁ t₂ => (t₁, t₂)
 
 def mv? : TV -> Lean.Name
   | .mkTV s =>
@@ -146,9 +151,7 @@ def mv? : TV -> Lean.Name
   | .mkTV s => s.isLowerInit
 
 def predEqSkolem (templ goal : Pred) : Bool :=
-  templ.cls == goal.cls
-  && templ.args.length == goal.args.length
-  && List.all2 eqSkolem templ.args goal.args
+  templ.cls == goal.cls && List.all2 eqSkolem templ.args goal.args
 
 -- linear search, scope is usually tiny.
 def lookupDictVar (scope : DictScope) (goal : Pred) : Option (String × MLType) :=
@@ -222,8 +225,8 @@ def wrapExtracted (sch : Scheme) (e : FExpr) : FExpr :=
       if innerPs.isEmpty then wrapTyLams innerTVs e
       else e
     | none => e
-
-partial def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : FExpr -> FExpr
+local infixr:80 " <;> " => Nat.lt_trans
+def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : FExpr -> FExpr
   | .CI i ty              => .CI i (f ty)
   | .CS s ty              => .CS s (f ty)
   | .CB b ty              => .CB b (f ty)
@@ -235,15 +238,23 @@ partial def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : FExpr
   | .TyLam a b            => .TyLam a (mapTypes f g b)
   | .TyApp fe targ        => .TyApp (mapTypes f g fe) (f targ)
   | .Let binds body ty    =>
-    let binds := binds.map fun (x, sch, rhs) => (x, g sch, mapTypes f g rhs)
+    let binds := binds.attach.map fun ⟨(x, sch, rhs), h⟩ =>
+      have := prod_sizeOf_lt_snd sch rhs
+          <;> prod_sizeOf_lt_snd x (sch, rhs)
+          <;> Array.sizeOf_lt_of_mem h
+      (x, g sch, mapTypes f g rhs)
     .Let binds (mapTypes f g body) (f ty)
   | .Prod' l r ty         => .Prod' (mapTypes f g l) (mapTypes f g r) (f ty)
   | .Cond c t e ty        => .Cond (mapTypes f g c) (mapTypes f g t) (mapTypes f g e) (f ty)
   | .Match scr br ty ex rd =>
     let scr := scr.map (mapTypes f g)
-    let br  := br.map fun (ps, rhs) => (ps, mapTypes f g rhs)
+    let br  := br.attach.map fun ⟨(ps, rhs), h⟩ =>
+      have := prod_sizeOf_lt_snd ps rhs
+          <;> Array.sizeOf_lt_of_mem h
+      (ps, mapTypes f g rhs)
     .Match scr br (f ty) ex rd
   | .Fix e ty             => .Fix (mapTypes f g e) (f ty)
+termination_by fe => fe
 
 partial def βReduce : FExpr -> FExpr
   | .TyApp f targ =>
@@ -277,7 +288,7 @@ partial def βReduce : FExpr -> FExpr
     .Fix (βReduce e) ty
   | e => e
 
-partial def fvF : FExpr -> Std.TreeSet String
+def fvF : FExpr -> Std.TreeSet String
   | .CI _ _ | .CB _ _ | .CS _ _ | .CUnit _ => ∅
   | .Var x _ => {x}
   | .Fun p _ b _ => (fvF b).erase p
@@ -286,17 +297,24 @@ partial def fvF : FExpr -> Std.TreeSet String
   | .TyApp f _ => fvF f
   | .Proj src _ _ _ => fvF src
   | .Let binds body _ =>
-    let fvBinds := binds.foldl (init := ∅) fun acc (_, _, rhs) => acc ∪ fvF rhs
+    let fvBinds := binds.attach.foldl (init := ∅) fun acc ⟨(x, sch, rhs), h⟩ =>
+      have := prod_sizeOf_lt_snd sch rhs
+          <;> prod_sizeOf_lt_snd x (sch, rhs)
+          <;> Array.sizeOf_lt_of_mem h
+      acc ∪ fvF rhs
     fvBinds ∪ binds.foldl (·.erase ·.1) (fvF body)
   | .Prod' l r _ => fvF l ∪ fvF r
   | .Cond c t e _ => fvF c ∪ fvF t ∪ fvF e
   | .Match scr br _ _ _ =>
     let fvScr := scr.foldl (· ∪ fvF ·) ∅
-    let fvBr  := br.foldl (init := ∅) fun acc (ps, rhs) =>
+    let fvBr  := br.attach.foldl (init := ∅) fun acc ⟨(ps, rhs), h⟩ =>
+      have := prod_sizeOf_lt_snd ps rhs
+          <;> Array.sizeOf_lt_of_mem h
       let bound := ps.flatMap pvs
       acc ∪ bound.foldl .erase (fvF rhs) -- .eraseMany bound
     fvScr ∪ fvBr
   | .Fix e _ => fvF e
+termination_by fe => fe
 
 partial def ηReduce : FExpr -> FExpr
   | .Fun p pTy b ty =>

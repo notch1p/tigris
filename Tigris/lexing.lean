@@ -15,23 +15,20 @@ def String.isLowerInit (s : String) : Bool :=
   else (String.Pos.Raw.get' s 0 h) >= 'a' && (String.Pos.Raw.get' s 0 h) <= 'z'
 
 namespace Lexing open Parser Parser.Char
+@[inline] def _root_.Char.isGreek (n : Char) : Bool := n.toNat >= 0x0370 && n.toNat <= 0x3FF
 
 def alphanum' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected letter or digit character or \'" do
-    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '!' || c == '?'
+    tokenFilter fun c => c.isAlphanum || c.isGreek || c == '\'' || c == '_' || c == '!' || c == '?'
 def alphanum'' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected letter or digit character or \'" do
-    tokenFilter fun c => c.isAlphanum || c == '\'' || c == '_' || c == '!' || c == '?' || c == '-' || c == '/'
+    tokenFilter fun c => c.isAlphanum || c.isGreek || c == '\'' || c == '_' || c == '!' || c == '?' || c == '-' || c == '/'
 def alpha' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
   : ParserT ε σ Char m Char :=
   withErrorMessage "expected alphabetic character" do
-    tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
-def lowercase' [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
-  : ParserT ε σ Char m Char :=
-  withErrorMessage "expected alphabetic lowercase character" do
-    tokenFilter fun c => if c >= 'a' then c <= 'z' else c == '_'
+    tokenFilter fun c => c.isGreek || if c >= 'a' then c <= 'z' else c == '_' || c >= 'A' && c <= 'Z'
 def oneOf [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m] (l : List Char)
   : ParserT ε σ Char m Char := withBacktracking $ withErrorMessage s!"expected one of {l}" $ tokenFilter (· ∈ l)
 
@@ -390,7 +387,7 @@ abbrev PREFIX   : TParser σ Unit := kw "prefix"
 abbrev FORALL   : TParser σ Unit := kw "forall"
 abbrev WHERE    : TParser σ Unit := kw "where"
 abbrev DO       : TParser σ Unit := kw "do"
-abbrev FORALL'  : TParser σ Unit := spaces *>
+abbrev FORALL'  : TParser σ Unit := dumbspaces *>
                                      ( withBacktracking
                                      $ withErrorMessage s!"expected keyword '∀'"
                                      $ void

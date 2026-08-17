@@ -4,7 +4,7 @@ let i_C_0 : C Int = C@Int fun x : Int => x
 
 let i_D_0 : D Int = D@Int fun x : Int => x
 
-let i_C_1 : [C a, D a] C (Box a) =
+let i_C_1 : ∀a[C a, D a], C (Box a) =
   Λ a.
     fun d_D_1 : D a =>
       C@(Box a)
@@ -12,7 +12,7 @@ let i_C_1 : [C a, D a] C (Box a) =
           match ?x₀ with
           | Box x => d_D_1[0, d]@a x
 
-let i_D_1 : [C a, D a] D (Box a) =
+let i_D_1 : ∀a[C a, D a], D (Box a) =
   Λ a.
     fun d_C_0 : C a =>
       D@(Box a)
@@ -1031,3 +1031,170 @@ let main : Int =
                                                                        Int)
                                                                       (Box@Int
                                                                          1))))))))))))))))))))))
+;; == Runtime ==
+(load "runtime.lisp")
+
+;; == Linked Lisp Source ==
+(load "ffi.lisp")
+
+;; == Common Lisp ==
+
+; Prelude
+(declaim (optimize (speed 3) (safety 0) (debug 0)))
+(load "runtime.lisp")
+(defstruct (clos (:constructor %clos (fn arity)))
+  (fn #'identity :type function)
+  (arity 0 :type fixnum))
+(defun %apply-slow (c args)
+  (declare (type list args))
+  (let ((n (length args)) (k (clos-arity c)))
+    (cond
+      ((= n k) (apply (clos-fn c) args))
+      ((< n k) (%clos (lambda (&rest more)
+                        (apply (clos-fn c)
+                               (append args more)))
+                      (- k n)))
+      (t (%apply-slow (apply (clos-fn c)
+                             (subseq args 0 k))
+                      (nthcdr k args))))))
+
+
+; gapply
+(defun gapply1 (c a1)
+  (if (eql (clos-arity c) 1)
+    (funcall (clos-fn c) a1)
+    (%apply-slow c (list a1))))
+
+; ftype
+(declaim (ftype (function (integer) integer) |fn-137|))
+
+(declaim (ftype (function (integer) integer) |fn-138|))
+
+(declaim (ftype (function (t t) integer) |fn-139|))
+
+(declaim (ftype (function (t t) integer) |fn-140|))
+
+(declaim (ftype (function (t) clos) |i_D_1-18|))
+
+(declaim (type integer |main-26|))
+
+; body
+(defun |fn-137| (|x-4|)
+  |x-4|)
+
+(defun |fn-138| (|x-8|)
+  |x-8|)
+
+(defun |fn-139| (|d_D_1-11| |?x₀-13|)
+  (gapply1 |d_D_1-11| |?x₀-13|))
+
+(defun |fn-140| (|d_C_0-19| |?x₀-21|)
+  (gapply1 |d_C_0-19| |?x₀-21|))
+
+(defun |i_C_1-10| (|d_D_1-11|)
+  (%clos (lambda (|g0|)
+      (|fn-139| |d_D_1-11| |g0|))
+    1))
+
+(defun |i_D_1-18| (|d_C_0-19|)
+  (%clos (lambda (|g1|)
+      (|fn-140| |d_C_0-19| |g1|))
+    1))
+
+(defparameter |i_C_0-2|
+  (%clos (function |fn-137|) 1))
+
+(defparameter |i_D_0-6|
+  (%clos (function |fn-138|) 1))
+
+(defparameter |main-26|
+  (let* ((|app-27| (|i_C_1-10| |i_C_0-2|))
+         (|app-28| (gapply1 |app-27| |i_D_0-6|))
+         (|app-29| (|i_D_1-18| |i_C_0-2|))
+         (|app-30| (gapply1 |app-29| |i_D_0-6|))
+         (|app-31| (|i_C_1-10| |app-28|))
+         (|app-32| (gapply1 |app-31| |app-30|))
+         (|app-33| (|i_D_1-18| |app-28|))
+         (|app-34| (gapply1 |app-33| |app-30|))
+         (|app-35| (|i_C_1-10| |app-32|))
+         (|app-36| (gapply1 |app-35| |app-34|))
+         (|app-37| (|i_D_1-18| |app-32|))
+         (|app-38| (gapply1 |app-37| |app-34|))
+         (|app-39| (|i_C_1-10| |app-36|))
+         (|app-40| (gapply1 |app-39| |app-38|))
+         (|app-41| (|i_D_1-18| |app-36|))
+         (|app-42| (gapply1 |app-41| |app-38|))
+         (|app-43| (|i_C_1-10| |app-40|))
+         (|app-44| (gapply1 |app-43| |app-42|))
+         (|app-45| (|i_D_1-18| |app-40|))
+         (|app-46| (gapply1 |app-45| |app-42|))
+         (|app-47| (|i_C_1-10| |app-44|))
+         (|app-48| (gapply1 |app-47| |app-46|))
+         (|app-49| (|i_D_1-18| |app-44|))
+         (|app-50| (gapply1 |app-49| |app-46|))
+         (|app-51| (|i_C_1-10| |app-48|))
+         (|app-52| (gapply1 |app-51| |app-50|))
+         (|app-53| (|i_D_1-18| |app-48|))
+         (|app-54| (gapply1 |app-53| |app-50|))
+         (|app-55| (|i_C_1-10| |app-52|))
+         (|app-56| (gapply1 |app-55| |app-54|))
+         (|app-57| (|i_D_1-18| |app-52|))
+         (|app-58| (gapply1 |app-57| |app-54|))
+         (|app-59| (|i_C_1-10| |app-56|))
+         (|app-60| (gapply1 |app-59| |app-58|))
+         (|app-61| (|i_D_1-18| |app-56|))
+         (|app-62| (gapply1 |app-61| |app-58|))
+         (|app-63| (|i_C_1-10| |app-60|))
+         (|app-64| (gapply1 |app-63| |app-62|))
+         (|app-65| (|i_D_1-18| |app-60|))
+         (|app-66| (gapply1 |app-65| |app-62|))
+         (|app-67| (|i_C_1-10| |app-64|))
+         (|app-68| (gapply1 |app-67| |app-66|))
+         (|app-69| (|i_D_1-18| |app-64|))
+         (|app-70| (gapply1 |app-69| |app-66|))
+         (|app-71| (|i_C_1-10| |app-68|))
+         (|app-72| (gapply1 |app-71| |app-70|))
+         (|app-73| (|i_D_1-18| |app-68|))
+         (|app-74| (gapply1 |app-73| |app-70|))
+         (|app-75| (|i_C_1-10| |app-72|))
+         (|app-76| (gapply1 |app-75| |app-74|))
+         (|app-77| (|i_D_1-18| |app-72|))
+         (|app-78| (gapply1 |app-77| |app-74|))
+         (|app-79| (|i_C_1-10| |app-76|))
+         (|app-80| (gapply1 |app-79| |app-78|))
+         (|app-81| (|i_D_1-18| |app-76|))
+         (|app-82| (gapply1 |app-81| |app-78|))
+         (|app-83| (|i_C_1-10| |app-80|))
+         (|app-84| (gapply1 |app-83| |app-82|))
+         (|app-85| (|i_D_1-18| |app-80|))
+         (|app-86| (gapply1 |app-85| |app-82|))
+         (|app-87| (|i_C_1-10| |app-84|))
+         (|app-88| (gapply1 |app-87| |app-86|))
+         (|app-89| (|i_D_1-18| |app-84|))
+         (|app-90| (gapply1 |app-89| |app-86|))
+         (|app-91| (|i_C_1-10| |app-88|))
+         (|app-92| (gapply1 |app-91| |app-90|))
+         (|app-93| (|i_D_1-18| |app-88|))
+         (|app-94| (gapply1 |app-93| |app-90|))
+         (|app-95| (|i_C_1-10| |app-92|))
+         (|app-96| (gapply1 |app-95| |app-94|))
+         (|app-97| (|i_D_1-18| |app-92|))
+         (|app-98| (gapply1 |app-97| |app-94|))
+         (|app-99| (|i_C_1-10| |app-96|))
+         (|app-100| (gapply1 |app-99| |app-98|))
+         (|app-101| (|i_D_1-18| |app-96|))
+         (|app-102| (gapply1 |app-101| |app-98|))
+         (|app-103| (|i_C_1-10| |app-100|))
+         (|app-104| (gapply1 |app-103| |app-102|))
+         (|app-105| (|i_D_1-18| |app-100|))
+         (|app-106| (gapply1 |app-105| |app-102|))
+         (|app-107| (|i_C_1-10| |app-104|))
+         (|app-108| (gapply1 |app-107| |app-106|))
+         (|app-109| (|i_D_1-18| |app-104|))
+         (|app-110| (gapply1 |app-109| |app-106|))
+         (|app-111| (|i_C_1-10| |app-108|))
+         (|app-112| (gapply1 |app-111| |app-110|))
+         (|con-114| 1))
+     (gapply1 |app-112| |con-114|)))
+
+(format t "~S~%" |main-26|)

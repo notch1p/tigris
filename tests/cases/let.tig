@@ -1,0 +1,4 @@
+-- inner lets generalize even in check mode
+let id x = x
+let f : (forall a, a -> a) -> Int * Bool = fun x => let y = x in (y 1, y true)
+let main = f id
