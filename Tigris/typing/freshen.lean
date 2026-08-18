@@ -9,15 +9,16 @@ import Tigris.typing.ttypes
 In short, the counter threading looks like this:
 
                                   ·---------- <- ---------·
-                                  |                       |
-                                  ↓                       ↑
-Env.nextTV (init, 0)   -->   Env.nextTV -> FreshenM -> CState -> FState.
-                                  ↑            ↓
-                                  |            |
-                                  ·---- <- ----·
-                                                \
-                                                 \
-                          Additionally, REPL's #synth query also get freshened.
+                                  |                       |   ||
+                                  ↓                       ↑   ||  (Eliminated)
+Env.nextTV (init, 0)   -->   Env.nextTV -> FreshenM -> CState ||  -> FState.
+                                  ↑            ↓              ||          \
+                                  |            |              ||           \
+                                  ·---- <- ----·                            \
+                                         \            FState no more carries a counter. We've eliminated its
+                                          \           scheme instantiation therefore unification and seeding.
+                                           \
+                        REPL's #synth query also get freshened.
 
 Since substates (locally to the pass) do not interact with each other, they
 update the global Env, we then seed the next substates with the new Env.

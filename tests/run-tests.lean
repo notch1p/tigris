@@ -31,33 +31,26 @@ def consecutive {s : String.Slice} (p : s.Pos) : s.Pos :=
 termination_by p
 
 theorem consecutive_le {s : String.Slice} {p : s.Pos}
-  : p <= @consecutive s p := by
-  by_cases h : p |>.IsAtEnd
-  case pos => simp[h, consecutive]
-  next =>
-    by_cases h' : p |>.get h |>.isWhitespace
-    case neg => simp[h', consecutive]
-    next =>
-      have induct : p.next h <= consecutive (p.next h) := consecutive_le
-      have : consecutive p = consecutive (p.next h) := by simp [h, h', consecutive.eq_1 p]
-      exact le_trans le_next $ this ▸ induct
+  : p <= @consecutive s p :=
+  if h : p |>.IsAtEnd then by simp[h, consecutive]
+  else if h' : p |>.get h |>.isWhitespace
+  then have induct : p.next h <= consecutive (p.next h) := consecutive_le
+       have : consecutive p = consecutive (p.next h) := by simp [h, h', consecutive.eq_1 p]
+       le_trans le_next $ this ▸ induct
+  else by simp[h', consecutive]
 termination_by p
 
 /- tabulate -/
 theorem consecutive_monotone {s : String.Slice} {p : s.Pos} {h : p ≠ s.endPos} {h' : p |>.get h |>.isWhitespace}
   : consecutive p <= consecutive (p.next h) := by
-    unfold consecutive; simp[h, h']
-    by_cases h'' : p.next h = s.endPos
-    case pos => simp[h'']
-    next =>
-      by_cases h''' : p.next h |>.get h'' |>.isWhitespace
-      any_goals simp[h'', h''']
-      case pos =>
-        have := consecutive_le (p := p.next h)
-        have := consecutive_monotone (p := p.next h) (h' := h''')
-        have : p <= p.next h := le_next
-        grind
-      next => simp [h'', h''', consecutive]
+  unfold consecutive; simp[h, h']
+  if h'' : p.next h = s.endPos then simp[h'']
+  else if h''' : p.next h |>.get h'' |>.isWhitespace then
+    have := consecutive_le (p := p.next h)
+    have := consecutive_monotone (p := p.next h) (h' := h''')
+    have : p <= p.next h := le_next
+    grind
+  else simp [h'', h''', consecutive]
 termination_by p
 
 /--
@@ -132,7 +125,7 @@ def main (paths : List String) : IO UInt32 := do
   println! "\n== exec (Interpreter: evalCEK) =="
   waitAll =<< execCases.mapM fun (name, path, _, v') =>
     .asTask $ TCNF.Interpreter.checkFile path false >>=
-      fun v => do
+      fun v =>
         if v == v' then
           let prefixS := s!" OK {name}{pad name}==>"
           pass.modify .succ *> println s!"{prefixS} {v.toFormat |>.pretty (column := prefixS.length + 1) (indent := prefixS.length + 1)}"

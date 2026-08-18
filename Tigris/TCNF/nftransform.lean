@@ -114,16 +114,14 @@ def recRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :=
     then recRunEnd binds (i+1) else i
   else i
 theorem recRunEnd_i_le (binds i) : i <= recRunEnd binds i := by
-  by_cases h : i < binds.size
-  case neg => simp[recRunEnd, h]
-  next =>
-    by_cases h' : isRecBind binds[i].2.2
-    case neg => simp[h', recRunEnd]
-    next =>
+  if h : i < binds.size then
+    if h' : isRecBind binds[i].2.2 then
       have eq2 : recRunEnd binds i = recRunEnd binds (i + 1)
                := by simp [h, h', recRunEnd.eq_1 binds i]
       have := eq2 ▸ @recRunEnd_i_le binds (i + 1)
       omega
+    else simp[h', recRunEnd]
+  else simp[recRunEnd, h]
 
 /-- Like recRunEnd, but check for recbind on the type-stripped binding -/
 def stripRecRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :=
@@ -132,16 +130,14 @@ def stripRecRunEnd (binds : Array (String × Scheme × FExpr)) (i : Nat) : Nat :
     then stripRecRunEnd binds (i+1) else i
   else i
 theorem stripRecRunEnd_i_le (binds i) : i <= stripRecRunEnd binds i := by
-  by_cases h : i < binds.size
-  case neg => simp[stripRecRunEnd, h]
-  next =>
-    by_cases h' : isRecBind (stripTy binds[i].2.2)
-    case neg => simp[h', stripRecRunEnd]
-    next =>
+  if h : i < binds.size then
+    if h' : isRecBind (stripTy binds[i].2.2) then
       have eq2 : stripRecRunEnd binds i = stripRecRunEnd binds (i + 1)
                := by simp [h, h', stripRecRunEnd.eq_1 binds i]
       have := eq2 ▸ @stripRecRunEnd_i_le binds (i + 1)
       omega
+    else simp[h', stripRecRunEnd]
+  else simp[stripRecRunEnd, h]
 
 /-- should be more efficient than xs[0:i] ++ ys ++ xs[i + 1:] -/
 @[inline] def replaceCol (xs : Array α) (i : Nat) (ys : Array α) : Array α :=
