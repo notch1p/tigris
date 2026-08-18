@@ -83,7 +83,7 @@ private partial def substTV (m : Std.HashMap TV MLType) : MLType -> MLType
     .TSch (.Forall vs (ps.map fun p => p.mapArgs (substTV m)) t)
 
 def ctorFieldTypes (td : TyDecl) (cname : Symbol) (tyArgs : List MLType) : Option (List MLType) :=
-  let paramTVs := td.param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
+  let paramTVs := td.param.foldr (List.cons ∘ Prod.fst) []
   let substMap := paramTVs.foldl2 Std.HashMap.insert ∅ tyArgs
   match td.ctors.find? (fun (n, _) => n == cname) with
   | none => none

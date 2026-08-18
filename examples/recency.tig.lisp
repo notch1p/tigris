@@ -6,7 +6,7 @@ let i_C_1 : C Bool = C@Bool fun _ : Bool => 5
 
 let i_D_0 : D Int = D@Int fun x : Int => 100
 
-let i_C_2 : ∀a[D a], C a =
+let i_C_2 : ∀a [D a], C a =
   Λ a. fun d_D_0 : D a => C@a fun x : a => add (d_D_0[0, d]@a x) 1
 
 let main : Int × Int =
@@ -91,5 +91,3 @@ let main : Int × Int =
          (|app-25| (gapply1 |app-23| 1))
          (|app-27| (|fn-30| t)))
      (cons |app-25| |app-27|)))
-
-(format t "~S~%" |main-22|)

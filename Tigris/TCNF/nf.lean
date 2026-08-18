@@ -284,7 +284,7 @@ where step1 : NFState -> Nat × NFState
 
 /-- the special Id 0 is used to mark runtime pattern matching error, guaranteed by `NFState.h` -/
 def matchFailFVar : FVarId := 0
-def dummyTy : MLType := .TVar ⟨"_"⟩
+def dummyTy : MLType := .TVar $ .named "_"
 
 end Monads
 

@@ -41,7 +41,12 @@ end
 /-- Parse a kind expression. -/
 @[inline] def parseKind : TParser σ Kind := kindArrow
 
-def parseKV : TParser σ (String × Kind) := ID <&> fun id => (id, .type)
+/-- kind mv, denoted ?k.{n}. it is to be constrained by kind inference. -/
+def freshKV : TParser σ Kind := do
+  let n <- modifyGet fun (pe@{nxtK,..}, s) => (nxtK, ({pe with nxtK := nxtK + 1}, s))
+  return .kvar n
+
+def parseKV : TParser σ (String × Kind) := ID >>= fun id => (id, ·) <$> freshKV
 
 def parseParam : TParser σ (String × Kind) := parseKV <? parenthesized do
   let id <- ID
@@ -49,7 +54,7 @@ def parseParam : TParser σ (String × Kind) := parseKV <? parenthesized do
     spaces
     let k <- parseKind
     pure (id, k)
-  else pure (id, .type)
+  else (id, ·) <$> freshKV
 
 def parseParams : TParser σ ParamInfo := do
   let ps <- takeMany parseParam
@@ -88,7 +93,7 @@ partial def tyCtor (param : ParamInfo) : TParser σ MLType := do
   if id.isUpperInit then return TCon id
   else
     match param.kinds[id]? with
-    | some _ => return TVar (.mkTV id)
+    | some _ => return TVar (.named id)
     | none =>
       error s!"unbound type variable {id}\n"
       throwUnexpected
@@ -124,14 +129,14 @@ partial def tyForallN (mt : Bool) (param : ParamInfo) : TParser σ MLType :=
     if param'.ordered.isEmpty then tyCtor param <|> parenthesized (tyArrow mt param)
     else do
       let param := param ∪ param'; COMMA
-      .TSch <$> .Forall (param'.ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) [] <$> tyArrow mt param
+      .TSch <$> .Forall (param'.ordered.foldr (.cons ∘ .named ∘ Prod.fst) []) [] <$> tyArrow mt param
 
 partial def tyAtom (mt : Bool) (param : ParamInfo) : TParser σ MLType := tyForallN mt param
 end
 
 def tyEmpty : TParser σ TyDecl := do
   TYPE let tycon <- ID let {ordered,..} <- parseParams;
-  return {tycon, param := ordered, ctors := #[]}
+  return {tycon, param := ordered.map fun (n, k) => (.named n, k), ctors := #[]}
 
 @[inline, always_inline]
 def tyExp (paramInfo : ParamInfo := ∅) : TParser σ MLType := tyArrow false paramInfo
@@ -151,7 +156,7 @@ def tyForall (mt : Bool) (param : ParamInfo) : TParser σ MLType := do
   if ordered.isEmpty && pred.isEmpty then tyArrow mt param
   else
     COMMA
-    .TSch <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyArrow mt param
+    .TSch <$> .Forall (ordered.foldr (.cons ∘ .named ∘ Prod.fst) []) pred <$> tyArrow mt param
 
 def tyField (mt : Bool) (param : ParamInfo) : TParser σ (Symbol × MLType) := do
   let id <- ID; COLON; let ty <- tyForall mt param
@@ -161,13 +166,13 @@ def tyScheme : TParser σ Scheme := do
   let param@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
   let pred <- optionD (tyPreds param) #[] <&> Array.toList
   if !ordered.isEmpty || !pred.isEmpty then COMMA
-  .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
+  .Forall (ordered.foldr (.cons ∘ .named ∘ Prod.fst) []) pred <$> tyExp param
 
 def tyInstScheme : TParser σ (Scheme × ParamInfo) := do
   let param@{ordered,..} <- optionD ((FORALL <|> FORALL') *> parseParams) ∅
   let pred <- optionD (tyPreds param) #[] <&> Array.toList
   if !ordered.isEmpty || !pred.isEmpty then COMMA
-  (·, param) <$> .Forall (ordered.foldr (.cons ∘ .mkTV ∘ Prod.fst) []) pred <$> tyExp param
+  (·, param) <$> .Forall (ordered.foldr (.cons ∘ .named ∘ Prod.fst) []) pred <$> tyExp param
 
 def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool) (offside? : Bool)
   : TParser σ TyDecl := withExpected "structure declaration" do
@@ -184,7 +189,7 @@ def tyRecord (tycon : String) (param : ParamInfo) (mt : Bool) (offside? : Bool)
   modify fun (st@{recordFields,..}, l) =>
     ({st with recordFields := recordFields.insert tycon fids}, l)
   return  { tycon
-          , param := param.ordered
+          , param := param.ordered.map fun (n, k) => (.named n, k)
           , ctors := #[(tycon, fields.toList, tys.size)]}
 
 def tyDecl (mt : Bool) : TParser σ TyDecl := withExpected "type declaration" do
@@ -201,10 +206,10 @@ def tyDecl (mt : Bool) : TParser σ TyDecl := withExpected "type declaration" do
             registerTy tycon mt
             let hd <- (optional BAR *> ctor mt param)
             let tl <- takeMany (BAR *> ctor mt param)
-            return {tycon, param := param.ordered, ctors := #[hd] ++ tl, cls?}
+            return {tycon, param := param.ordered.map fun (n, k) => (.named n, k), ctors := #[hd] ++ tl, cls?}
       , WHERE *> tyRecord tycon param mt true <&> fun tydecl => {tydecl with cls?}
       , registerTy tycon mt *>
-        pure {tycon, param := param.ordered, ctors := {}}
+        pure {tycon, param := param.ordered.map fun (n, k) => (.named n, k), ctors := {}}
       ]
 
   else
@@ -230,7 +235,7 @@ def tySyn : TParser σ TyDecl := withExpected "type abbreviation" do
     let param <- parseParams; EQ
     let rhs <- tyExp param -- tyExp checks for unbound types
     registerTy tycon false
-    return { tycon, param := param.ordered, ctors := #[], rhs := some rhs }
+    return { tycon, param := param.ordered.map fun (n, k) => (.named n, k), ctors := #[], rhs := some rhs }
   else
     error "type constructor must begin with an uppercase letter\n"
     throwUnexpected

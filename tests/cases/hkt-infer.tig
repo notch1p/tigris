@@ -1,0 +1,4 @@
+type Box f a = MkBox (f a) -- implicit f : Type -> Type
+type Option a = None | Some a
+
+let main = MkBox (Some 1)

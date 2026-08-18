@@ -55,14 +55,14 @@ def Scheme.renderFmt : Scheme -> Std.Format
   | .Forall [] [] t => group $ t.renderFmt
   | .Forall [] pred t => group $ sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line)) <> t.renderFmt
   | .Forall tv pred t =>
-    let preds := if pred.isEmpty then .text " " else sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line))
+    let preds := if pred.isEmpty then .nil else .text " " ++ sbracket (joinSep (pred.map Pred.renderFmt) ("," ++ line))
     group $ "∀" ++ (joinSep tv " ") ++ preds ++ "," ++ indentD t.renderFmt
 def Scheme.toStr : Scheme -> String
   | .Forall [] [] t => t.toStr
   | .Forall [] pred t => pretty (width := 0xFFFF) (sbracket (joinSep (pred.map Pred.toStr) ", ")) ++ " " ++ t.toStr
   | .Forall (t :: ts) pred t' =>
     let preds := if pred.isEmpty then "" else " " ++ toString (pred.map Pred.toStr)
-    s!"∀ {ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'.toStr}"
+    s!"∀{ts.foldl (· ++ " " ++ toString ·) (toString t)}{preds}, {t'.toStr}"
 end
 
 def Pred.unary (c : String) (a : MLType) : Pred := ⟨c, [a]⟩
@@ -135,7 +135,7 @@ instance : ToString TypingError where
   | .NoMatch e v arr =>
     let arr := arr.map $ Array.map Pattern.toStr ∘ Prod.fst
     s!"The expression(s)\n  {repr e} \n==ₑ {v}\ncannot be matched against any of the patterns: {toString arr}."
-  | .Duplicates (mkTV a) b =>
+  | .Duplicates a b =>
     "Unbounded fixpoint constructor does not exist in a strongly normalized system.\n" ++
     note s!"unifying {a} and {b} results in μ{a}. {b}, which isn't allowed.\n" ++
     note "recursion is supported primitively via letrec or unsafely via fixpoint combinator `rec`"
@@ -161,13 +161,14 @@ structure Env where
     type synonyms. In practice, we pass the lookup function (view) `(synTy[·]?)` instead.
   -/
   synTy : Std.HashMap String (List TV × MLType) := ∅
+  /-- global tv counter. not used directly but to seed CState's counter, then FState's -/
+  nextTV : Nat := 0
 deriving Repr
 
-instance : EmptyCollection Env := ⟨∅, ∅, ∅, ∅, ∅⟩
+instance : EmptyCollection Env := ⟨∅, ∅, ∅, ∅, ∅, 0⟩
 abbrev Logger := String -- This is NOT how one should do logging.
                         -- but Lean doesn't really have a WriterT or MonadWriter
                         -- Lake has something similar, but that's in the build system.
-abbrev Infer σ := StateRefT (Nat × Logger) $ EST MLType.TypingError σ
 abbrev Subst := Std.TreeMap TV MLType
 
 
@@ -194,16 +195,16 @@ partial def applyT : Subst -> MLType -> MLType
   | s, t₁ ×'' t₂ => applyT s t₁ ×'' applyT s t₂
   | s, t₁ ->' t₂ => applyT s t₁ ->' applyT s t₂
   | s, TApp h as =>
-    -- Substitution may turn the head into a `TyLam` or another `TApp`;
-    -- route through `mkAppT` to β-reduce / flatten on the spot.
+    -- Substitution may turn the head into a `TyLam`/`TApp`;
+    -- so we go through `mkAppT` to β-reduce again.
     mkAppT (applyT s h) (as.map (applyT s))
   | s, TyLam x body =>
-    -- Capture-avoidance: shadowing erases `x` from the substitution.
+    -- shadowing erases x from the substitution.
     TyLam x (applyT (s.erase x) body)
   | s, TSch sch => TSch (applyS s sch)
 
 partial def fvT : MLType -> Std.TreeSet TV
-  | TCon _ => ∅ | TVar a => {a}
+  | TCon _ => ∅ | TVar (.sk _) => ∅ | TVar a => {a}
   | t₁ ->' t₂ | t₁ ×'' t₂ => fvT t₁ ∪ fvT t₂
   | TApp h as => fvT h ∪ as.foldl (· ∪ fvT ·) ∅
   | TyLam x body => (fvT body).erase x
@@ -291,9 +292,9 @@ def gensym (n : Nat) : String :=
 
 mutual
 partial def unSkolem : MLType -> MLType
+  | .TVar (.sk n) => .TVar (.mv n) -- the exact inverse of rigidSub
   | .TVar v => .TVar v
-  | .TCon h =>
-    if h.startsWith "?sk." then .TVar (.mkTV $ h.drop 4 |>.toString) else .TCon h
+  | .TCon h => .TCon h
   | a ->' b => unSkolem a ->' unSkolem b
   | a ×'' b => unSkolem a ×'' unSkolem b
   | .TApp h as => mkApp (unSkolem h) (as.map unSkolem)
@@ -314,7 +315,7 @@ def curry : MLType -> MLType
 where
   go | t₃ ×'' t₄ => go t₃ ++ go t₄ | t => [t]
 
-local instance : CoeHead String TV := ⟨.mkTV⟩
+local instance : CoeHead String TV := ⟨.named⟩
 local instance : CoeTail TV MLType := ⟨TVar⟩
 
 abbrev dE : List (String × Scheme) :=
@@ -345,7 +346,7 @@ def mkCurriedE (e : List (String × Scheme)) : Env :=
         if sym.startsWith "__"
         then p :: (sym.drop 2 |>.toString, .Forall c ps $ curry ty) :: a
         else p :: a
-  , ∅, ∅, ∅, ∅⟩ -- TODO: modify clsInfo and instInfo
+  , ∅, ∅, ∅, ∅, 0⟩ -- TODO: modify clsInfo and instInfo
 
 
 abbrev defaultE : Env := mkCurriedE dE

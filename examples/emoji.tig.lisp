@@ -22,7 +22,7 @@ let foo : List Bool × List String =
     fun x : ∀α, List α → List α =>
       ⟨x (Cons@Bool 😋 (Cons@Bool 😱 Nil@Bool)),
        x (Cons@String "😋" (Cons@String "😱" Nil@String))⟩
-  in f reverse@?sk.α
+  in f reverse@?sk.20
 ;; == Runtime ==
 (load "runtime.lisp")
 
@@ -115,5 +115,3 @@ let foo : List Bool × List String =
 
 (defparameter |main-28|
   nil)
-
-(format t "~S~%" |main-28|)

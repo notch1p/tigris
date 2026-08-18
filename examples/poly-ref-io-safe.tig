@@ -8,7 +8,7 @@ extern setf     "set"          : forall a, Ref a -> a -> IO Unit
 extern pureIO   "identity"     : forall a, a -> IO a
 extern unsafeIO "identity"     : forall a, IO a -> a
 
-class Monad (m : Type -> Type) where
+class Monad m where
   pure : forall a, a -> m a
   bind : forall a b, m a -> (a -> m b) -> m b
 infixr 90 "::"  => Cons

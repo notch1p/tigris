@@ -96,8 +96,6 @@ extern_lib libleanffi pkg := do
 /- @[default_target] -/
 lean_exe "tigris-old" where  -- Deprecated
   root := `oldMain
-lean_exe "tigrisc" where
-  root := `Tigrisc
 
 @[default_target]
 lean_exe "tigrisi" where
@@ -124,4 +122,4 @@ in script shortcut do
 --  root := `evalCEK
 --  srcDir := "Tigris/TCNF/interpreter"
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"afcde96c3f0ccd84beb096fd3af5dd144b401e3c"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"2ca6e66d5bd4f3f51390f98fdb415ed9891b0b89"

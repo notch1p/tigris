@@ -4,7 +4,7 @@ import Tigris.table
 import Tigris.oldcore2.ftransform
 import runtime
 import Tigris.codegen.cl
-
+open Lean.IO (throwServerError)
 open IO
 open TCNF (lowerModule lowerModuleCCOpt)
 open TCNF.CL (compileToCL)

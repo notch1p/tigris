@@ -1,13 +1,6 @@
 import Parser
 import PP.dependentPP
 
--- retired
---axiom prod_sizeOf_lt [SizeOf α] [SizeOf β] (p : α × β) : sizeOf p.1 < sizeOf p ∧ sizeOf p.2 < sizeOf p
---axiom prod_sizeOf_lt_fst [SizeOf α] [SizeOf β]
---  (a : α) (b : β) : sizeOf a < sizeOf (a, b)
---axiom prod_sizeOf_lt_snd [SizeOf α] [SizeOf β]
---  (a : α) (b : β) : sizeOf b < sizeOf (a, b)
-
 theorem prod_sizeOf_lt_fst [SizeOf α] [SizeOf β] (a : α) (b : β)
   : sizeOf a < sizeOf (a, b) := Prod.mk.sizeOf_spec a b ▸ by omega
 theorem prod_sizeOf_lt_snd [SizeOf α] [SizeOf β] (a : α) (b : β)
@@ -129,7 +122,7 @@ def Kind.toStr : Kind -> String
   | .kvar n      => s!"?k.{n}"
 instance : ToString Kind := ⟨Kind.toStr⟩
 
-@[inline] def kindOfParams (ps : Array (String × Kind)) : Kind :=
+@[inline] def kindOfParams (ps : Array (TV × Kind)) : Kind :=
   ps.foldr (Kind.karr ∘ Prod.snd) .type
 
 /-- Kind substitution. -/
@@ -168,18 +161,67 @@ partial def Kind.unify : Kind -> Kind -> Except String KSubst
   | .kvar n, k | k, .kvar n => bindKV n k
   | k₁, k₂ => throw s!"cannot unify kinds {k₁} with {k₂}"
 
+/--
+Proper type variables. previously we used string equality and pattern matching
+the prefixes to distinguish tv and its kind (metavariables/skolems/instance-renamed).
+Which is sloppy and rough.
+
+a unique Nat per kind to prevent collide.
+-/
 inductive TV where
-  | mkTV : String -> TV
-deriving Repr, Ord, Hashable
-def TV.elimStr | (mkTV s) => s
-def TV.tv? | mkTV s => s.startsWith "?m."
-instance : BEq TV := ⟨fun (.mkTV s) (.mkTV s') => s == s'⟩
-instance : ToString TV := ⟨fun (.mkTV s) => s⟩
-instance : ReflBEq TV := ⟨by simp[(· == ·)]⟩
+  | mv    : Nat -> (userNamed? : Option String := none) -> TV  -- metavariables
+  | sk    : Nat -> TV                                  -- skolems
+  | inst  : Nat -> Nat -> TV                           -- used by resolution/quantifier index
+  | named : String -> TV                               -- user-supplied tvs from parser
+
+def TV.hashTV : TV -> UInt64
+  | TV.mv v _ => mixHash 0 (hash v)
+  | TV.sk v => mixHash 1 (hash v)
+  | TV.inst v v' => mixHash (mixHash 2 (hash v)) (hash v')
+  | TV.named a => mixHash 3 (hash a)
+def TV.ord : TV -> TV -> Ordering
+  | mv a _, mv b _ => compare a b |>.then Ordering.eq
+  | mv .., _ => Ordering.lt
+  | _, mv .. => Ordering.gt
+  | sk a, sk b => (compare a b).then Ordering.eq
+  | sk _, _ => Ordering.lt
+  | _, sk _ => Ordering.gt
+  | inst v₁ v₂, inst v₁' v₂' => compare v₁ v₁' |>.then
+                              $ compare v₂ v₂' |>.then Ordering.eq
+  | inst .., _ => Ordering.lt
+  | _, inst .. => Ordering.gt
+  | named a, named b => compare a b |>.then Ordering.eq
+def TV.beq : TV -> TV -> Bool
+  | .mv v _, .mv v' _ | .sk v, .sk v' => v == v'
+  | .inst v₁ v₂, .inst v₁' v₂' => v₁ == v₁' && v₂ == v₂'
+  | .named s, .named s' => s == s'
+  | _, _ => false
+
+instance : BEq TV := ⟨TV.beq⟩
+instance : Hashable TV := ⟨TV.hashTV⟩
+instance : Ord TV := ⟨TV.ord⟩
+instance : ReflBEq TV where rfl {tv} := by cases tv <;> simp [BEq.beq, TV.beq]
+def TV.toStr : TV -> String
+  | .mv n _    => s!"?m.{n}"
+  | .sk n      => s!"?sk.{n}"
+  | .inst n i  => s!"?inst.{n}.{i}"
+  | .named s   => s
+
+def TV.elimStr := TV.toStr
+instance : ToString TV := ⟨TV.toStr⟩
+instance : Repr TV := ⟨fun t _ => t.toStr⟩
 def TV.renderFmt : TV -> Std.Format
-  | mkTV s => s
-def TV.toStr : TV -> String | mkTV s => s
+  | tv => tv.toStr
 instance : Std.ToFormat TV := ⟨TV.renderFmt⟩
+
+def TV.tv? : TV -> Bool
+  | .mv .. => true
+  | _ => false
+
+/-- every named TV must be freshened before any code that needs this runs -/
+def TV.id : TV -> Nat
+  | .mv n _ | .sk n | .inst n _ => n
+  | .named _ => unreachable!
 
 mutual
 inductive MLType where
@@ -302,7 +344,9 @@ structure PEnv where
   recordFields : Std.HashMap Symbol (Array Symbol) := {}
   indentStack  : List Nat := [0]
   lastEol : Nat := 0
-instance : EmptyCollection PEnv := ⟨{}, {}, {}, {}, {}, {}, {}, 0⟩
+  /-- counter for kvar  -/
+  nxtK   : Nat := 0
+instance : EmptyCollection PEnv := ⟨{}, {}, {}, {}, {}, {}, {}, 0, 0⟩
 --abbrev TParser := SimpleParserT Substring.Raw Char $ StateRefT String $ StateT PEnv $ ST α
 abbrev TParser σ := SimpleParserT String.Slice Char
                   $ StateRefT (PEnv × String) (ST σ)
@@ -316,10 +360,15 @@ def error (s : String) : TParser σ Unit :=
 
 structure TyDecl where
   tycon : String
-  param : Array (String × Kind)
+  /-- binder TVs with their declared kinds, must be freshed before use -/
+  param : Array (TV × Kind)
   ctors : Array $ Symbol × List (Symbol × MLType) × Nat
   cls?  : Bool := false -- class?
-  /-- RHS when this is a type abbreviation (`abbrev`) -/
+  /--
+    RHS when this is a type abbreviation. we match
+    against this first when dealing with TyDecl
+    so as to avoid a separate abbreviation encoding.
+  -/
   rhs   : Option MLType := none
 deriving Repr
 
@@ -366,7 +415,7 @@ Assumptions:
 structure ClassInfo where
   cname    : Symbol -- cname == ctorName, assumed
   ctorName : Symbol
-  params   : Array (String × Kind) -- class param names + their kinds
+  params   : Array (TV × Kind) -- class param binders + their kinds
   methods  : Array MethodInfo
   -- maybe superclass?? not considered now.
 deriving Repr

@@ -33,11 +33,6 @@ instance : MonadLift (Except TypingError) (EST TypingError σ) where
 @[inline] def cacheResult : Pred -> Except TypingError Expr -> ResolveM σ Unit :=
   (modify fun st => {st with done := st.done.insert · ·})
 
-def classParamNames (env : Env) (cls : String) : Std.HashSet String :=
-  match env.clsInfo[cls]? with
-  | some ci => ci.params.foldl (fun acc (n, _) => acc.insert n) ∅
-  | none => ∅
-
 partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
   let s : ResolveState <- get
   match s.done[p]? with

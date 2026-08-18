@@ -1,5 +1,70 @@
+;; == System F IR ==
+
+let (::) : ∀α, α → List α → List α = Λ α. Cons@α
+
+let mkref : ∀a, a → Ref a = Λ a. quote
+
+let deref : ∀a, Ref a → a = Λ a. eval
+
+let setf : ∀a, Ref a → a → a = Λ a. set
+
+let (ₚ') : ∀α, α → Ref α = Λ α. mkref@α
+
+let ref : ∀α, Ref (List α) = Λ α. mkref@(List α) Nil@α
+
+let main : Int =
+  let _ : List Bool = setf@(List Bool) ref@Bool (Cons@Bool true Nil@Bool)
+  in match deref@(List Int) ref@Int with
+     | Cons x _ => add x 1
+;; == TCNF IR ==
+
+let mkref#2/1 (η#3 : a) : a → Ref a = let ffi#4 : Ref a = @quote(#3); ret #4
+
+let deref#5/1 (η#6 : Ref a) : Ref a → a = let ffi#7 : a = @eval(#6); ret #7
+
+let setf#8/2 (η#9 : Ref a, η#10 : a) : Ref a → a → a =
+  let ffi#11 : a = @set(#9, #10); ret #11
+
+let ref#12/0 : Ref (List α) =
+  let con#13 : List α = Nil⟦⟧; let app#14 : Ref (List α) = #2(#13); ret #14
+
+let main#15/0 : Int =
+  let con#16 : List Bool = Nil⟦⟧;
+  let con#17 : List Bool = Cons⟦true, #16⟧;
+  let app#18 : List Bool = #8(#12, #17);
+  let app#19 : List Int = #5(#12);
+  join fail#20 : Int = let fail#21 : Int = #0(#19); ret #21;
+  case #19 of
+    Cons⟦f#22 : Int, f#23 : List Int⟧ => let π#24 : Int = ADD(#22, 1); ret #24;
+    _ => jump #20()
+;; == TCNF CC & Optimize'd ==
+
+let mkref#2/1 (η#3 : a) : a → Ref a = let ffi#4 : Ref a = @quote(#3); ret #4
+
+let deref#5/1 (η#6 : Ref a) : Ref a → a = let ffi#7 : a = @eval(#6); ret #7
+
+let setf#8/2 (η#9 : Ref a, η#10 : a) : Ref a → a → a =
+  let ffi#11 : a = @set(#9, #10); ret #11
+
+let ref#12/0 : Ref (List α) =
+  let con#13 : List α = Nil⟦⟧; let app#14 : Ref (List α) = #2(#13); ret #14
+
+let main#15/0 : Int =
+  let con#16 : List Bool = Nil⟦⟧;
+  let con#17 : List Bool = Cons⟦true, #16⟧;
+  let app#18 : List Bool = #8(#12, #17);
+  let app#19 : List Int = #5(#12);
+  join fail#20 : Int = let fail#21 : Int = #0(#19); ret #21;
+  case #19 of
+    Cons⟦f#22 : Int, f#23 : List Int⟧ => let π#24 : Int = ADD(#22, 1); ret #24;
+    _ => jump #20()
+;; == Runtime ==
+(load "runtime.lisp")
+
 ;; == Linked Lisp Source ==
 (load "ffi.lisp")
+
+;; == Common Lisp ==
 
 ; Prelude
 (declaim (optimize (speed 3) (safety 0) (debug 0)))

@@ -1,4 +1,4 @@
-class Functor (m : Type -> Type) = {map : forall a b, (a -> b) -> m a -> m b}
+class Functor m = {map : forall a b, (a -> b) -> m a -> m b}
 type Option a = None | Some a
 type List a = Nil | Cons a (List a)
 infixr 100 " <$> " => map

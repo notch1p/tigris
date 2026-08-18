@@ -1,0 +1,7 @@
+class Eq a = {eq : a -> a -> Bool}
+class HEq a b = {heq : a -> b -> Bool}
+class HAdd a b c = {hadd : a -> b -> c}
+instance Eq Int = {eq x y = __eqInt x y}
+instance ∀a [Eq a], HEq a a = {heq = eq}
+instance HAdd Int Int Int = {hadd = (_ + _)}
+let f' = heq (hadd 2 3) 5

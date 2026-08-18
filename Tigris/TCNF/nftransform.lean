@@ -699,7 +699,7 @@ partial def lowerTopDecl (ρ₀ : FVarEnv) : TopDeclF -> CompilerM (Array (Decl 
 def ctorTypeInfo (tyDecls : TyMap)
   : Std.HashMap String (Array MLType) × Std.HashMap String (List TV) :=
   tyDecls.fold (init := (∅, ∅)) fun acc _ td =>
-    let params := td.param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
+    let params := td.param.foldr (List.cons ∘ Prod.fst) []
     td.ctors.foldl (init := acc) fun (fts, tps) (cname, fields, _) =>
       ( fts.insert cname $ fields.foldl (Array.push · ·.2) #[]
       , tps.insert cname params)

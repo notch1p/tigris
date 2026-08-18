@@ -4,11 +4,6 @@ import Tigris.typing.constraint
 import Tigris.typing.resolve
 import Tigris.typing.kinds
 
-def String.isSkolemOf (h : String) (v : TV) : Bool :=
-  let h' := Substring.Raw.mk h ⟨4⟩ h.rawEndPos
-  let v := v.toStr.toRawSubstring
-  h.startsWith "?sk." && h' == v
-
 def MLType.isTApp : MLType -> Bool
   | .TApp .. => true | _ => false
 
@@ -69,6 +64,8 @@ structure FState where
   memo and places the synthesized dictionary bindings -/
   memoDepth : Nat := 0
   ke     : KindEnv := ∅
+  /-- counter for ?inst renames -/
+  nextTV : Nat := 0
 deriving Inhabited
 
 abbrev F := EStateM TypingError FState
@@ -101,24 +98,24 @@ namespace Helper
   | .TSch (.Forall _ _ t) => t
   | t => t
 
-def αRename (qs : List TV) : Subst × List TV :=
-  let mkFresh : TV -> Nat -> TV
-    | _, i => .mkTV s!"?inst.{i}"
-  qs.foldrIdx (init := (∅, [])) fun i q (sub, acc) =>
-    let q' := mkFresh q i
+/-- fresh counter for ?inst renames to prevent previously encountered clashing -/
+def αRename (qs : List TV) : F (Subst × List TV) := do
+  let n <- modifyGet fun st => (st.nextTV, {st with nextTV := st.nextTV + 1})
+  return qs.foldrIdx (init := (∅, [])) fun i q (sub, acc) =>
+    let q' := .inst n i
     (sub.insert q (.TVar q'), q' :: acc)
 
 def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType)
   : F (List MLType × Subst × List Pred) := do
   if qs.isEmpty then return ([], ∅, ctx)
-  let (rn, qs) := αRename qs
+  let (rn, qs) <- αRename qs
   let schemeBody := apply rn schemeBody
   let ctx := apply rn ctx
 
   let ke <- get <&> (·.ke)
   let (sub, ke) <- unify ke (monoOfTSch schemeBody) (monoOfTSch instTy)
   modify fun st => {st with ke := ke}
-  return (qs.map (fun a => apply sub (TVar a)), sub, apply sub ctx |>.map Helper.normHKPred)
+  return (qs.map (fun a => apply sub (TVar a)), sub, apply sub ctx)
 
 @[inline] def wrapTyLams (qs : List TV) (e : FExpr) : FExpr := qs.foldr .TyLam e
 @[inline] def mkApp (f a : FExpr) : FExpr :=
@@ -127,8 +124,8 @@ def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType
   .App f a $ Prod.snd $ decomposeArr f.getTy
 
 def eqSkolem : MLType -> MLType -> Bool
+  | .TVar (.sk n), .TVar (.mv m) | .TVar (.mv m), .TVar (.sk n) => n == m
   | .TVar v, .TVar w => v == w
-  | .TVar v, .TCon h | .TCon h, .TVar v => h.isSkolemOf v
   | .TApp h₁ as₁, .TApp h₂ as₂ =>
     if eqSkolem h₁ h₂ then
       List.all2 (fun ⟨t, _⟩ ⟨t', _⟩ => eqSkolem t t')
@@ -140,15 +137,6 @@ def eqSkolem : MLType -> MLType -> Bool
   | .TCon a, .TCon b => a == b
   | _, _ => false
 termination_by t₁ t₂ => (t₁, t₂)
-
-def mv? : TV -> Lean.Name
-  | .mkTV s =>
-    if s.startsWith "?m" then `Amb
-    else if s.startsWith "?i" then `CAmb
-    else `d
-
-@[inline] def isHKVarTV : TV -> Bool
-  | .mkTV s => s.isLowerInit
 
 def predEqSkolem (templ goal : Pred) : Bool :=
   templ.cls == goal.cls && List.all2 eqSkolem templ.args goal.args
@@ -172,9 +160,9 @@ def mvs (p : Pred) : (List TV × List TV) :=
   let vs := fv p.args
   vs.foldl
     (fun (mv, iv) tv =>
-      match mv? tv with
-      | `Amb => (tv :: mv, iv)
-      | `CAmb => (mv, tv :: iv)
+      match tv with
+      | .mv .. => (tv :: mv, iv)
+      | .inst .. => (mv, tv :: iv)
       | _ => (mv, iv))
     ([], [])
 
@@ -198,7 +186,7 @@ def peelFun (acc : List (String × MLType)) : FExpr -> List (String × MLType) �
   | t => (acc.reverse, t)
 
 def peelTyLam (acc : List String) : FExpr -> List String × FExpr
-  | .TyLam (.mkTV p) b => peelTyLam (p :: acc) b
+  | .TyLam p b => peelTyLam (TV.toStr p :: acc) b
   | t => (acc.reverse, t)
 def peelSch1 : MLType -> Option (List TV × List Pred × MLType)
   | .TSch (.Forall vs ps t) => some (vs, ps, t)
@@ -376,51 +364,148 @@ open Rewritable (apply applyS applyT applyP)
 stable renaming of MVs are now done before pretty-printer instead of at
 normalization. Previsouly the raw ?mNs and greek renamed TVs are tangled up, now
 internally it should be raw.
--/
-def renameMVSch : Scheme -> Scheme × Subst
-  | .Forall tvs ps body =>
-    let (sub, tvs') := tvs.foldlIdx (init := (∅, [])) fun i (sub, acc) tv =>
-      if tv.toStr.startsWith "?m." then
-        let tv' := .mkTV (gensym i)
-        (sub.insert tv (.TVar tv'), tv' :: acc)
-      else (sub, tv :: acc)
-    let rec renameBody
-      | .TSch inner =>
-        let (inner, _) := renameMVSch inner
-        apply sub (.TSch inner)
-      | t => apply sub t
-    (.Forall tvs'.reverse (ps.map (applyP sub)) (renameBody body), sub)
 
-partial def applyFE (sub : Subst) : FExpr -> FExpr
-  | .CI i ty => .CI i (apply sub ty)
-  | .CS s ty => .CS s (apply sub ty)
-  | .CB b ty => .CB b (apply sub ty)
-  | .CUnit ty => .CUnit (apply sub ty)
-  | .Var x ty => .Var x (apply sub ty)
-  | .Fun p pTy body ty => .Fun p (apply sub pTy) (applyFE sub body) (apply sub ty)
-  | .App f a ty => .App (applyFE sub f) (applyFE sub a) (apply sub ty)
-  | .TyLam a body =>
+DeepSeek V4:
+Now it's also scope aware: a binder displays with
+its source name when that name is not taken in the enclosing scope, otherwise
+GHC-style with a numeric subscript; binders without a source name fall back
+to greek.
+-/
+structure RenameState where
+  nxt      : Nat := 0
+  /-- displayed binder names currently in scope -/
+  taken    : Std.HashSet String := ∅
+  /-- per-source-name subscript counter -/
+  suffixes : Std.HashMap String Nat := ∅
+  /-- every renamed binder's display name, for reuse at later occurrences
+  (non-scoped: the scheme pass's renaming must match the term pass's) -/
+  renamed  : Std.HashMap TV String := ∅
+
+/-- the source name if free in the enclosing scope, else name + subscript -/
+def freshDisplayName (st : RenameState) (tv : TV) (s : String) : RenameState × String :=
+  if s ∈ st.taken then
+    let k := st.suffixes.getD s 0 + 1
+    let s' := s ++ k.toSubscriptString
+    ({st with suffixes := st.suffixes.insert s k, taken := st.taken.insert s',
+              renamed := st.renamed.insert tv s'}, s')
+  else
+    ({st with taken := st.taken.insert s, renamed := st.renamed.insert tv s}, s)
+
+/-- the greek fallback for binders without a source name -/
+def freshGreekName (st : RenameState) (tv : TV) : RenameState × TV :=
+  let tv' := .named (gensym st.nxt)
+  ({st with nxt := st.nxt + 1, taken := st.taken.insert tv'.toStr,
+            renamed := st.renamed.insert tv tv'.toStr}, tv')
+
+/-- rename binders with the display policy (user name when free, subscripted
+when shadowed, greek otherwise), extending the subst -/
+def renameBinders (stref : ST.Ref σ RenameState) (sub : Subst) (tvs : List TV)
+  : ST σ (Subst × List TV) :=
+  tvs.foldlM (init := (sub, [])) fun (sub, acc) tv => do
+    let st <- stref.get
+    match st.renamed[tv]? with
+    | some s' => return (sub.insert tv (.TVar (.named s')), .named s' :: acc)
+    | none =>
+      match tv with
+      | .mv _ (some s) =>
+        let (st, s') := freshDisplayName st tv s
+        stref.set st
+        return (sub.insert tv (.TVar (.named s')), .named s' :: acc)
+      | .mv _ none =>
+        let (st, tv') := freshGreekName st tv
+        stref.set st
+        return (sub.insert tv (.TVar tv'), tv' :: acc)
+      | _ => return (sub, tv :: acc)
+
+mutual
+/-- display-rename a type: substitutes via the subst and renames every forall
+binder it meets, at any depth (nested rank-n foralls included) -/
+partial def renameT (stref : ST.Ref σ RenameState) (sub : Subst) : MLType -> ST σ (Subst × MLType)
+  | .TVar v => return (sub, apply sub (.TVar v))
+  | t@(.TCon _) => return (sub, t)
+  | a ->' b => do
+    let (sub, a') <- renameT stref sub a
+    let (sub, b') <- renameT stref sub b
+    return (sub, a' ->' b')
+  | a ×'' b => do
+    let (sub, a') <- renameT stref sub a
+    let (sub, b') <- renameT stref sub b
+    return (sub, a' ×'' b')
+  | .TApp h as => do
+    let (sub, h') <- renameT stref sub h
+    let (sub, as') <- as.foldlM (init := (sub, [])) fun (sub, acc) a => do
+      let (sub, a') <- renameT stref sub a
+      return (sub, a' :: acc)
+    return (sub, .mkApp h' as'.reverse)
+  | .TyLam x body => do
+    let (sub', xs) <- renameBinders stref sub [x]
+    let x' := xs.getD 0 x
+    let (_, body') <- renameT stref sub' body
+    return (sub, .TyLam x' body')
+  | .TSch (.Forall tvs ps t) => do
+    let (sub', tvs') <- renameBinders stref sub tvs
+    let (sub', ps') <- ps.foldlM (init := (sub', [])) fun (sub, acc) p => do
+      let (sub, p') <- renameP stref sub p
+      return (sub, p' :: acc)
+    let (_, t') <- renameT stref sub' t
+    return (sub, .TSch (.Forall tvs'.reverse ps'.reverse t'))
+
+partial def renameP (stref : ST.Ref σ RenameState) (sub : Subst) : Pred -> ST σ (Subst × Pred)
+  | {cls, args} => do
+    let (sub, args') <- args.foldlM (init := (sub, [])) fun (sub, acc) a => do
+      let (sub, a') <- renameT stref sub a
+      return (sub, a' :: acc)
+    return (sub, Pred.mk cls args'.reverse)
+end
+
+def renameMVSchFrom (st : RenameState) (s : Scheme) : Scheme × Subst × RenameState :=
+  runST fun σ => do
+    let stref : ST.Ref σ RenameState <- ST.mkRef st
+    let (sub, t) <- renameT stref ∅ (.TSch s)
+    let sch := match t with | .TSch sch => sch | _ => unreachable!
+    let st' <- stref.get
+    return (sch, sub, st')
+
+def renameMVSch (s : Scheme) : Scheme × Subst :=
+  let (s, sub, _) := renameMVSchFrom {} s
+  (s, sub)
+
+partial def applyFE (st₀ : RenameState) (sub : Subst) (fe : FExpr) : FExpr :=
+  runST fun σ => do
+    let stref : ST.Ref σ RenameState <- ST.mkRef st₀
+    go stref sub fe
+where
+  renT {σ} (stref : ST.Ref σ RenameState) (sub : Subst) (ty : MLType) : ST σ MLType := Prod.snd <$> renameT stref sub ty
+  go {σ} (stref : ST.Ref σ RenameState) (sub : Subst) : FExpr -> ST σ FExpr
+  | .CI i ty => .CI i <$> renT stref sub ty
+  | .CS s ty => .CS s <$> renT stref sub ty
+  | .CB b ty => .CB b <$> renT stref sub ty
+  | .CUnit ty => .CUnit <$> renT stref sub ty
+  | .Var x ty => .Var x <$> renT stref sub ty
+  | .Fun p pTy body ty => .Fun p <$> renT stref sub pTy <*> go stref sub body <*> renT stref sub ty
+  | .App f a ty => .App <$> go stref sub f <*> go stref sub a <*> renT stref sub ty
+  | .TyLam a body => do
     let res := Helper.peelTyLamTV [a] body
-    let (sub', tvs') := res.1.foldlIdx (init := (∅, [])) fun i (sub, acc) tv =>
-      if tv.toStr.startsWith "?m." then
-        let tv' := .mkTV (gensym i)
-        (sub.insert tv (.TVar tv'), tv' :: acc)
-      else (sub, tv :: acc)
-    Helper.wrapTyLams tvs'.reverse $ applyFE sub' $ applyFE sub res.2
-  | .TyApp f arg => .TyApp (applyFE sub f) (apply sub arg)
-  | .Let binds body ty =>
-    let binds := binds.map fun (n, sch, fe) =>
-      let (sch, sub') := renameMVSch sch
-      (n, apply sub sch, applyFE (sub' ∪' sub) fe)
-    .Let binds (applyFE sub body) (apply sub ty)
-  | .Prod' l r ty => .Prod' (applyFE sub l) (applyFE sub r) (apply sub ty)
-  | .Cond c t e ty => .Cond (applyFE sub c) (applyFE sub t) (applyFE sub e) (apply sub ty)
+    let (sub', tvs') <- renameBinders stref sub res.1
+    let inner <- go stref sub res.2
+    Helper.wrapTyLams tvs'.reverse <$> go stref sub' inner
+  | .TyApp f arg => .TyApp <$> go stref sub f <*> renT stref sub arg
+  | .Let binds body ty => do
+    let binds <- binds.mapM fun (n, sch, fe) => do
+      let st <- stref.get
+      let (sch, sub', st') := renameMVSchFrom st sch
+      stref.set st'
+      let fe' <- go stref (sub' ∪' sub) fe
+      return (n, apply sub sch, fe')
+    .Let binds <$> go stref sub body <*> renT stref sub ty
+  | .Prod' l r ty => .Prod' <$> go stref sub l <*> go stref sub r <*> renT stref sub ty
+  | .Cond c t e ty => .Cond <$> go stref sub c <*> go stref sub t <*> go stref sub e <*> renT stref sub ty
   | .Match discr branches resTy ex rd =>
-    .Match (discr.map (applyFE sub))
-      (branches.map fun (pats, e) => (pats, applyFE sub e))
-      (apply sub resTy) ex rd
-  | .Fix e ty => .Fix (applyFE sub e) (apply sub ty)
-  | .Proj src mname idx ty => .Proj (applyFE sub src) mname idx (apply sub ty)
+    .Match <$> discr.mapM (go stref sub)
+      <*> branches.mapM (fun (pats, e) => (pats, ·) <$> go stref sub e)
+      <*> renT stref sub resTy <*> pure ex <*> pure rd
+  | .Fix e ty => .Fix <$> go stref sub e <*> renT stref sub ty
+  | .Proj src mname idx ty => .Proj <$> go stref sub src <*> pure mname <*> pure idx <*> renT stref sub ty
 
 local instance : Std.ToFormat Pattern where
   format := .text ∘ Pattern.toStr

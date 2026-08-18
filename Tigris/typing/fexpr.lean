@@ -35,10 +35,9 @@ we reify that as System F type abstractions by wrapping the projected field with
 
 - Per-method predicate contexts inside TSch are currently unsupported and will be rejected.
 -/
-namespace SysF open MLType TExpr Rewritable
+namespace SysF open MLType TExpr Rewritable SysF.Helper
 open ConstraintInfer (unify)
 open Resolve (resolvePred)
-open Helper
 
 mutual
 partial def elaborateDict
@@ -54,7 +53,7 @@ partial def elaborateDict
       do     throw $ .NoSynthesize s!"{p}: missing in-scope instance for dictionary\n"
 
       let dictExpr <- resolvePred Γfull p
-      let (te, sch, _) <- runInferConstraintT dictExpr Γfull
+      let (te, sch, _, _) <- runInferConstraintT dictExpr Γfull
       let fe <- elaborateWithScope Γsch scope ∅ te sch Γfull
       let dty := dictTypeOfPred p
       let (nm, idx) <- freshIdx s!"rd_{p.cls}_"
@@ -115,7 +114,7 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
                 elaborateDict Γsch scope classPred Γfull
               else throw $ stuckMessage classPred x
           let ar := ci.methods.size
-          let methodTyFull := Helper.normHK $ apply sub m.mty
+          let methodTyFull := apply sub m.mty
           let ke <- get <&> (·.ke)
           let (projTy, wrapPoly) :=
             match peelSch1 methodTyFull with
@@ -219,22 +218,22 @@ end
 
 def elaborate1 (e : TExpr) (sch : Scheme) (Γ : Env := ∅) : F (FExpr × Scheme) :=
   elaborateWithScope Γ.E [] ∅ e sch Γ <&> fun fe =>
-    let (sch, sub) := renameMVSch sch
-    (applyFE sub fe, sch)
+    let (sch, sub, st) := renameMVSchFrom {} sch
+    (applyFE st sub fe, sch)
 end SysF
 
 open MLType SysF
 def runInferConstraintF (e : Expr) (Γ : Env)
   : Except TypingError (FExpr × Scheme × Logger) :=
   match runInferConstraintT e Γ with
-  | .ok (te, sch, log) =>
-    match elaborate1 te sch Γ |>.run {ke := KindEnv.ofEnv Γ} with
+  | .ok (te, sch, log, _) =>
+    match elaborate1 te sch Γ |>.run {ke := KindEnv.ofEnv Γ, nextTV := Γ.nextTV} with
     | .ok (fe, sch) st => return (fe, sch, log ++ st.log)
     | .error e _ => throw e
   | .error err => throw err
 
 def runInfer1F (e : TExpr) (sch : Scheme) (Γ : Env) : Except TypingError (FExpr × Scheme × Logger) :=
-  match elaborate1 e sch Γ |>.run {ke := KindEnv.ofEnv Γ} with
+  match elaborate1 e sch Γ |>.run {ke := KindEnv.ofEnv Γ, nextTV := Γ.nextTV} with
   | .error e _ => throw e
   | .ok (fe, sch) st => return (fe, sch, st.log)
 

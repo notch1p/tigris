@@ -2,20 +2,21 @@
 
 let i_Monad_0 : ∀s, Monad (Λa. s → s × a) =
   Λ s.
-    Monad@(Λa. s → s × a) Λ a. fun x : a => fun st : s => ⟨st, x⟩
-      Λ a b.
-        fun m : s → s × a =>
-          fun f : a → s → s × b =>
+    Monad@(Λa₁. s → s × a₁) Λ a₁. fun x : a₁ => fun st : s => ⟨st, x⟩
+      Λ a₂ b.
+        fun m : s → s × a₂ =>
+          fun f : a₂ → s → s × b =>
             fun st : s =>
               match m st with
               | (st2, x) => f x st2
 
 let main : Int × Int =
   let rd_Monad_0 : Monad (Λa. Int → Int × Int) = i_Monad_0@Int
-  and rd_Monad_1 : Monad (Λa. Int → Int × a) = i_Monad_0@Int
+  and rd_Monad_1 : Monad (Λa₂. Int → Int × Int) = i_Monad_0@Int
+  and rd_Monad_2 : Monad (Λa₂. Int → Int × a₂) = i_Monad_0@Int
   in rd_Monad_0[1, bind]@(Λa. Int → Int × Int)
-       (rd_Monad_0[0, pure]@(Λa. Int → Int × Int) 1)
-       fun x : Int => rd_Monad_1[0, pure]@(Λa. Int → Int × a) (add x 1)
+       (rd_Monad_1[0, pure]@(Λa₂. Int → Int × Int) 1)
+       fun x : Int => rd_Monad_2[0, pure]@(Λa₂. Int → Int × a₂) (add x 1)
        42
 ;; == Runtime ==
 (load "runtime.lisp")
@@ -105,5 +106,3 @@ let main : Int × Int =
              1))
          (|fn-20| (%clos (function |fn-28|) 1)))
      (|fn-27| |app-19| |fn-20| 42)))
-
-(format t "~S~%" |main-16|)

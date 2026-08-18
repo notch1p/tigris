@@ -1,6 +1,7 @@
 import Tigris.TCNF.interpreter.app
 import Tigris.table
 open IO TCNF.Interpreter.App Std PrettyPrint
+open Lean.IO (throwServerError)
 
 abbrev REPLState := Option
                   $ Task
@@ -80,9 +81,18 @@ def main (fs : List String) : IO Unit := do
       try
         let sbuf := strip buf
         let (vs, p, ctx) <- parsePred sbuf es.PE
+        -- freshen the query's binders as well. (mkSkol needs ids)
+        let ((vs, p, ctx), (n', _)) :=
+          runST fun _ => (do
+            let vs' <- vs.mapM freshenTV
+            let args' <- p.args.mapM freshenT
+            let ctx' <- ctx.mapM freshenP
+            return (vs', {p with args := args'}, ctx'))
+          |>.run (es.E.nextTV, ∅)
+        esRef.set {es with E := {es.E with nextTV := n'}}
         if vs.isEmpty then
           let (.Ascribe (.Var inst) _) <- Resolve.resolvePred es.E p |> IO.ofExcept
-                                         | throwServerError "#synth: impossible"
+                                        | throwServerError "#synth: impossible"
           println! inst
         else
           -- mirror inferInstanceDecl

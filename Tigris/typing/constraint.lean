@@ -3,6 +3,7 @@ import Tigris.typing.tsyntax
 import Tigris.typing.exhaust
 import Tigris.typing.scc
 import Tigris.typing.kinds
+import Tigris.typing.freshen
 
 namespace ConstraintInfer open MLType Rewritable Pattern Expr
 
@@ -32,7 +33,7 @@ variable {σ}
 
 @[inline] def fresh : InferC σ MLType := do
   let n <- modifyGet fun ctx@{next,..} => (next, {ctx with next := next + 1})
-  s!"?m.{n}" |> pure ∘ TVar ∘ .mkTV
+  pure $ TVar (.mv n)
 
 @[inline] def freshEvidence (p : Pred) : InferC σ Nat := do
   let n <- modifyGet fun st =>
@@ -42,8 +43,7 @@ variable {σ}
 def elimForall : MLType -> InferC σ MLType
   | .TSch (.Forall vs ps t) => do
     let sub <- vs.foldlM (.insert · · <$> fresh) ∅
-    for p in ps do
-      () <$ freshEvidence (apply sub p)
+    for p in ps do () <$ freshEvidence (apply sub p)
     return apply sub t
   | t => return t
 
@@ -62,8 +62,19 @@ def elimForall : MLType -> InferC σ MLType
 
 private def bindTV (a : TV) (t : MLType) : Except TypingError Subst :=
   if t == TVar a then pure ∅
-  else if a ∈ fv t then throw (.Duplicates a t)
-  else pure {(a, t)}
+  else
+    match a with
+    | .sk _ =>
+      -- rigid: only a bindable metavariable on the other side may absorb it
+      match t with
+      | .TVar w =>
+        match w with
+        | .sk _ => throw (.NoUnify (TVar a) t)
+        | _ => pure ({(w, TVar a)}) -- fv (TVar a) is erased for skolems: no occurs
+      | _ => throw (.NoUnify (TVar a) t)
+    | _ =>
+      if a ∈ fv t then throw (.Duplicates a t)
+      else pure {(a, t)}
 
 private partial def unifyGo (ke : KindEnv) : MLType -> MLType -> Except TypingError (Subst × KindEnv)
   | t₁ ×'' t₂, u₁ ×'' u₂
@@ -115,8 +126,6 @@ private partial def unifyGo (ke : KindEnv) : MLType -> MLType -> Except TypingEr
           as₁.foldrM (init := ([] : List TV)) fun a acc =>
             match a with
             | TVar w => pure (w :: acc)
-            | TCon h => if h.startsWith "?sk." then pure (.mkTV (h.drop 4 |>.toString) :: acc)
-                        else throw (.NoUnify t₁ t₂)
             | _ => throw (.NoUnify t₁ t₂)
         let body := binders.foldr (init := t₂) fun b acc => .TyLam b acc
         (·, ke) <$> bindTV v body
@@ -158,7 +167,7 @@ def unifyHead (ke : KindEnv) (goalArgs : List MLType) (instArgs : List MLType) :
 /-- refines 1 pred if there exists exactly 1 matching instance.
 Returns on multiple matches to solveAll which, in this case,
 does nothing and let SysF elab paas handles it. -/
-def refineStep (env : Env) (ke : KindEnv) (p : Pred) : Except TypingError (Subst × KindEnv × List Pred) := do
+def refineStep (env : Env) (ke : KindEnv) (n : Nat) (p : Pred) : Except TypingError (Subst × KindEnv × List Pred) := do
   let some insts := env.instInfo[p.cls]?
     | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
 
@@ -166,7 +175,7 @@ def refineStep (env : Env) (ke : KindEnv) (p : Pred) : Except TypingError (Subst
 
     let qs := info.args.foldl (· ∪ fv ·) ∅ ∪ info.ctx.foldl (· ∪ fvP ·) ∅
     let (ren, _) : Subst × Nat := qs.foldl (init := (∅, 0)) fun (s, i) q =>
-      (s.insert q $ .TVar $ .mkTV s!"?inst.{info.iname}.{i}", i + 1)
+      (s.insert q $ .TVar $ .inst n i, i + 1)
 
     match unifyHead ke p.args (info.args.map (apply ren)) with
     | .error _ => return none
@@ -233,18 +242,18 @@ we must set a maximum recursion depth though cycles surpassing this depth
 still get handled by SysF elab so correctness unaffected. Besides, its likely
 not going to loop for most programs (must satisfy (1) first).
 -/
-partial def solveAll (env : Env) (ke : KindEnv) (resultFV : Subst -> Std.TreeSet TV) (cs : List Constraint)
-  : Except TypingError (Subst × KindEnv × List (Nat × Pred)) :=
+partial def solveAll (env : Env) (ke : KindEnv) (n₀ : Nat) (resultFV : Subst -> Std.TreeSet TV) (cs : List Constraint)
+  : Except TypingError (Subst × KindEnv × Nat × List (Nat × Pred)) :=
   let (sub₀, eqs₀, pending₀) := cs.foldr (init := (∅, [], []))
     fun | .eq t u  , (sub, eqs, pending) => (sub, (t, u) :: eqs, pending)
         | .pr eid p, (sub, eqs, pending) => (sub, eqs, (eid, p) :: pending)
-  go 64 sub₀ ke ∅ eqs₀ pending₀ []
+  go 64 sub₀ ke n₀ ∅ eqs₀ pending₀ []
 where
   shouldRefine (sub : Subst) (p : Pred) := p.args.foldl (· ∪ fv ·) ∅ |>.any (· ∈ resultFV sub)
 
-  go (fuel : Nat) (sub : Subst) (ke : KindEnv) (seen : Std.HashSet Pred)
+  go (fuel : Nat) (sub : Subst) (ke : KindEnv) (n : Nat) (seen : Std.HashSet Pred)
      (eqs : List (MLType × MLType)) (queue : List (Nat × Pred)) (done : List (Nat × Pred))
-    : Except TypingError (Subst × KindEnv × List (Nat × Pred)) :=
+    : Except TypingError (Subst × KindEnv × Nat × List (Nat × Pred)) :=
     let (sub, ke, eqs) := eqs.foldl (init := (sub, ke, [])) fun (sub, ke, rest) (t, u) =>
       match unify ke (apply sub t) (apply sub u) with
       | .ok (s, ke) => (s ∪' sub, ke, rest)
@@ -252,7 +261,7 @@ where
     match queue with
     | [] =>
       match eqs with
-      | [] => return (sub, ke, done.map fun (eid, q) => (eid, applyP sub q))
+      | [] => return (sub, ke, n, done.map fun (eid, q) => (eid, applyP sub q))
       | (t, u) :: _ =>
         -- re-run to recover the true failure (a kind error would otherwise
         -- be masked by the retry loop deferring every failure)
@@ -262,22 +271,14 @@ where
     | (eid, p) :: rest =>
       let p := applyP sub p
       if p ∈ seen || fuel == 0 || eqs.isEmpty || shouldRefine sub p
-      then go fuel sub ke seen eqs rest ((eid, p) :: done)
-      else match refineStep env ke p with
-        | .error _ => go fuel sub ke (seen.insert p) eqs rest ((eid, p) :: done)
+      then go fuel sub ke n seen eqs rest ((eid, p) :: done)
+      else match refineStep env ke n p with
+        | .error _ => go fuel sub ke n (seen.insert p) eqs rest ((eid, p) :: done)
         | .ok (sub', ke, ctx) =>
           let sub := sub' ∪' sub
-          go (fuel - 1) sub ke (seen.insert p) eqs (rest ++ ctx.map fun q => (0, q)) ((eid, applyP sub' p) :: done)
+          go (fuel - 1) sub ke (n + 1) (seen.insert p) eqs (rest ++ ctx.map (0, ·)) ((eid, applyP sub' p) :: done)
 
-@[inline] def mkSkol v := MLType.TCon $ "?sk." ++ TV.toStr v
-
-partial def sk? : MLType -> Bool
-  | .TCon h => h.startsWith "?sk"
-  | a ->' b | a ×'' b => sk? a || sk? b
-  | .TApp h as => sk? h || as.any sk?
-  | .TyLam _ body => sk? body
-  | .TSch (.Forall _ _ t) => sk? t
-  | .TVar _ => false
+@[inline] def mkSkol := MLType.TVar ∘ .sk ∘ TV.id
 
 def skolemizeTSch : MLType -> Except TypingError MLType
   | .TSch (.Forall tvs _ t) =>
@@ -371,11 +372,23 @@ require syntax we currently do not have. The rule (Fig. 8, pp 24) from that pape
 the parameter is bound with the raw domain σ (it may itself be a forall), which
 is what lets a rank-n argument instantiate at each use.
 Top-level foralls are skolemized rigid. See also Ascribe branch.
+
+Note: the judgement |-ₚ (t · σ) reads: t is (checked/inferred to)
+have a polytype σ. where the hole [·] ::= ==>     infer
+                                        | <==     check
+                                        | :       insensitive to either
+
+similarly |-ᵢ σ ==> ρ says σ instantiates to ρ (we only have this direction), as in
+
+tvᵢ ∈ tvs for i ∈ |tvs|
+-----------------------------  Inst1
+|-ᵢ ∀tvs, ρ ==> ρ[tvᵢ |-> τᵢ]
+
 -/
 partial def checkExpr (Γ : Env) (exp : MLType) (e : Expr)
   : InferC σ (TExpr × MLType × List Pred) := do
   match exp with
-  | .TSch (.Forall vs ps body) =>
+  | .TSch (.Forall vs ps body) => -- Also the Skol rule
     if ps.isEmpty then
       let sub := vs.foldl (fun s v => s.insert v (mkSkol v)) ∅
       checkExpr Γ (apply sub body) e
@@ -393,7 +406,7 @@ partial def checkExpr (Γ : Env) (exp : MLType) (e : Expr)
     | _, _ => do
       let (te, t, p) <- inferExpr Γ e
       let t <- elimForall t
-      addEq t exp
+      addEq t exp -- subsumption unify for rank-n
       return (.Ascribe te exp, exp, p)
 
 partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pred)
@@ -444,7 +457,7 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
         /- embedded forall instantiates at each use,
            and skolemizes a top forall before checking
 
-           Γ |- t ==> α -> α';  Γ |-ₚ u <== α;  |-ᵢ α' <= ρ
+           Γ |- t ==> α -> α';  Γ |-ₚ u <== α;  |-ᵢ α' : ρ
            ------------------------------------------------  App
            Γ |- t u : ρ
         -/
@@ -494,14 +507,15 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
           ------------------------- Annot
           Γ |- (t : α) : ρ
 
-          NOTE: parenthesized (x : α) is type ascription. not a judgement.
+          NOTE: parenthesized formula (x : α) is type ascription. not a judgement.
 
           The pr (prenex conversion, floating foralls) is
           the coercion counterpart of its deep skolemization (|-dsk)
           Since we don't do deep skolemization (lambda parameters bind their raw domain,
           other positions unify structurally), so nothing is floated and no pr is needed.
-          Dually the paper's skolem-escape check is unnecessary here: the skolems are
-          TCons with no fvs, so they cannot escape into a polytype (by construction).
+          Thus ∀a b, a -> b -> b ≅/≅ ∀a, a -> ∀b, b -> b, in our unification -- and no,
+          it's not because of value restriction since we don't have that either,
+          we just don't allow that isomorphism.
       -/
       let sub <- vs.foldlM (Std.TreeMap.insert · · <$> fresh) ∅
       for p in ps do () <$ freshEvidence (apply sub p)
@@ -514,11 +528,18 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
       let inst := apply sub t
 
       let (cs₀, rigid) <- get <&> fun st => (st.cst, st.rTV)
-      let {ke,..} <- get
-      match solveAll Γ ke (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs₀ with
+      let {ke, next,..} <- get
+      /-
+        Below the two solveAll implements the judgement |-ₛₕ σ <= σ'
+         |-ₛₕ ρ₁[sub*] <= ρ₂
+         -------------------------- Spec
+         |-ₛₕ ∀(dom sub)*, ρ₁ <= ρ₂
+      -/
+      match solveAll Γ ke next (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs₀
+      with
       | .error err => throw err
-      | .ok (sub, ke, _) =>
-        modify ({· with ke})
+      | .ok (sub, ke, next, _) =>
+        modify ({· with ke, next})
         if sub.any (fun tv rhs => tv ∈ rigid && rhs != MLType.TVar tv)
         then throw (.NoUnify teMono inst)
         else addEq teMono inst
@@ -526,10 +547,15 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
       ps.forM fun p => () <$ freshEvidence (apply sub p)
 
       let skTy <- skolemizeTSch sch
-      let {ke,..} <- get
-      match solveAll Γ ke (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs₀) with
+      let {ke, next,..} <- get
+      /-
+         tvs ∉ fv σ;  |-ₛₕ σ <= ρ
+         ------------------------ Skol
+         |-ₛₕ σ <= ∀ tvs. ρ
+      -/
+      match solveAll Γ ke next (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs₀) with
       | .error err => throw err
-      | .ok (_, ke, _) => (.Ascribe te sch, inst, preds) <$ modify ({· with ke})
+      | .ok (_, ke, next, _) => (.Ascribe te sch, inst, preds) <$ modify ({· with ke, next})
 
   | Ascribe e ty =>
     if containsTSch ty then do -- the TSch branch above keeps its wanted-pool structure
@@ -584,11 +610,11 @@ partial def inferGroup (Γ : Env) (binds : Array (String × Expr))
   let localCs := csAll.take (csAll.length - startCs)
   -- the complete fv set of the result types of each RHS.
   let view := fun s => fv $ apply s $ Array.seq2 (Prod.fst ∘ .snd ∘ .snd) tyRec tyNon
-  let {ke,..} <- get
-  match solveAll Γ ke view localCs with
+  let {ke, next,..} <- get
+  match solveAll Γ ke next view localCs with
   | .error err => throw err
-  | .ok (sub, ke, wants) =>
-    modify ({· with ke})
+  | .ok (sub, ke, next, wants) =>
+    modify ({· with ke, next})
     let predsFor evStart evEnd :=
       wants.foldr (init := []) fun (eid, p) acc =>
         if evStart <= eid && eid < evEnd
@@ -646,7 +672,14 @@ end ConstraintInfer
 
 open MLType ConstraintInfer Rewritable
 
-/-- elim all type abbreviation -/
+/--
+  elim all type abbreviation. Note that since unify unifies upto alpha-equiv,
+  eta-conversion is NOT equivalent in this implementation.
+  Consider abbrev Id a = a, a bare Id eta-expands to Λx, x and that won't unify
+  with other eta-equivalent forms. Since there is no type lambda in the syntax it should
+  be impossible to define a Functor Id instance. similarly, do abbrev SumInt = Sum Int
+  instead of eta-expanding it by hand.
+-/
 partial def expandExpr (E : Env) : Expr -> Expr
   | c@(.CI ..) | c@(.CS ..) | c@(.CB ..) | c@(.CUnit) | c@(.Var ..) => c
   | .App e₁ e₂ => .App (expandExpr E e₁) (expandExpr E e₂)
@@ -660,45 +693,38 @@ partial def expandExpr (E : Env) : Expr -> Expr
     .Match (aginst.map (expandExpr E)) (discr.map fun (ps, e) => (ps, expandExpr E e))
   | .Ascribe e ty => .Ascribe (expandExpr E e) (MLType.expandT (fun S => E.synTy[S]?) ty)
 
-def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Scheme × Logger) :=
-  match runEST fun _ => inferExpr Γ (expandExpr Γ e) |>.run {ke := KindEnv.ofEnv Γ} with
+
+def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Scheme × Logger × Nat) :=
+  match runInfer1 with
   | .error err => .error err
-  | .ok ((te, ty, preds), {log,cst,ke,..}) =>
-    match solveAll Γ ke (fun sub => fv (apply sub te)) cst with
+  | .ok ((te, ty, preds), {log,cst,ke,next,..}) =>
+    match solveAll Γ ke next (fun sub => fv (apply sub te)) cst with
     | .error err => .error err
-    | .ok (sub, _, wants) =>
+    | .ok (sub, _, next, wants) =>
       let te := apply sub te
       let ty := apply sub ty
       let ps := preds ++ wants.map (apply sub ∘ Prod.snd)
       let sch := generalize Γ ty ps
-      .ok (te, sch, log)
+      .ok (te, sch, log, next)
+where runInfer1 :=
+  runEST fun σ =>
+    (show InferC σ $ TExpr × MLType × List Pred from do
+      -- freshen parser binders to session mvs before inference
+      let st <- get
+      let (e', (n', _)) := runST fun _ => freshenE (expandExpr Γ e) |>.run (st.next, ∅)
+      set {st with next := n'}
+      inferExpr Γ e')
+    |>.run {ke := KindEnv.ofEnv Γ, next := Γ.nextTV}
 
 namespace Helper
 
-mutual
-partial def normHK : MLType -> MLType
-  | .TApp h args =>
-    let h' :=
-      match h with
-      | .TCon s => if s.isLowerInit then .TVar (.mkTV s) else .TCon s
-      | other => normHK other
-    MLType.mkApp h' (args.map normHK)
-  | .TCon s =>
-    if s.isLowerInit then .TVar (.mkTV s) else .TCon s
-  | .TyLam x body => .TyLam x (normHK body)
-  | a ->' b => normHK a ->' normHK b
-  | a ×'' b => normHK a ×'' normHK b
-  | t => t
-
-partial def normHKPred := Pred.mapArgs normHK
-end
-def methodScheme (cls : Symbol) (param : Array $ String × Kind) (mty : MLType) : Scheme :=
-  let binders := param.foldr (List.cons ∘ TV.mkTV ∘ Prod.fst) []
+def methodScheme (cls : Symbol) (param : Array $ TV × Kind) (mty : MLType) : Scheme :=
+  let binders := param.foldr (List.cons ∘ Prod.fst) []
   let args    := binders.map TVar
-  .Forall binders [⟨cls, args⟩] (normHK mty)
+  .Forall binders [⟨cls, args⟩] mty
 
 private def instQuantifiers (headArgs : List MLType) (ctx : List Pred) : List TV :=
-  let (headArgs, ctx) := (headArgs.map normHK, ctx.map normHKPred)
+  let (headArgs, ctx) := (headArgs, ctx)
   fv headArgs ∪ fv ctx |>.toList
 
 private def orderInstanceMethods
@@ -712,7 +738,7 @@ private def orderInstanceMethods
     else throw $ .Undefined s!"missing method {m.mname} for instance of {ci.cname}\n"
 
 private def paramSubst (ci : ClassInfo) (headArgs : List MLType) : Subst :=
-  let binders := ci.params.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []
+  let binders := ci.params.foldr (List.cons ∘ Prod.fst) []
   List.foldl2 .insert ∅ binders headArgs
 
 private def buildInstProvider
@@ -729,7 +755,7 @@ open Helper
 in @[inline] private def methodSchemes (ci : ClassInfo) : Array (String × Scheme) :=
   ci.methods.map fun m => (m.mname, methodScheme ci.cname ci.params m.mty)
 in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat)
-  : InstanceDecl -> Except TypingError (String × Scheme × TExpr × Logger × InstanceInfo)
+  : InstanceDecl -> Except TypingError (String × Scheme × TExpr × Logger × InstanceInfo × Nat)
   | {args, methods, ctxPreds,..} => do
     let iname := s!"i_{ci.cname}_{existingCount}"
     let ordered <- orderInstanceMethods ci methods
@@ -737,7 +763,7 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
     let rigidSub : Subst := rigidTVs.foldl (fun s v => s.insert v (mkSkol v)) ∅
     let argsSk := apply rigidSub args
     let rawBody := buildInstProvider ci ordered argsSk
-    let (typedBody, inferredSch, l) <- runInferConstraintT rawBody E
+    let (typedBody, inferredSch, l, n') <- runInferConstraintT rawBody E
     let (.Forall _ _ infRes) := inferredSch
     let wantHeadSk := MLType.mkApp (TCon ci.cname) argsSk
     let ke := KindEnv.ofEnv E
@@ -754,18 +780,39 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
       if detectedSpecialized then
         throw $ .NoSynthesize s!"{Pred.mk ci.cname args}: body is too specific. Supply a specialized scheme instead.\n"
 
-      let declaredCtx := apply sub ctxPreds |>.map normHKPred
+      let declaredCtx := apply sub ctxPreds
       let qs := instQuantifiers args declaredCtx
       let bodyTy := MLType.mkApp (TCon ci.cname) args
-      let finalSch := .Forall qs declaredCtx (normHK bodyTy)
-      let typedBody := typedBody |>.mapTypes (normHK ∘ unSkolem) (unSkolemS)
-      return ⟨iname, finalSch, typedBody, l, iname, ci.cname, args, ctxPreds⟩
+      let finalSch := .Forall qs declaredCtx bodyTy
+      let typedBody := typedBody |>.mapTypes unSkolem unSkolemS
+      return ⟨iname, finalSch, typedBody, l, ⟨iname, ci.cname, args, ctxPreds⟩, n'⟩
+
+/-- kind inference based on the usage in tys.
+
+The parser generates fresh kind metavariables for tvs, user-supplied kind annotation
+constrains them; metavariables default to Type. -/
+private def inferParamKinds (E : Env) (param : Array (TV × Kind)) (tys : List MLType)
+  : Except TypingError (Array (TV × Kind)) := do
+  let ke := param.foldl (init := KindEnv.ofEnv E) fun ke (tv, k) =>
+    {ke with tv := ke.tv.insert tv k}
+  -- the parser and kindOf both produces kind mvs; keep kindOf's fresh
+  -- ones clear of the declared kvars so kind unification never conflates them
+  let ke := {ke with nxt := param.foldl (fun m (_, k) => (Kind.fv k).foldl max m) ke.nxt + 1}
+
+  let ke <- tys.foldlM (init := ke) fun ke t => kindOf ke t <&> Prod.fst
+  return param.map fun (n, k) => (n, Kind.defaultKV (Kind.apply ke.ks k))
 
 def inferToplevelC
   (b : Array TopDecl) (E : Env)
   : Except TypingError (Array TopDeclT × Env × Logger) :=
   b.foldlM (init := (#[], E, "")) fun (acc, E, L) b => do
     let syn := (E.synTy[·]?)
+    -- freshen parser binders to session mvs (per-decl name map, session-wide
+    -- counter stream)
+    let (b, n') :=
+      match runST fun _ => freshenTopDecl b |>.run (E.nextTV, ∅) with
+      | (b, (n', _)) => (b, n')
+    let E := {E with nextTV := n'}
     match b with
     | .extBind s n sch =>
       let sch := MLType.expandS syn sch
@@ -774,32 +821,40 @@ def inferToplevelC
       pure (acc.push (.idBind #[(s, sch, .Var n sch.body)]), {E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let exprLet := Expr.Let group .CUnit
-      let (.Let bs _ _, _, l) <- runInferConstraintT exprLet E | throw (.Impossible "unexpected shape after let inference\n")
+      let (.Let bs _ _, _, l, n') <- runInferConstraintT exprLet E | throw (.Impossible "unexpected shape after let inference\n")
       let (E, bs) := bs.foldl
         (fun (E, bs) (n, sc, te) =>
           ( {E with E := E.E.insert n sc}
           , bs.push (n, sc, te)))
-        (E, #[])
+        ({E with nextTV := n'}, #[])
       return (acc.push (.idBind bs), E, L ++ l)
     | .tyBind ty@{ctors, tycon, param, cls?, rhs} =>
       match rhs with
       | some rhs => -- synonym
-        let tvs := param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []
+        let tvs := param.foldr (List.cons ∘ Prod.fst) []
+        -- infer un-annotated param kinds from the RHS (kvar defaults, zonked)
+        let param <- inferParamKinds E param [rhs]
+        let ty := {ty with param}
         -- also register the declared kind so `KindEnv.ofEnv` sees it
         let E := {E with tyDecl := E.tyDecl.insert tycon ty, synTy := E.synTy.insert tycon (tvs, rhs)}
-        () <$ kindOf (KindEnv.ofEnv E) rhs
         return (acc.push (.tyBind ty), E, L)
       | none =>
         let ty := {ty with ctors := ctors.map fun (cname, fields, ar) =>
                     (cname, fields.map fun (f, t) => (f, MLType.expandT syn t), ar)}
+        -- infer un-annotated param kinds from the field types; the own tycon
+        -- is pre-registered with the provisional (kvar) kinds so recursive
+        -- fields like `T f` are checked against the declaration itself
+        let E' := {E with tyDecl := E.tyDecl.insert tycon ty}
+        let param <- inferParamKinds E' param (ty.ctors.toList.flatMap fun (_, fields, _) => fields.map Prod.snd)
+        let ty := {ty with param}
         let E' := {E with tyDecl := E.tyDecl.insert tycon ty}
         for (cname, fields, _) in ty.ctors do
           for (_, t) in fields do if badTSch t then throw .NoRankN
-          let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
+          let s := ctorScheme tycon (param.foldr (List.cons ∘ Prod.fst) []) fields
           () <$ kindOf (KindEnv.ofEnv E') s.body
         let (acc, E) :=
-          ctors.foldl (init := (acc, E)) fun (acc, {E, tyDecl, clsInfo, instInfo, synTy, ..}) (cname, fields, _) =>
-            let s := ctorScheme tycon (param.foldr (List.cons ∘ .mkTV ∘ Prod.fst) []) fields
+          ctors.foldl (init := (acc, E)) fun (acc, {E, tyDecl, clsInfo, instInfo, synTy, nextTV, ..}) (cname, fields, _) =>
+            let s := ctorScheme tycon (param.foldr (List.cons ∘ Prod.fst) []) fields
             if h : cls? ∧ ctors.size ≠ 0 then
               let methods : Array MethodInfo := Prod.fst $ ctors[0].snd.fst.foldl (init := (#[], 0))
                   fun (a, i) (mname, mty) =>
@@ -807,19 +862,20 @@ def inferToplevelC
               let cls := ⟨tycon, cname, param, methods⟩
               let E := methodSchemes cls |>.foldl (fun E (n, sch) => E.insert n sch) E
               ( acc
-              , ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo.insert tycon cls, instInfo, synTy⟩)
-            else (acc, ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo, synTy⟩)
+              , ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo.insert tycon cls, instInfo, synTy, nextTV⟩)
+            else (acc, ⟨E.insert cname s, tyDecl.insert tycon ty, clsInfo, instInfo, synTy, nextTV⟩)
         return (acc.push (.tyBind ty), E, L)
     | .patBind (pat, expr) => do
-      let (e, sch@(.Forall _ ps te), l₁) <- runInferConstraintT expr E
+      let (e, sch@(.Forall _ ps te), l₁, n') <- runInferConstraintT expr E
       () <$ validateNoRankN sch
       let l :=
         if !ps.isEmpty then
           Logging.warn
             s!"pattern binding does not support addition of constraints (it is dropped.)\n"
         else ""
-      let ((E, b), {log := l₂, cst, ke,..}) <- runEST fun _ => inferPattern E te pat |>.run {ke := KindEnv.ofEnv E}
-      let (subst, _, _) <- solveAll E ke (fun sub => fv (apply sub e)) cst
+      let ((E, b), {log := l₂, cst, ke, next,..}) <- runEST fun _ => inferPattern E te pat |>.run {ke := KindEnv.ofEnv E, next := n'}
+      let (subst, _, next, _) <- solveAll E ke next (fun sub => fv (apply sub e)) cst
+      let E := {apply subst E with nextTV := next}
       let E := apply subst E
       let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]
       let l₃ :=
@@ -836,11 +892,11 @@ def inferToplevelC
       let (some ci) := E.clsInfo[inst.cname]?
         | throw (.Undefined inst.cname)
       let existing := E.instInfo.getD ci.cname #[]
-      let (iname, sch, te, l, info) <- inferInstanceDecl E ci existing.size inst
+      let (iname, sch, te, l, info, n') <- inferInstanceDecl E ci existing.size inst
       let instInfo := E.instInfo.alter ci.cname $ some ∘
         fun
         | some arr => arr.push info
         | none => #[info]
       return ( acc.push $ .idBind #[(iname, sch, te)]
-             , {E with E := E.E.insert iname sch, instInfo}
+             , {E with E := E.E.insert iname sch, instInfo, nextTV := n'}
              , L ++ l)

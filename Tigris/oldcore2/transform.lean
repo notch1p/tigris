@@ -140,7 +140,7 @@ end Helper
 
 
 open Function (uncurry) in
-open Helper in
+open IR.Helper in
 mutual
 partial def lowerNonRecBinds
   (defs : Subarray (String × TExpr)) (ρ : Env) (ctors : Std.HashMap String Nat)
@@ -182,8 +182,8 @@ partial def lowerCtorApp
       pure (.letVal out lamV cont)
   else -- should get blocked by typechecker, unreachable
     lowerE
-      (args.foldl (init := TExpr.Var cname (MLType.TVar ⟨"?"⟩))
-      (fun f a => TExpr.App f a (MLType.TVar ⟨"?"⟩)))
+      (args.foldl (init := TExpr.Var cname (MLType.TVar (.named "?")))
+      (fun f a => TExpr.App f a (MLType.TVar (.named "?"))))
       ρ ctors k
 
 partial def lowerFunApp

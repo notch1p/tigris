@@ -4,7 +4,7 @@ let i_C_0 : C Int = C@Int fun x : Int => x
 
 let i_D_0 : D Int = D@Int fun x : Int => x
 
-let i_C_1 : ∀a[C a, D a], C (Box a) =
+let i_C_1 : ∀a [C a, D a], C (Box a) =
   Λ a.
     fun d_D_1 : D a =>
       C@(Box a)
@@ -12,7 +12,7 @@ let i_C_1 : ∀a[C a, D a], C (Box a) =
           match ?x₀ with
           | Box x => d_D_1[0, d]@a x
 
-let i_D_1 : ∀a[C a, D a], D (Box a) =
+let i_D_1 : ∀a [C a, D a], D (Box a) =
   Λ a.
     fun d_C_0 : C a =>
       D@(Box a)
@@ -1196,5 +1196,3 @@ let main : Int =
          (|app-112| (gapply1 |app-111| |app-110|))
          (|con-114| 1))
      (gapply1 |app-112| |con-114|)))
-
-(format t "~S~%" |main-26|)

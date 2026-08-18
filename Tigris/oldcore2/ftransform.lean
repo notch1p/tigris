@@ -461,8 +461,8 @@ partial def lowerCtorApp
       pure (.letVal out lamV cont)
   else -- should get blocked by typechecker, unreachable
     lowerF
-      (args.foldl (init := FExpr.Var cname (MLType.TVar ⟨"?"⟩))
-      (fun f a => FExpr.App f a (MLType.TVar ⟨"?"⟩)))
+      (args.foldl (init := FExpr.Var cname (MLType.TVar $ .named "?"))
+      (fun f a => FExpr.App f a (MLType.TVar $ .named "?")))
       ρ ctors k
 
 /-- Collapse argument types from a (possibly polymorphic) function type. -/
@@ -509,7 +509,7 @@ private partial def recordParamShapes (params : Array String) (paramTys : Array 
 partial def lowerRecFun
   (fid : Name) (selfN : String) (params : Array String) (core : FExpr) (ρ : Env)
   (ctors : Std.HashMap String Nat)
-  (fnTy : MLType := .TVar ⟨"?"⟩)
+  (fnTy : MLType := .TVar $ .named "?")
   : M σ LFun := do
   let ρ := ρ.insert selfN fid
   -- The function value itself is a closure after CC
@@ -536,7 +536,7 @@ partial def lowerRecFun
 partial def lowerNonRecFun
   (fid : Name) (params : Array String) (core : FExpr) (ρ : Env)
   (ctors : Std.HashMap String Nat)
-  (fnTy : MLType := .TVar ⟨"?"⟩)
+  (fnTy : MLType := .TVar $ .named "?")
   : M σ LFun := do
   setShape fid (.ctor "𝐂" 2)
   recordParamShapes params (peelArgTys fnTy)

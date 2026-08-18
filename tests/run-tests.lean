@@ -32,11 +32,67 @@ def compileCases : List String :=
   , "hkt-dict-parametricity", "hkt-eager-specialize"
   , "poly-ref", "poly-ref-io", "poly-ref-io-safe"]
 
-def normalizeMsg :=
-  String.Slice.foldl
-    (fun a c => if c.isWhitespace then a.push ' ' else a.push c)
-    ""
+section open String.Slice.Pos
+def consecutive {s : String.Slice} (p : s.Pos) : s.Pos :=
+  if h : p.IsAtEnd then p
+  else
+     if p.get h |>.isWhitespace then consecutive $ p.next h
+     else p
+termination_by p
 
+theorem consecutive_le {s : String.Slice} {p : s.Pos}
+  : p <= @consecutive s p := by
+  by_cases h : p |>.IsAtEnd
+  case pos => simp[h, consecutive]
+  next =>
+    by_cases h' : p |>.get h |>.isWhitespace
+    case neg => simp[h', consecutive]
+    next =>
+      have induct : p.next h <= consecutive (p.next h) := consecutive_le
+      have : consecutive p = consecutive (p.next h) := by simp [h, h', consecutive.eq_1 p]
+      exact le_trans le_next $ this ▸ induct
+termination_by p
+
+/- tabulate -/
+theorem consecutive_monotone {s : String.Slice} {p : s.Pos} {h : p ≠ s.endPos} {h' : p |>.get h |>.isWhitespace}
+  : consecutive p <= consecutive (p.next h) := by
+    unfold consecutive; simp[h, h']
+    by_cases h'' : p.next h = s.endPos
+    case pos => simp[h'']
+    next =>
+      by_cases h''' : p.next h |>.get h'' |>.isWhitespace
+      any_goals simp[h'', h''']
+      case pos =>
+        have := consecutive_le (p := p.next h)
+        have := consecutive_monotone (p := p.next h) (h' := h''')
+        have : p <= p.next h := le_next
+        grind
+      next => simp [h'', h''', consecutive]
+termination_by p
+
+/--
+  similar to | x :: y :: xs => ... recursive_call (y :: xs), awkward but to satisfy termination checking
+  normalizes consecutive blanks to just 1
+-/
+def normalizeMsg (s : String.Slice) : String.Slice := go s.startPos ""
+where go p acc :=
+  if h : p.IsAtEnd then acc else
+    if h' : p.get h |>.isWhitespace then
+      if h'' : p.next h |>.IsAtEnd then acc else
+        if h''' : p.next h |>.get h'' |>.isWhitespace then
+
+          have : p < consecutive ((p.next h).next h'') := by
+            have : p < p.next h := lt_next
+            have : p.next h <= consecutive (p.next h |>.next h'') :=
+              le_trans (consecutive_le (p := p.next h))
+                       (consecutive_monotone (p := p.next h) (h' := h'''))
+            grind
+
+          go (consecutive $ p.next h |>.next h'') (acc.push ' ')
+        else go (p.next h |>.next h'') $ acc.push ' ' |>.push (p.next h |>.get h'')
+    else go (p.next h) $ acc.push $ p.get h
+  termination_by p
+end
 open System.FilePath renaming mk -> fp, fileStem -> fn in
 def execCases : List (String × System.FilePath × String) :=
   [ (cases/"r1"            , r"(42 15 . 2)")
@@ -45,6 +101,7 @@ def execCases : List (String × System.FilePath × String) :=
   , (cases/"expr"          , r"260")
   , (cases/"let"           , r"(1 . T)")
   , (cases/"nested"        , r"1")
+  , (cases/"hkt-infer"     , r"#S(|c/Some| :|tag| 1 :|f0| 1)")
   , (examples/"runst"      , r"1")
   , (examples/"mutual"     , r"5")
   , (examples/"where"      , r"50")
@@ -61,10 +118,11 @@ where examples := fp "examples"
       name p   := fn p |>.getD p.toString
 in open execCases in
 def errorCases : List (String × System.FilePath × String) :=
-  [ (error/"inst", "Kind mismatch")
-  , (error/"juxta", "Kind mismatch")
+  [ (error/"inst"   , "Kind mismatch")
+  , (error/"juxta"  , "Kind mismatch")
   , (error/"overapp", "Kind mismatch")
-  , (error/"infer", "Can't unify") ]
+  , (error/"infer"  , "Can't unify")
+  , (error/"amb"    , "Ambiguous: HEq") ]
   |>.map fun (p, s) => (name p, p.addExtension "tig", s)
 where error := cases/fp "error"
 
@@ -76,6 +134,8 @@ def main (paths : List String) : IO UInt32 := do
   let println s := IO.println s *> stdout.flush
   let eprintln s := IO.eprintln s *> stdout.flush
 
+  let width := 15
+  let pad name := PrettyPrint.pad $ width - name.length
 
   println! "== compile =="
   waitAll =<< compileCases.mapM fun name =>
@@ -93,7 +153,7 @@ def main (paths : List String) : IO UInt32 := do
       | .ok _ =>
         fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", but got compiled"
       | .error e =>
-        if e.startsWith expected then pass.modify .succ *> println s!"  ok\t{name}\t\t{normalizeMsg e}"
+        if e.startsWith expected then pass.modify .succ *> println s!"  ok\t{name}{pad name}{normalizeMsg e}"
         else fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
 
   if <- hasSbcl then
@@ -109,7 +169,7 @@ def main (paths : List String) : IO UInt32 := do
             | .error e =>
               fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
             | .ok got =>
-              if got == expected then pass.modify .succ *> println s!"  ok\t{name}\t\t==> {got}"
+              if got == expected then pass.modify .succ *> println s!"  ok\t{name}{pad name}==> {got}"
               else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {normalizeMsg got}"
   else
     println! "== exec skipped (sbcl not found) =="

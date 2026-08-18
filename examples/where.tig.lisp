@@ -1,5 +1,29 @@
+;; == System F IR ==
+
+let (`on`) : Unit = ()
+
+let (^) : Unit = ()
+
+let rec ^ : Boxed Int → Boxed Int → Int =
+  fun ?x₀ : Boxed Int =>
+    fun ?x₁ : Boxed Int =>
+      match ?x₀,
+      ?x₁ with
+      | B x, B y => add x y
+and `on` : ∀α β γ, (β → β → γ) → (α → β) → α → α → γ =
+  Λ α β γ.
+    rec fun `on` : (β → β → γ) → (α → β) → α → α → γ =>
+      fun f : β → β → γ =>
+        fun g : α → β => fun x : α => fun y : α => f (g x) (g y)
+and boxedAdd : Int → Int → Int = `on`@Int@(Boxed Int)@Int ^ B@Int
+and main : Int = let x : Int = 20 and y : Int = 30 in boxedAdd 20 30
+;; == Runtime ==
+(load "runtime.lisp")
+
 ;; == Linked Lisp Source ==
 (load "ffi.lisp")
+
+;; == Common Lisp ==
 
 ; Prelude
 (declaim (optimize (speed 3) (safety 0) (debug 0)))

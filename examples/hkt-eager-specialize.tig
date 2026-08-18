@@ -1,6 +1,6 @@
 type Sum a b = Inl a | Inr b
 
-class Functor (f : Type -> Type) where
+class Functor f where
   fmap : forall a b, (a -> b) -> f a -> f b
 
 instance forall a, Functor (Sum a) where

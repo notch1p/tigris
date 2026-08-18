@@ -4,7 +4,7 @@ let id : ∀α, α → α = Λ α. fun x : α => x
 
 let run : (∀s, s → s) → Int = fun f : ∀s, s → s => f 1
 
-let main : Int = run id@?sk.s
+let main : Int = run id@?sk.1
 ;; == Runtime ==
 (load "runtime.lisp")
 
@@ -53,5 +53,3 @@ let main : Int = run id@?sk.s
 
 (defparameter |main-7|
   (|run-4| (%clos (function |id-2|) 1)))
-
-(format t "~S~%" |main-7|)

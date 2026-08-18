@@ -4,11 +4,8 @@ structure KindEnv where
   /-- declared tyctor's kind view -/
   tycon : String -> Option Kind
   /--
-    TVs get kind metavariables lazily as only session-unique ?m names are
-    memoized. ?inst.*, ?sk.TV and declaration binders are
-    reused for different variables across scopes, so memoizing them would
-    conflate unrelated constraints (a false conflict). The cost is that
-    cross-occurrence kind consistency for those names is not tracked.
+    TVs get kind metavariables lazily, memoized unconditionally, thanks
+    to the new, proper encoding of TV
   -/
   tv    : Std.TreeMap TV Kind := ∅
   ks    : KSubst := ∅
@@ -48,9 +45,14 @@ def kindUnify (ke : KindEnv) (k₁ k₂ : Kind) : Except MLType.TypingError Kind
     as it memoizes metavariables. -/
 def bindBinder (ke : KindEnv) (v : TV) : KindEnv × Kind :=
   let (ke, k) := freshKV ke
-  if v.tv? then ({ke with tv := ke.tv.insert v k}, k) else (ke, k)
+  ({ke with tv := ke.tv.insert v k}, k)
 
 end KindEnv
+
+def Kind.defaultKV : Kind -> Kind
+  | .kvar _ => .type
+  | .karr a b => .karr (defaultKV a) (defaultKV b)
+  | t => t
 
 /-- recover the kind of a type. Notably:
 - TApp constrains the head kind to a fresh arrow and checks the argument against its domain;
@@ -60,15 +62,11 @@ end KindEnv
 -/
 partial def ConstraintInfer.kindOf (ke : KindEnv) : MLType -> Except MLType.TypingError (KindEnv × Kind)
   | .TVar v =>
-    if v.tv? then
-      match ke.tv[v]? with
-      | some k => return (ke, k)
-      | none =>
-        let (ke, k) := KindEnv.freshKV ke
-        return ({ke with tv := ke.tv.insert v k}, k)
-    else
+    match ke.tv[v]? with
+    | some k => return (ke, k)
+    | none =>
       let (ke, k) := KindEnv.freshKV ke
-      return (ke, k)
+      return ({ke with tv := ke.tv.insert v k}, k)
   | .TCon h =>
     match ke.tycon h with
     | some k => return (ke, k)

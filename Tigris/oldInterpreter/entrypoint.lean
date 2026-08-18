@@ -126,7 +126,7 @@ def check1C (s : String.Slice) (E : Env := defaultE) : IO Unit :=
   | .ok e    =>
     match runInferConstraintT e E with
     | .error e' => println! toString e' ++ s!"AST: {reprStr e}"
-    | .ok    (te, s, l) => println!
+    | .ok    (te, s, l, _) => println!
       reprStr te ++ "\n" ++
       toString s ++ "\n" ++ l
 def check1C' (s : String.Slice) (E : Env := defaultE) : Option TExpr := do
@@ -174,20 +174,3 @@ where
      y :=
       w + 2
      z := 3; w := 4
-
-/-- error:
-Ambiguous: HEq ?m.6 Int: typeclass elaboration is stuck because of metavariable(s)
-  [?m.6]
-induced by a call to heq. Consider adding type ascriptions.
--/
-#guard_msgs in
-#eval MLType.checkFile $
-"
-class Eq a = {eq : a -> a -> Bool}
-class HEq a b = {heq : a -> b -> Bool}
-class HAdd a b c = {hadd : a -> b -> c}
-instance Eq Int = {eq x y = __eqInt x y}
-instance ∀a [Eq a], HEq a a = {heq = eq}
-instance HAdd Int Int Int = {hadd = (_ + _)}
-let f' = heq (hadd 2 3) 5
-"
