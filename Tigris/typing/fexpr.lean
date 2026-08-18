@@ -81,23 +81,24 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
   | .Prod' l r ty =>
     .Prod' (ty := ty) <$> elaborate Γsch scope blocked Γfull l <*> elaborate Γsch scope blocked Γfull r
   | .Cond c t e ty =>
-    .Cond (ty := ty)
-    <$> elaborate Γsch scope blocked Γfull c
-    <*> elaborate Γsch scope blocked Γfull t
-    <*> elaborate Γsch scope blocked Γfull e
-  | .Var x ty =>
-    if x ∈ blocked then return (.Var x ty)
+    .Cond (ty := ty) <$> elaborate Γsch scope blocked Γfull c
+                     <*> elaborate Γsch scope blocked Γfull t
+                     <*> elaborate Γsch scope blocked Γfull e
+  | .Var x tArgs ty =>
+    if x ∈ blocked then return .Var x ty
     else
       match Γsch[x]? with
-      | none => return (.Var x ty)
-      | some (.Forall qs ctx bodyTy) => do
-        let (tArgs, sub, instCtx) <- instantiateArgs qs ctx bodyTy ty
+      | none => return .Var x ty
+      | some (.Forall qs ctx _) => do
+        -- reuse the instantiation args. we simply rebuild the binder subst from them.
+        -- previously we solved args from unification. That has problem, see comment on TExpr.Var.
+        let sub : Subst := List.foldl2 Std.TreeMap.insert ∅ qs tArgs
+        let instCtx := apply sub ctx
         let method? : Option (ClassInfo × MethodInfo) :=
           Γfull.clsInfo.fold (init := none) fun acc _ ci =>
             match acc with
             | some _ => acc
-            | none =>
-              ci.methods.find? (·.mname == x) |>.map fun m => (ci, m)
+            | none => ci.methods.find? (·.mname == x) |>.map (ci, ·)
         match method? with
         | none =>
           let base := tArgs.foldl FExpr.TyApp (.Var x ty)
@@ -227,13 +228,13 @@ def runInferConstraintF (e : Expr) (Γ : Env)
   : Except TypingError (FExpr × Scheme × Logger) :=
   match runInferConstraintT e Γ with
   | .ok (te, sch, log, _) =>
-    match elaborate1 te sch Γ |>.run {ke := KindEnv.ofEnv Γ, nextTV := Γ.nextTV} with
+    match elaborate1 te sch Γ |>.run {ke := KindEnv.ofEnv Γ} with
     | .ok (fe, sch) st => return (fe, sch, log ++ st.log)
     | .error e _ => throw e
   | .error err => throw err
 
 def runInfer1F (e : TExpr) (sch : Scheme) (Γ : Env) : Except TypingError (FExpr × Scheme × Logger) :=
-  match elaborate1 e sch Γ |>.run {ke := KindEnv.ofEnv Γ, nextTV := Γ.nextTV} with
+  match elaborate1 e sch Γ |>.run {ke := KindEnv.ofEnv Γ} with
   | .error e _ => throw e
   | .ok (fe, sch) st => return (fe, sch, st.log)
 

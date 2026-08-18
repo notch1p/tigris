@@ -8,7 +8,7 @@ def applyTE : Subst -> TExpr -> TExpr
   | s, .CS v ty           => .CS v (apply s ty)
   | s, .CB b ty           => .CB b (apply s ty)
   | s, .CUnit ty          => .CUnit (apply s ty)
-  | s, .Var x ty          => .Var x (apply s ty)
+  | s, .Var x tArgs ty    => .Var x (apply s tArgs) (apply s ty)
   | s, .Fun p pt b ty     => .Fun p (apply s pt) (applyTE s b) (apply s ty)
   | s, .Fixcomb e ty      => .Fixcomb (applyTE s e) (apply s ty)
   | s, .Fix e ty          => .Fix (applyTE s e) (apply s ty)
@@ -36,10 +36,10 @@ def fvTE : TExpr -> Std.TreeSet TV
   | .CS _ ty
   | .CB _ ty
   | .CUnit ty
-  | .Var _ ty
   | .Fixcomb _ ty
   | .Fix _ ty
   | .Ascribe _ ty => fv ty
+  | .Var _ tArgs ty => fv ty ∪ fv tArgs
   | .Fun _ paramTy body ty => fv ty ∪ fv paramTy ∪ fvTE body
   | .App f a ty => fv ty ∪ fvTE f ∪ fvTE a
   | .Cond c t e ty => fv ty ∪ fvTE c ∪ fvTE t ∪ fvTE e
@@ -72,7 +72,7 @@ def mapTypes (f : MLType -> MLType) (g : Scheme -> Scheme := id) : TExpr -> TExp
   | .CS s ty              => .CS s (f ty)
   | .CB b ty              => .CB b (f ty)
   | .CUnit ty             => .CUnit (f ty)
-  | .Var x ty             => .Var x (f ty)
+  | .Var x tArgs ty       => .Var x (tArgs.map f) (f ty)
   | .Fun p pTy b ty       => .Fun p (f pTy) (mapTypes f g b) (f ty)
   | .Fixcomb e ty         => .Fixcomb (mapTypes f g e) (f ty)
   | .Fix e ty             => .Fix (mapTypes f g e) (f ty)

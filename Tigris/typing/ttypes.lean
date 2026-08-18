@@ -304,6 +304,53 @@ partial def unSkolemP (p : Pred) : Pred := p.mapArgs unSkolem
 partial def unSkolemS : Scheme -> Scheme
   | .Forall vs ps t => .Forall vs (ps.map unSkolemP) (unSkolem t)
 end
+
+/--
+  syntactic occurrence test, shadowing-aware. Unlike fv it does not erase
+  skolems, so the η side condition below is also sound for skolems.
+
+  termination: WF. typical: attach, then sizeOf_lt_of_mem like all of the
+  other examples in this project and I'm tired of that so don't bother.
+-/
+partial def occursT : TV -> MLType -> Bool
+  | a, TVar b => a == b
+  | _, TCon _ => false
+  | a, t₁ ->' t₂ | a, t₁ ×'' t₂ => occursT a t₁ || occursT a t₂
+  | a, TApp h as => occursT a h || as.any (occursT a)
+  | a, TyLam x body => a != x && occursT a body
+  | a, TSch (.Forall tvs ps t) =>
+    !(tvs.any (· == a)) && (ps.any (·.args.any (occursT a))) && occursT a t
+
+mutual
+/--
+  Compute a "η normal form" that only η-reduces if
+  Λaₙ, C a₁ ... aₙ where aₙ is the last arg (App C [..,aₙ])
+  at any depth. We think this is already pretty useful since
+  with this now unification/skolem equality is up to eta-equiv.
+-/
+partial def ηNF : MLType -> MLType
+  | TVar a => TVar a
+  | TCon c => TCon c
+  | t₁ ->' t₂ => ηNF t₁ ->' ηNF t₂
+  | t₁ ×'' t₂ => ηNF t₁ ×'' ηNF t₂
+  | TApp h as =>
+    mkApp (ηNF h) (as.map ηNF)
+  | TyLam a body =>
+    match ηNF body with
+    | TApp h as =>
+      match as.getLast? with
+      | some (TVar b) =>
+        if a == b && !occursT a h && !as.dropLast.any (occursT a)
+        then mkApp h as.dropLast
+        else TyLam a $ mkApp h as
+      | _ => TyLam a $ mkApp h as
+    | body => TyLam a body
+  | TSch sch => TSch $ ηNfS sch
+partial def ηNfS : Scheme -> Scheme
+  | .Forall tvs ps t => .Forall tvs (ps.map ηNfP) (ηNF t)
+partial def ηNfP (p : Pred) : Pred := p.mapArgs ηNF
+end
+
 def isRecRhs : Expr -> Bool
   | .Fix _ | .Fixcomb _ => true
   | _ => false

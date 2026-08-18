@@ -43,7 +43,6 @@ with @[computed_field]
 deriving Repr, Inhabited
 
 namespace SysF open MLType TExpr Rewritable
-open ConstraintInfer (unify)
 open Resolve (resolvePred)
 
 abbrev FEnv := Std.TreeMap String Scheme
@@ -64,8 +63,6 @@ structure FState where
   memo and places the synthesized dictionary bindings -/
   memoDepth : Nat := 0
   ke     : KindEnv := ∅
-  /-- counter for ?inst renames -/
-  nextTV : Nat := 0
 deriving Inhabited
 
 abbrev F := EStateM TypingError FState
@@ -98,45 +95,28 @@ namespace Helper
   | .TSch (.Forall _ _ t) => t
   | t => t
 
-/-- fresh counter for ?inst renames to prevent previously encountered clashing -/
-def αRename (qs : List TV) : F (Subst × List TV) := do
-  let n <- modifyGet fun st => (st.nextTV, {st with nextTV := st.nextTV + 1})
-  return qs.foldrIdx (init := (∅, [])) fun i q (sub, acc) =>
-    let q' := .inst n i
-    (sub.insert q (.TVar q'), q' :: acc)
-
-def instantiateArgs (qs : List TV) (ctx : List Pred) (schemeBody instTy : MLType)
-  : F (List MLType × Subst × List Pred) := do
-  if qs.isEmpty then return ([], ∅, ctx)
-  let (rn, qs) <- αRename qs
-  let schemeBody := apply rn schemeBody
-  let ctx := apply rn ctx
-
-  let ke <- get <&> (·.ke)
-  let (sub, ke) <- unify ke (monoOfTSch schemeBody) (monoOfTSch instTy)
-  modify fun st => {st with ke := ke}
-  return (qs.map (fun a => apply sub (TVar a)), sub, apply sub ctx)
-
 @[inline] def wrapTyLams (qs : List TV) (e : FExpr) : FExpr := qs.foldr .TyLam e
 @[inline] def mkApp (f a : FExpr) : FExpr :=
   -- decomposeArr peels a leading TSch and the arrow spine, so a rank-n head
   -- yields the codomain instead of the whole scheme
   .App f a $ Prod.snd $ decomposeArr f.getTy
 
-def eqSkolem : MLType -> MLType -> Bool
-  | .TVar (.sk n), .TVar (.mv m) | .TVar (.mv m), .TVar (.sk n) => n == m
-  | .TVar v, .TVar w => v == w
-  | .TApp h₁ as₁, .TApp h₂ as₂ =>
-    if eqSkolem h₁ h₂ then
-      List.all2 (fun ⟨t, _⟩ ⟨t', _⟩ => eqSkolem t t')
-      as₁.attach
-      as₂.attach
-    else false
-  | .TyLam x b₁, .TyLam y b₂ => x == y && eqSkolem b₁ b₂
-  | t₁ ->' t₂, u₁ ->' u₂ | t₁ ×'' t₂, u₁ ×'' u₂ => eqSkolem t₁ u₁ && eqSkolem t₂ u₂
-  | .TCon a, .TCon b => a == b
-  | _, _ => false
-termination_by t₁ t₂ => (t₁, t₂)
+def eqSkolem : MLType -> MLType -> Bool := go.on ηNF
+where
+  go : MLType -> MLType -> Bool
+    | .TVar (.sk n), .TVar (.mv m) | .TVar (.mv m), .TVar (.sk n) => n == m
+    | .TVar v, .TVar w => v == w
+    | .TApp h₁ as₁, .TApp h₂ as₂ =>
+      if go h₁ h₂ then
+        List.all2 (fun ⟨t, _⟩ ⟨t', _⟩ => go t t')
+          as₁.attach
+          as₂.attach
+      else false
+    | .TyLam x b₁, .TyLam y b₂ => x == y && go b₁ b₂
+    | t₁ ->' t₂, u₁ ->' u₂ | t₁ ×'' t₂, u₁ ×'' u₂ => go t₁ u₁ && go t₂ u₂
+    | .TCon a, .TCon b => a == b
+    | _, _ => false
+  termination_by t₁ t₂ => (t₁, t₂)
 
 def predEqSkolem (templ goal : Pred) : Bool :=
   templ.cls == goal.cls && List.all2 eqSkolem templ.args goal.args

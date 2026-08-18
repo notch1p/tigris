@@ -1,5 +1,5 @@
 import Tigris.codegen.cl
-
+import tests.cases
 open TCNF.CL
 
 @[extern "lean_mk_symlink"] opaque mk_symlink : @&String -> @&String -> IO Unit
@@ -21,16 +21,6 @@ def runSbcl (clText : String) : IO (Except String.Slice String.Slice) :=
         args := #["--script", tmp.toString] }
     if out.exitCode == 0 then return .ok out.stdout.trimAscii
     else return .error out.stderr.trimAscii
-
-def hasSbcl : IO Bool := do
-  try return (<- IO.Process.output { cmd := "sbcl", args := #["--version"] }).exitCode == 0
-  catch _ => return false
-
-def compileCases : List String :=
-  [ "fact", "list", "opt", "op-let", "struct"
-  , "typeclass4", "typeclass5", "typeclass6"
-  , "hkt-dict-parametricity", "hkt-eager-specialize"
-  , "poly-ref", "poly-ref-io", "poly-ref-io-safe"]
 
 section open String.Slice.Pos
 def consecutive {s : String.Slice} (p : s.Pos) : s.Pos :=
@@ -93,38 +83,6 @@ where go p acc :=
     else go (p.next h) $ acc.push $ p.get h
   termination_by p
 end
-open System.FilePath renaming mk -> fp, fileStem -> fn in
-def execCases : List (String × System.FilePath × String) :=
-  [ (cases/"r1"            , r"(42 15 . 2)")
-  , (cases/"tc"            , r"5050")
-  , (cases/"seq"           , r"6")
-  , (cases/"expr"          , r"260")
-  , (cases/"let"           , r"(1 . T)")
-  , (cases/"nested"        , r"1")
-  , (cases/"hkt-infer"     , r"#S(|c/Some| :|tag| 1 :|f0| 1)")
-  , (examples/"runst"      , r"1")
-  , (examples/"mutual"     , r"5")
-  , (examples/"where"      , r"50")
-  , (examples/"cont"       , r"42")
-  , (examples/"fun"        , r"(40 . 60)")
-  , (examples/"neg"        , r"-1")
-  , (examples/"diamond"    , r"1")
-  , (examples/"statem"     , r"(42 . 2)")
-  , (examples/"recency"    , r"(101 . 5)")
-  , (examples/"rankn"      , r"(1 . T)")]
-  |>.map fun (p, s) => (name p, p.addExtension "tig", s)
-where examples := fp "examples"
-      cases    := fp "tests" / "cases"
-      name p   := fn p |>.getD p.toString
-in open execCases in
-def errorCases : List (String × System.FilePath × String) :=
-  [ (error/"inst"   , "Kind mismatch")
-  , (error/"juxta"  , "Kind mismatch")
-  , (error/"overapp", "Kind mismatch")
-  , (error/"infer"  , "Can't unify")
-  , (error/"amb"    , "Ambiguous: HEq") ]
-  |>.map fun (p, s) => (name p, p.addExtension "tig", s)
-where error := cases/fp "error"
 
 open IO (mkRef)
 def main (paths : List String) : IO UInt32 := do
@@ -142,37 +100,44 @@ def main (paths : List String) : IO UInt32 := do
     .asTask $ compileFile s!"{execCases.examples}/{name}.tig" >>=
       fun        -- modify is atomic
       | .ok _ =>
-        pass.modify .succ *> println s!"  ok\t{name}"
+        pass.modify .succ *> println s!" OK {name}"
       | .error e =>
-        fail.modify .succ *> eprintln s!"  X\t{name}: {normalizeMsg e}"
+        fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
 
-  println! "== errors =="
+  println! "\n== errors =="
   waitAll =<< errorCases.mapM fun (name, path, expected) =>
     .asTask $ compileFile path >>=
       fun
       | .ok _ =>
-        fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", but got compiled"
+        fail.modify .succ *> eprintln s!"  X {name}: expected error beginning with \"{expected}\", but got compiled"
       | .error e =>
-        if e.startsWith expected then pass.modify .succ *> println s!"  ok\t{name}{pad name}{normalizeMsg e}"
-        else fail.modify .succ *> eprintln s!"  X\t{name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
+        if e.startsWith expected then pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e}"
+        else fail.modify .succ *> eprintln s!"  X {name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
 
-  if <- hasSbcl then
-    println! "== exec =="
-    waitAll =<< execCases.mapM fun (name, path, expected) =>
-      .asTask $ compileFile path >>=
-        fun
-        | .error e =>
-          fail.modify .succ *> eprintln s!"  X\t{name}: {normalizeMsg e}"
-        | .ok cl =>
-          runSbcl cl >>=
-            fun
-            | .error e =>
-              fail.modify .succ *> eprintln s!"  X\t{name}: {e}"
-            | .ok got =>
-              if got == expected then pass.modify .succ *> println s!"  ok\t{name}{pad name}==> {got}"
-              else fail.modify .succ *> eprintln s!"  X\t{name}: expected {expected}, got {normalizeMsg got}"
-  else
-    println! "== exec skipped (sbcl not found) =="
+  println! "\n== exec =="
+  waitAll =<< execCases.mapM fun (name, path, expected, _) =>
+    .asTask $ compileFile path >>=
+      fun
+      | .error e =>
+        fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
+      | .ok cl =>
+        runSbcl cl >>=
+          fun
+          | .error e =>
+            fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
+          | .ok got =>
+            if got == expected then pass.modify .succ *> println s!" OK {name}{pad name}==> {got}"
+            else fail.modify .succ *> eprintln s!"  X {name}: expected {expected}, got {normalizeMsg got}"
+
+  println! "\n== exec (Interpreter: evalCEK) =="
+  waitAll =<< execCases.mapM fun (name, path, _, v') =>
+    .asTask $ TCNF.Interpreter.checkFile path false >>=
+      fun v => do
+        if v == v' then
+          let prefixS := s!" OK {name}{pad name}==>"
+          pass.modify .succ *> println s!"{prefixS} {v.toFormat |>.pretty (column := prefixS.length + 1) (indent := prefixS.length + 1)}"
+        else
+          fail.modify .succ *> eprintln s!"X {name}: expected {v'}, got {v}"
 
   let pass <- pass.get
   let fail <- fail.get
@@ -188,6 +153,6 @@ def main (paths : List String) : IO UInt32 := do
   | _ => return 0
 
 where
-  waitAll    {α} : List (Task α) -> IO Unit := (List.forM · waitIgnore)
-  waitIgnore {α} : Task α -> IO Unit        := ignore ∘ IO.wait
-  ignore     {α} : BaseIO α -> IO Unit      := (· $> ())
+  waitAll    {α} : Array (Task α) -> IO Unit := Array.forM waitIgnore
+  waitIgnore {α} : Task α -> IO Unit         := ignore ∘ IO.wait
+  ignore     {α} : BaseIO α -> IO Unit       := (· $> ())

@@ -1,0 +1,10 @@
+abbrev Id a = a
+
+class Functor f where
+  fmap : forall a b, (a -> b) -> f a -> f b
+
+instance Functor Id where
+  fmap f = f
+
+let main =
+  fmap (1 + _) 2

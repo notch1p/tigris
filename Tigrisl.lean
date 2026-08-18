@@ -1,7 +1,7 @@
-import Tigris.oldcps.ctransform
+--import Tigris.oldcps.ctransform
 import Tigris.codegen.sbcl
 import Tigris.table
-import Tigris.oldcore2.ftransform
+--import Tigris.oldcore2.ftransform
 import runtime
 import Tigris.codegen.cl
 open Lean.IO (throwServerError)
@@ -112,50 +112,50 @@ def main (fp : List String) : IO Unit := do
           let (_, decls) <- Parsing.parseModuleIR s PE |>.toIO .userError
           if o.endsWith ".fasl" || fasl? then
             let temp <- withTempFile' fun h temp => do
-              if lambda? then
-                let (_, cc) <- do
-                  let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
-                  let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-                  let fni := PrettyPrint.Text.SString.bold i |>.render
-                  unless logger.isEmpty do println! "{fni}:\n{logger}"
-                  pure $ IR.toLamModuleF decls ctors
-                let mod := CPS.toCPS cc
+              --if lambda? then
+              --  let (_, cc) <- do
+              --    let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
+              --    let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+              --    let fni := PrettyPrint.Text.SString.bold i |>.render
+              --    unless logger.isEmpty do println! "{fni}:\n{logger}"
+              --    pure $ IR.toLamModuleF decls ctors
+              --  let mod := CPS.toCPS cc
 
-                h.putStrLn runtime
+              --  h.putStrLn runtime
 
-                objs.forM fun obj =>
-                  h.write =<< FS.readBinFile ⟨obj⟩
+              --  objs.forM fun obj =>
+              --    h.write =<< FS.readBinFile ⟨obj⟩
 
-                let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
-                h.putStrLn "; hoisted functions"
-                h.putStrLn funs
-                h.putStrLn "; entrypoint"
-                h.putStrLn main
-                h.putStrLn "; driver"
-                h.putStrLn drv
-                h.putStrLn "; script-entrypoint"
-                h.putStrLn "(|__start|)"
-                h.flush
-                pure temp
+              --  let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
+              --  h.putStrLn "; hoisted functions"
+              --  h.putStrLn funs
+              --  h.putStrLn "; entrypoint"
+              --  h.putStrLn main
+              --  h.putStrLn "; driver"
+              --  h.putStrLn drv
+              --  h.putStrLn "; script-entrypoint"
+              --  h.putStrLn "(|__start|)"
+              --  h.flush
+              --  pure temp
 
-              else -- TCNF
-                let cl <- do
-                  let res@(_, {tyDecl,..}, _) <- inferToplevelC decls MLType.defaultE' |> ofExcept
-                  let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-                  let fni := PrettyPrint.Text.SString.bold i |>.render
-                  unless logger.isEmpty do println! "{fni}:\n{logger}"
-                  let mod <- lowerIO! lowerModuleCCOpt decls ctors tyDecl
-                  compileToCL mod tyDecl (speed   := speed)
-                                         (safety  := safety)
-                                         (debug   := debug)
-                                         (entry?  := entry?)
-                                         (runtime := none)
+              --else -- TCNF
+              let cl <- do
+                let res@(_, {tyDecl,..}, _) <- inferToplevelC decls MLType.defaultE' |> ofExcept
+                let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+                let fni := PrettyPrint.Text.SString.bold i |>.render
+                unless logger.isEmpty do println! "{fni}:\n{logger}"
+                let mod <- lowerIO! lowerModuleCCOpt decls ctors tyDecl
+                compileToCL mod tyDecl (speed   := speed)
+                                       (safety  := safety)
+                                       (debug   := debug)
+                                       (entry?  := entry?)
+                                       (runtime := none)
 
-                h.putStrLn runtime
-                objs.forM fun obj => (h.write =<< FS.readBinFile ⟨obj⟩) *> h.flush
-                h.putStrLn $ cl.pretty 80
-                h.flush
-                pure temp
+              h.putStrLn runtime
+              objs.forM fun obj => (h.write =<< FS.readBinFile ⟨obj⟩) *> h.flush
+              h.putStrLn $ cl.pretty 80
+              h.flush
+              pure temp
 
             FS.writeBinFile ⟨o⟩ ∅
             let os <- toString <$> FS.realPath (System.FilePath.mk o)
@@ -167,104 +167,104 @@ def main (fp : List String) : IO Unit := do
 
           else FS.withFile ⟨o⟩ .write fun h => do
 
-            if lambda? || legacy? then
-              let (ir, cc) <- do
-                if legacy? then println "--legacy is broken, whatever."
-                let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
-                let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-                print logger
-                if sysf? then
-                  h.putStrLn ";; == System F IR ==\n"
-                  h.putStrLn $ Std.Format.pretty (width := 80) $ unexpandDeclsF decls
-                pure $ IR.toLamModuleF decls ctors
+            -- if lambda? || legacy? then
+            --   let (ir, cc) <- do
+            --     if legacy? then println "--legacy is broken, whatever."
+            --     let res <- inferToplevelC decls MLType.defaultE' |> ofExcept
+            --     let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+            --     print logger
+            --     if sysf? then
+            --       h.putStrLn ";; == System F IR ==\n"
+            --       h.putStrLn $ Std.Format.pretty (width := 80) $ unexpandDeclsF decls
+            --     pure $ IR.toLamModuleF decls ctors
 
-              let mod := CPS.toCPS cc
+            --   let mod := CPS.toCPS cc
 
-              if lam? then
-                h.putStrLn ";; == Optimized IR ==\n"
-                h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule ir
-              if lamcc? then
-                h.putStrLn ";; == Optimized IR CC'd ==\n"
-                h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule cc
-              if lamcps? then
-                h.putStrLn ";; == CPS IR ==\n"
-                h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
+            --   if lam? then
+            --     h.putStrLn ";; == Optimized IR ==\n"
+            --     h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule ir
+            --   if lamcc? then
+            --     h.putStrLn ";; == Optimized IR CC'd ==\n"
+            --     h.putStrLn $ Std.Format.pretty (width := 80) $ IR.fmtModule cc
+            --   if lamcps? then
+            --     h.putStrLn ";; == CPS IR ==\n"
+            --     h.putStrLn $ Std.Format.pretty (width := 80) $ CPS.fmtCModule mod
 
-              h.putStrLn ";; == Runtime =="
-              h.putStrLn "(load \"runtime.lisp\")\n"
+            --   h.putStrLn ";; == Runtime =="
+            --   h.putStrLn "(load \"runtime.lisp\")\n"
+
+            --   objs.forM fun obj =>
+            --     h.putStrLn ";; == Linked Lisp Source ==" *>
+            --     h.putStrLn s!"(load \"{obj}\")\n"
+
+            --   if cl? then
+            --     h.putStrLn ";; == Common Lisp ==\n"
+            --     let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
+--          --       h.putStrLn "; package-defs"
+--          --       h.putStrLn hd
+            --     h.putStrLn "; hoisted functions"
+            --     h.putStrLn funs
+            --     h.putStrLn "; entrypoint"
+            --     h.putStrLn main
+            --     h.putStrLn "; driver"
+            --     h.putStrLn drv
+
+            -- else -- TCNF
+            let res@(_, {tyDecl,..}, _) <- inferToplevelC decls MLType.defaultE' |> ofExcept
+            let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
+            let fni := PrettyPrint.Text.SString.bold i |>.render
+            unless logger.isEmpty do println! "{fni}:\n{logger}"
+
+            if not $ sysf? || tcnf? || tcnfcc? || tcnfopt? then
+              -- for RC reasons we branch here.
+              -- if no IR is requested (which is common),
+              -- there's a higher chance that module transformations be linear,
+              -- allowing destructive modifications thanks to Perceus GC
+              let clmod <- compileToCL (tyDecl := tyDecl) (speed := speed)
+                                       (safety := safety) (debug := debug) (entry? := entry?)
+                =<< lowerIO! lowerModuleCCOpt decls ctors tyDecl
 
               objs.forM fun obj =>
                 h.putStrLn ";; == Linked Lisp Source ==" *>
                 h.putStrLn s!"(load \"{obj}\")\n"
 
+              h.putStrLn $ clmod.pretty 80
+            else
+              let (preCC , s) <- lowerIO! lowerModule decls ctors tyDecl |>.run {}
+              let (postCC, s) <- lowerIO! TCNF.ccModule preCC |>.run s
+              let optmod      := TCNF.optimizeModule (TCNF.newtypeCtors tyDecl) postCC
+              let clmod       <- compileToCL optmod tyDecl speed safety debug entry?
+
+              if sysf? then
+                h.putStrLn ";; == System F IR ==\n"
+                h.putStrLn $ unexpandDeclsF decls |>.pretty 80
+
+              if tcnf? then
+                h.putStrLn ";; == TCNF IR ==\n"
+                h.putStrLn $ format preCC |>.pretty 80
+                h.flush
+
+              if tcnfcc? then
+                h.putStrLn ";; == TCNF CC'd ==\n"
+                h.putStrLn $ format postCC |>.pretty 80
+                h.flush
+
+              if tcnfopt? then
+                h.putStrLn ";; == TCNF CC & Optimize'd ==\n"
+                h.putStrLn $ format optmod |>.pretty 80
+                h.flush
+
               if cl? then
-                h.putStrLn ";; == Common Lisp ==\n"
-                let (_, funs, main, drv) := Codegen.CL.emitModule mod (addDriver := entry?)
---                h.putStrLn "; package-defs"
---                h.putStrLn hd
-                h.putStrLn "; hoisted functions"
-                h.putStrLn funs
-                h.putStrLn "; entrypoint"
-                h.putStrLn main
-                h.putStrLn "; driver"
-                h.putStrLn drv
-
-            else -- TCNF
-              let res@(_, {tyDecl,..}, _) <- inferToplevelC decls MLType.defaultE' |> ofExcept
-              let (decls, logger, ctors) <- inferToplevelF res |> ofExcept
-              let fni := PrettyPrint.Text.SString.bold i |>.render
-              unless logger.isEmpty do println! "{fni}:\n{logger}"
-
-              if not $ sysf? || tcnf? || tcnfcc? || tcnfopt? then
-                -- for RC reasons we branch here.
-                -- if no IR is requested (which is common),
-                -- there's a higher chance that module transformations be linear,
-                -- allowing destructive modifications thanks to Perceus GC
-                let clmod <- compileToCL (tyDecl := tyDecl) (speed := speed)
-                                         (safety := safety) (debug := debug) (entry? := entry?)
-                  =<< lowerIO! lowerModuleCCOpt decls ctors tyDecl
+                h.putStrLn ";; == Runtime =="
+                h.putStrLn "(load \"runtime.lisp\")\n"
 
                 objs.forM fun obj =>
                   h.putStrLn ";; == Linked Lisp Source ==" *>
-                  h.putStrLn s!"(load \"{obj}\")\n"
+                  h.putStrLn s!"(load \"{obj}\")\n" *>
 
+                h.putStrLn ";; == Common Lisp ==\n"
                 h.putStrLn $ clmod.pretty 80
-              else
-                let (preCC , s) <- lowerIO! lowerModule decls ctors tyDecl |>.run {}
-                let (postCC, s) <- lowerIO! TCNF.ccModule preCC |>.run s
-                let optmod      := TCNF.optimizeModule (TCNF.newtypeCtors tyDecl) postCC
-                let clmod       <- compileToCL optmod tyDecl speed safety debug entry?
-
-                if sysf? then
-                  h.putStrLn ";; == System F IR ==\n"
-                  h.putStrLn $ unexpandDeclsF decls |>.pretty 80
-
-                if tcnf? then
-                  h.putStrLn ";; == TCNF IR ==\n"
-                  h.putStrLn $ format preCC |>.pretty 80
-                  h.flush
-
-                if tcnfcc? then
-                  h.putStrLn ";; == TCNF CC'd ==\n"
-                  h.putStrLn $ format postCC |>.pretty 80
-                  h.flush
-
-                if tcnfopt? then
-                  h.putStrLn ";; == TCNF CC & Optimize'd ==\n"
-                  h.putStrLn $ format optmod |>.pretty 80
-                  h.flush
-
-                if cl? then
-                  h.putStrLn ";; == Runtime =="
-                  h.putStrLn "(load \"runtime.lisp\")\n"
-
-                  objs.forM fun obj =>
-                    h.putStrLn ";; == Linked Lisp Source ==" *>
-                    h.putStrLn s!"(load \"{obj}\")\n" *>
-
-                  h.putStrLn ";; == Common Lisp ==\n"
-                  h.putStrLn $ clmod.pretty 80
-                  h.flush
+                h.flush
 
         catch e => println! Logging.error (toString e)
     workseq.forM fun task => do if let .error e <- wait task then println! e

@@ -119,28 +119,31 @@ partial def loop (code : Code .postCC) (kont : Kont) : EvaluatorCEK Value := fun
   | .unreach _ => impossibleT! "unreachable code has been reached" kont $ s
 end
 open Format (fill group pretty nestD)
-def check (s : String) : LowerM Unit := do
+def check (s : String) (print? := true) : LowerM Value := do
   let (_, topdecl) <- Parsing.parseModuleIR s initState
   let stage₀@(_, E, _) <- inferToplevelC topdecl MLType.defaultE' |>.mapError toString |> EIO.ofExcept
   let (fdecls, _, ctors) <- inferToplevelF stage₀ |>.mapError toString |> EIO.ofExcept
   let {decls, main} <- lowerModuleCCOpt fdecls ctors E.tyDecl
   let mut globaldecls := ∅
   let mut topvals := ∅
+  let mut lastVal := Value.unit
   for d@{fvarId, arity, body, name,..} in decls.push main do
     if arity > 0 then
       if let some ty := E.E[name]? then
-        liftEIO $ println! template name "<fun>" $ Interpreter.normalizeSch ty
+        if print? then liftEIO $ println! template name "<fun>" $ Interpreter.normalizeSch ty
       globaldecls := globaldecls.insert fvarId d
       topvals := topvals.insert fvarId (.clos fvarId #[])
     else
       let st : IState := {globaldecls, topvals, locals := ∅, joins := ∅}
       let v <- loop body .halt |>.run st |>.adapt toString
       if let some ty := E.E[name]? then
-        liftEIO $ println! template name v $ Interpreter.normalizeSch ty
+        if print? then liftEIO $ println! template name v $ Interpreter.normalizeSch ty
       topvals := topvals.insert fvarId v
+      lastVal := v
+  return lastVal
 
-def checkFile (s : System.FilePath) : IO Unit := do
+def checkFile (s : System.FilePath) (print? := true) : IO Value := do
   let s <- IO.FS.readFile s
-  EIO.toIO .userError $ check s
+  EIO.toIO .userError $ check s print?
 
-def main (args : List String) := args.forA fun p => checkFile p
+def main (args : List String) := args.forA fun p => () <$ checkFile p

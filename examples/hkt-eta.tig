@@ -1,0 +1,14 @@
+abbrev Apply f a = f a
+
+class Functor f where
+  fmap : forall a b, (a -> b) -> f a -> f b
+
+type Maybe a = Some a | None
+
+instance Functor (Apply Maybe) where
+  fmap f
+  | Some x => Some (f x)
+  | None => None
+
+let main =
+  (fmap (1 + _) : Maybe Int -> Maybe Int) (Some 2)

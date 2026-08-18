@@ -103,7 +103,7 @@ def main (fs : List String) : IO Unit := do
           let sch := .Forall vs ctx headTy
           let some isch := es.E.E[inst]? | throwServerError "#synth: impossible"
           let _ <- ConstraintInfer.unify (KindEnv.ofEnv es.E) (.TSch sch) (.TSch isch) |> IO.ofExcept
-          let (fe, _) <- runInfer1F (.Var inst headTy) sch es.E |> IO.ofExcept
+          let (fe, _) <- runInfer1F (.Var inst (vs.map MLType.TVar) headTy) sch es.E |> IO.ofExcept
           println! format fe
       catch e => println! e
     else if buf.startsWith "#d" then

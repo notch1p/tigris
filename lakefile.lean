@@ -22,6 +22,7 @@ target ffi.o pkg : FilePath := do
   buildO oFile srcJob weakArgs #["-fPIC"] cc getLeanTrace
 
 lean_lib «Tigris»
+lean_lib «tests»
 --  precompileModules := true
 lean_lib «PP»
 --  moreLinkObjs := #[ffi.o]

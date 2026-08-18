@@ -9,13 +9,32 @@ inductive Value where
   | clos (codeptr : FVarId) : Array Value -> Value
 deriving Repr, Inhabited
 
-def Value.beq : Value -> Value -> Bool
+unsafe def Value.ptrEqV : Value -> Value -> Bool
+  | .int i, .int j => ptrEq i j || i == j   -- GMP Int. not always unboxed
+  | .bool b, bool b' => b == b'
+  | .str s, .str s' => ptrEq s s' || s == s'
+  | .unit, .unit => true
+  | .constr t as, .constr t' as' => (ptrEq t t' || t == t') && arrayEqv as as'
+  | .clos c _, .clos c' _ => ptrEq c c' || c == c'
+  | .pair p q, .pair p' q' => (ptrEq p p' || p.ptrEqV p') && (ptrEq q q' || q.ptrEqV q')
+  | _, _ => false
+where
+  arrayEqv xs ys := -- array can't be shared so do not ptrEq on array.
+    if h : xs.size = ys.size then go xs.size xs ys h Nat.le.refl
+    else false
+  go i xs ys (h : xs.size = ys.size) (h' : i <= xs.size) :=
+    match H : i with
+    | 0      => true
+    | i' + 1 => ptrEqV xs[i'] ys[i']
+
+@[implemented_by ptrEqV] def Value.beq : Value -> Value -> Bool
   | .int i, .int j => i == j
   | .bool b, .bool b' => b == b'
   | .str s, .str s' => s == s'
   | .unit, .unit => true
   | .constr t as, .constr t' as' => t == t' && arrayEqv as as'
-  | .clos c _, .clos c' _ => c == c'
+  | .clos c _, .clos c' _  => c == c'
+  | .pair p q, .pair p' q' => p.beq p' && q.beq q'
   | _, _ => false
 where
   arrayEqv xs ys :=

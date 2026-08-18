@@ -272,7 +272,40 @@ inductive TExpr where
   | CS     (s : String)                                 (ty : MLType)
   | CB     (b : Bool)                                   (ty : MLType)
   | CUnit                                               (ty : MLType)
-  | Var    (x : Symbol)                                 (ty : MLType)
+  /--
+    tArgs is instantiation args.
+    constraint solving already does instantiation so we cache it here
+    to avoid duplicating work in SysF elab. Besides, this fixes a bug, we decribe it below.
+
+    Recall the interleaving (which performs instantiation)
+    in constraint solving (see solveAll comment) to avoid blocking caused by early unification.
+    Meanwhile, SysF elab re-instantiate schemes (instantiateArg) to recover those args
+    through unification between the scheme body and the use type. -- It's only logical
+    to ask the same question: is this unification blocking valid programs -- consider examples/typeclass0.tig.
+    we simulate the instantiation of ctor Functor at (instance Functor Id) s : ∀f. ∀α β. (α -> β) -> f α -> f β:
+
+    1. α-conv: s[f |-> ?inst], a plain TVar alias instead of the real TyLam. Substituting it,
+       (instantiating α β are trivial, we retain their original naming for the sake of readability), we get
+       ... -> ?inst α -> ?inst β.
+    2. one-shot unification of s against use type, that is, the type of Functor (f |-> Id and β-conv)
+       (∀α β, (α -> β) -> (α === Id α) -> (β === Id β)) -> Functor (Λx, x).
+       Note that β-conv (mkAppT/applyT) ensures no redex in the above type.
+    3. left-to-right unification. that is, we'll first solve
+         ?inst α ~ α ==> Duplicated! -- ?inst α is a neutural term
+       obivously, if we solve Functor (Λx, x) ~ Functor ?inst _first_, we can solve the above function.
+
+    Note that we follow Lean's convention: GHC doesn't even allow partial application of type abbreviations.
+
+    It is obvious that this is the same kind of bug we tried to solve via interleaving/wanted-pool mechanism.
+    A naive (and careless) approach might be to switch a right-to-left arrow decomposition order but
+    that is only going to solve this program. -- Since we've computed those args in constraint solver,
+    the problem is no longer which gets solved first, but whether this reinstantiation is necessary at all:
+    Thus we cache it here and reuse the them in SysF elab.
+
+    Indeed, we've eliminated instantiateArgs/αRename, the counter, its seeding from SysF elab and most importantly,
+    no more unification in dict elab.
+  -/
+  | Var    (x : Symbol) (tArgs : List MLType)           (ty : MLType)
   | Fun    (param : Symbol) (paramTy : MLType)
            (body : TExpr) (ty : MLType)
   | Fixcomb (e : TExpr)                                 (ty : MLType)
@@ -394,7 +427,7 @@ deriving Repr
 
 def TExpr.getTy : TExpr -> MLType
   | .CI _ ty | .CS _ ty | .CB _ ty | .CUnit ty
-  | .Var _ ty
+  | .Var _ _ ty
   | .Fixcomb _ ty | .Fix _ ty
   | .App _ _ ty
   | .Cond _ _ _ ty | .Prod' _ _ ty

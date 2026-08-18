@@ -152,7 +152,7 @@ def unify (ke : KindEnv) : MLType -> MLType -> Except TypingError (Subst × Kind
     let (ke, k₁) <- kindOf ke t₁
     let (ke, k₂) <- kindOf ke t₂
     let ke <- KindEnv.kindUnify ke k₁ k₂
-    unifyGo ke t₁ t₂
+    unifyGo ke (ηNF t₁) (ηNF t₂)
 
 def unifyHead (ke : KindEnv) (goalArgs : List MLType) (instArgs : List MLType) : Except TypingError (Subst × KindEnv) := do
   if goalArgs.length != instArgs.length then
@@ -177,12 +177,12 @@ def refineStep (env : Env) (ke : KindEnv) (n : Nat) (p : Pred) : Except TypingEr
     let (ren, _) : Subst × Nat := qs.foldl (init := (∅, 0)) fun (s, i) q =>
       (s.insert q $ .TVar $ .inst n i, i + 1)
 
-    match unifyHead ke p.args (info.args.map (apply ren)) with
+    match unifyHead ke p.args (apply ren info.args) with
     | .error _ => return none
     | .ok (sub, ke) =>
       match found with
       | some _ => throw $ .Ambiguous s!"{p}: multiple instances match\n" -- return to solveAll.
-      | none => return some (sub, ke, info.ctx.map (apply (sub ∪' ren)))
+      | none => return some (sub, ke, apply (sub ∪' ren) info.ctx)
 
   match found with
   | some r => return r
@@ -289,15 +289,17 @@ def skolemizeTSch : MLType -> Except TypingError MLType
 @[inline] def extend (Γ : Env) (x : String) (sch : Scheme) : Env :=
   {Γ with E := Γ.E.insert x sch}
 
-def instantiate : Scheme -> InferC σ (MLType × List (Nat × Pred))
+def instantiate : Scheme -> InferC σ (MLType × List MLType × List (Nat × Pred))
   | .Forall as ps t => do
     let subst : Subst <- as.foldlM (fun a s => a.insert s <$> fresh) ∅
     let t := apply subst t
+    -- collect instantiation args for the Var node
+    let tArgs := as.map (apply subst ∘ TVar)
     let preds <- ps.foldlM (init := []) fun a p => do
       let p := apply subst p
       let eid <- freshEvidence p
       return (eid, p) :: a
-    return (t, preds)
+    return (t, tArgs, preds)
 
 def generalize (Γ : Env) (t : MLType) (res : List Pred) : Scheme :=
   let envFV := fv Γ
@@ -332,7 +334,7 @@ partial def inferPattern (Γ : Env) (expt : MLType) : Pattern -> InferC σ (Env 
     match Γ.E[cname]? with
     | none => throw (.Undefined cname)
     | some sch =>
-      let (ctorTy, _) <- instantiate sch
+      let (ctorTy, _, _) <- instantiate sch
       let rec peel (acc : Array MLType)
         | .TSch (.Forall _ _ t) => peel acc t
         | a ->' b               => peel (acc.push a) b
@@ -414,9 +416,9 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
     match Γ.E[x]? with
     | none => throw (.Undefined x)
     | some sch =>
-      let (t, preds) <- instantiate sch
+      let (t, tArgs, preds) <- instantiate sch
       let preds := preds.map Prod.snd
-      return (.Var x t, t, preds)
+      return (.Var x tArgs t, t, preds)
 
   | CI i => return (.CI i tInt, tInt, [])
   | CS s => return (.CS s tString, tString, [])
@@ -673,12 +675,10 @@ end ConstraintInfer
 open MLType ConstraintInfer Rewritable
 
 /--
-  elim all type abbreviation. Note that since unify unifies upto alpha-equiv,
-  eta-conversion is NOT equivalent in this implementation.
-  Consider abbrev Id a = a, a bare Id eta-expands to Λx, x and that won't unify
-  with other eta-equivalent forms. Since there is no type lambda in the syntax it should
-  be impossible to define a Functor Id instance. similarly, do abbrev SumInt = Sum Int
-  instead of eta-expanding it by hand.
+  elim all type abbreviation. Now that we unify up to η-NF,
+  η-expanded abbreviation bodies work as well.
+  e.g. Apply Maybe where Apply f a = f a unifies
+  with Maybe. β-redexes still never survive construction.
 -/
 partial def expandExpr (E : Env) : Expr -> Expr
   | c@(.CI ..) | c@(.CS ..) | c@(.CB ..) | c@(.CUnit) | c@(.Var ..) => c
@@ -818,7 +818,8 @@ def inferToplevelC
       let sch := MLType.expandS syn sch
       -- declaration-time kind check: extern schemes never go through unify
       () <$ kindOf (KindEnv.ofEnv E) sch.body
-      pure (acc.push (.idBind #[(s, sch, .Var n sch.body)]), {E with E := E.E.insert s sch}, L)
+      let .Forall qs _ _ := sch
+      pure (acc.push (.idBind #[(s, sch, .Var n (qs.map TVar) sch.body)]), {E with E := E.E.insert s sch}, L)
     | .idBind group =>
       let exprLet := Expr.Let group .CUnit
       let (.Let bs _ _, _, l, n') <- runInferConstraintT exprLet E | throw (.Impossible "unexpected shape after let inference\n")
