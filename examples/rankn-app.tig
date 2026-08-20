@@ -1,0 +1,12 @@
+let g : Int -> (forall a, a -> a) -> Int = fun x f => f x
+
+let id x = x
+and apply f x = f x
+
+let main = (prog1, prog2, prog3)
+where 
+  prog1 = g 1 id
+  prog2 = 
+    let k = g 1
+    k id
+  prog3 = apply g 1 id -- GHC wouldn't allow this

@@ -1,6 +1,14 @@
 import Tigris.TCNF.interpreter.evalCEK
+
+structure TestSpec where
+  name         : String
+  path         : System.FilePath
+  expected     : String := ""
+  interpreted  : TCNF.Interpreter.Value := .unit
+
 open System.FilePath renaming mk -> fp, fileStem -> fn in
-def execCases : Array (String × System.FilePath × String × TCNF.Interpreter.Value) :=
+def execCases : Array TestSpec :=
+--    sources             SBCL format ~S output                Interpreted Value (evalCEK.lean)
  #[ (cases/"r1"            , r"(42 15 . 2)"                  , .pair
                                                                  (.int 42)
                                                                  (.pair (.int 15) (.int 2))  )
@@ -20,24 +28,28 @@ def execCases : Array (String × System.FilePath × String × TCNF.Interpreter.V
   , (examples/"statem"     , r"(42 . 2)"                     , .pair (.int 42) (.int 2)      )
   , (examples/"recency"    , r"(101 . 5)"                    , .pair (.int 101) (.int 5)     )
   , (examples/"rankn"      , r"(1 . T)"                      , .pair (.int 1) (.bool true)   )
+  , (examples/"rankn-app"  , r"(1 1 . 1)"                    , .pair
+                                                                 (.int 1)
+                                                                 (.pair (.int 1) (.int 1))   )
   , (examples/"typeclass0" , r"3"                            , .int 3                        )
   , (examples/"hkt-eta"    , r"#S(|c/Some| :|tag| 0 :|f0| 3)", .constr "Some" #[.int 3]      )]
-  |>.map fun (p, s, v) => (name p, p.addExtension "tig", s, v)
+  |>.map fun (p, s, v) => ⟨name p, p.addExtension "tig", s, v⟩
 where examples := fp "examples"
       cases    := fp "tests" / "cases"
       name p   := fn p |>.getD p.toString
 in open execCases in
-def errorCases : Array (String × System.FilePath × String) :=
+def errorCases : Array TestSpec :=
  #[ (error/"inst"   , "Kind mismatch")
   , (error/"juxta"  , "Kind mismatch")
   , (error/"overapp", "Kind mismatch")
   , (error/"infer"  , "Can't unify")
   , (error/"amb"    , "Ambiguous: HEq") ]
-  |>.map fun (p, s) => (name p, p.addExtension "tig", s)
+  |>.map fun (p, s) => {name := name p, path := p.addExtension "tig", expected := s}
 where error := cases/fp "error"
 
-def compileCases : Array String :=
+def compileCases : Array TestSpec :=
  #[ "fact", "list", "opt", "op-let", "struct"
   , "typeclass4", "typeclass5", "typeclass6"
   , "hkt-dict-parametricity", "hkt-eager-specialize"
   , "poly-ref", "poly-ref-io", "poly-ref-io-safe"]
+  |>.map fun n => {name := n, path := execCases.examples / n |>.addExtension "tig"}

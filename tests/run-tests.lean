@@ -88,27 +88,30 @@ def main (paths : List String) : IO UInt32 := do
   let width := 15
   let pad name := PrettyPrint.pad $ width - name.length
 
-  println! "== compile =="
-  waitAll =<< compileCases.mapM fun name =>
-    .asTask $ compileFile s!"{execCases.examples}/{name}.tig" >>=
+  println "== compile =="
+  waitAll =<< compileCases.mapM fun {name, path,..} =>
+    .asTask $ compileFile path >>=
       fun        -- modify is atomic
       | .ok _ =>
         pass.modify .succ *> println s!" OK {name}"
       | .error e =>
         fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
 
-  println! "\n== errors =="
-  waitAll =<< errorCases.mapM fun (name, path, expected) =>
+  println "\n== errors =="
+  waitAll =<< errorCases.mapM fun {name, path, expected,..} =>
     .asTask $ compileFile path >>=
       fun
       | .ok _ =>
         fail.modify .succ *> eprintln s!"  X {name}: expected error beginning with \"{expected}\", but got compiled"
       | .error e =>
-        if e.startsWith expected then pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e}"
+        if e.startsWith expected
+        then if e.length > 80
+             then pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e |>.take 80}..."
+             else pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e}"
         else fail.modify .succ *> eprintln s!"  X {name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
 
-  println! "\n== exec =="
-  waitAll =<< execCases.mapM fun (name, path, expected, _) =>
+  println "\n== exec =="
+  waitAll =<< execCases.mapM fun {name, path, expected,..} =>
     .asTask $ compileFile path >>=
       fun
       | .error e =>
@@ -122,8 +125,8 @@ def main (paths : List String) : IO UInt32 := do
             if got == expected then pass.modify .succ *> println s!" OK {name}{pad name}==> {got}"
             else fail.modify .succ *> eprintln s!"  X {name}: expected {expected}, got {normalizeMsg got}"
 
-  println! "\n== exec (Interpreter: evalCEK) =="
-  waitAll =<< execCases.mapM fun (name, path, _, v') =>
+  println "\n== exec (Interpreter: evalCEK) =="
+  waitAll =<< execCases.mapM fun {name, path, interpreted := v',..} =>
     .asTask $ TCNF.Interpreter.checkFile path false >>=
       fun v =>
         if v == v' then

@@ -36,10 +36,10 @@ and g : ∀α, α → IO Bool =
     rec fun g : α → IO Bool =>
       fun _ : α =>
         let rd_Monad_0 : Monad IO = i_Monad_0
-        in rd_Monad_0[1, bind]@IO ioref@?m.62
-             fun ref : Ref (List ?m.62) =>
-               rd_Monad_0[1, bind]@IO (deref@(List ?m.62) ref)
-                 fun ?x₀ : List ?m.62 =>
+        in rd_Monad_0[1, bind]@IO ioref@?m.48
+             fun ref : Ref (List ?m.48) =>
+               rd_Monad_0[1, bind]@IO (deref@(List ?m.48) ref)
+                 fun ?x₀ : List ?m.48 =>
                    match ?x₀ with
                    | Nil => rd_Monad_0[0, pure]@IO true
 and main : IO Bool = let _ : IO Unit = f@Unit () in g@Unit ()
@@ -78,10 +78,10 @@ let rec f#28/1 (_#30 : α) : IO Unit =
 
 let rec g#29/1 (_#38 : α) : IO Bool =
   let pr#39 : IO ?m.10 → (?m.10 → IO ?m.11) → IO ?m.11 = #18@Monad[1]
-  let fn#40 (ref#41 : Ref (List ?m.62)) : IO Bool =
+  let fn#40 (ref#41 : Ref (List ?m.48)) : IO Bool =
     let pr#42 : IO ?m.10 → (?m.10 → IO ?m.11) → IO ?m.11 = #18@Monad[1]
-    let app#43 : IO (List ?m.62) = #5(#41)
-    let fn#44 (?x₀#45 : List ?m.62) : IO Bool =
+    let app#43 : IO (List ?m.48) = #5(#41)
+    let fn#44 (?x₀#45 : List ?m.48) : IO Bool =
       join fail#46 : IO Bool = let fail#47 : IO Bool = #0(#45) in ret #47
       case #45 of
         Nil =>
@@ -105,15 +105,15 @@ let fn#56/1 (ref#33 : Ref (List Int)) : IO Unit =
   let con#35 : List Int = Cons⟦1, #34⟧
   let app#36 : IO Unit = #8(#33, #35) in ret #36
 
-let fn#58/1 (?x₀#45 : List ?m.62) : IO Bool =
+let fn#58/1 (?x₀#45 : List ?m.48) : IO Bool =
   join fail#46 : IO Bool = let fail#47 : IO Bool = #0(#45) in ret #47
   case #45 of
     Nil => let app#49 : IO ?m.9 = #12(true) in ret #49;
     _ => jump #46()
 
-let fn#57/1 (ref#41 : Ref (List ?m.62)) : IO Bool =
-  let app#43 : IO (List ?m.62) = #5(#41)
-  let fn#44 : List ?m.62 → IO Bool = 𝐂⟦58⟧
+let fn#57/1 (ref#41 : Ref (List ?m.48)) : IO Bool =
+  let app#43 : IO (List ?m.48) = #5(#41)
+  let fn#44 : List ?m.48 → IO Bool = 𝐂⟦58⟧
   let app#50 : IO ?m.11 = #55(#43, #44) in ret #50
 
 let mkref#2/1 (η#3 : a) : IO (Ref a) =
@@ -142,7 +142,7 @@ let rec f#28/1 (_#30 : α) : IO Unit =
   let app#37 : IO ?m.11 = #55(#25, #32) in ret #37
 
 let rec g#29/1 (_#38 : α) : IO Bool =
-  let fn#40 : Ref (List ?m.62) → IO Bool = 𝐂⟦57⟧
+  let fn#40 : Ref (List ?m.48) → IO Bool = 𝐂⟦57⟧
   let app#51 : IO ?m.11 = #55(#25, #40) in ret #51
 
 let main#52/0 : IO Bool =

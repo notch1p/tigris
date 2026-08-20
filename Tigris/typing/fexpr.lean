@@ -121,8 +121,8 @@ partial def elaborate (Γsch : FEnv) (scope : DictScope) (blocked : Blocked) (Γ
             match peelSch1 methodTyFull with
             | some (innerB, innerP, innerTy) =>
               if innerP.isEmpty then
-                match unify ke innerTy (monoOfTSch ty) with
-                | .ok (sub, _) => (apply sub innerTy, pure ∘ id)
+                match unify ke Γfull.nextTV innerTy (monoOfTSch ty) with
+                | .ok (sub, _, _) => (apply sub innerTy, pure ∘ id)
                 | .error _ => (innerTy, pure ∘ wrapTyLams innerB)
               else
                 let rec wrapPreds (i : Nat) (acc : FExpr) : List Pred -> FExpr

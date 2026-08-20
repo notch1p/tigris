@@ -50,7 +50,7 @@ partial def resolve (env : Env) (p : Pred) : ResolveM σ Expr := do
       let res? : Option Expr <- insts.findSomeRevM? fun info => do
         try
           let ke := KindEnv.ofEnv env
-          let (sub, _) <- unifyHead ke p.args info.args
+          let (sub, _, _) <- unifyHead ke env.nextTV p.args info.args
           let ctx := apply sub info.ctx
           ctx.forM fun s => resolve env s $> ()
           let specializedHead := MLType.mkApp (.TCon p.cls) p.args
@@ -73,7 +73,7 @@ def matchHead (env : Env) (p : Pred) : Except TypingError String := do
     | throw $ .NoSynthesize s!"{p}: no matching instance found\n"
 
   let some i := insts.findSomeRev? fun info =>
-                  if (unifyHead (KindEnv.ofEnv env) p.args info.args).isOk
+                  if (unifyHead (KindEnv.ofEnv env) env.nextTV p.args info.args).isOk
                   then some info.iname
                   else none
     | throw $ .NoSynthesize s!"{p}: no matching instance found\n"

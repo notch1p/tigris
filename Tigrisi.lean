@@ -14,9 +14,9 @@ def strip : String.Slice -> String.Slice :=
   ∘ .dropWhile    (pat := not ∘ Char.isWhitespace)
 
 def parsePred (s : String.Slice) (pe : PEnv) : IO (List TV × Pred × List Pred) :=
-  match runST fun _ => parseInstScheme <* Parser.endOfInput |>.run s |>.run' (pe, "") with
-  | Parser.Result.ok _ p => return p
-  | Parser.Result.error _ e => throwServerError $ toString e
+  match runST fun _ => parseInstScheme <* Parser.endOfInput |>.run s |>.run (pe, "") with
+  | (Parser.Result.ok _ p, _) => return p
+  | (Parser.Result.error _ e, (_, l)) => println l *> throwServerError (toString e)
 where parseInstScheme {σ} : TParser σ (List TV × Pred × List Pred) :=
   Parsing.PType.tyScheme >>= fun (.Forall vs preds ty) =>
     match ty.getRightmost with
@@ -102,7 +102,7 @@ def main (fs : List String) : IO Unit := do
           let headTy := MLType.mkApp (.TCon p.cls) p.args
           let sch := .Forall vs ctx headTy
           let some isch := es.E.E[inst]? | throwServerError "#synth: impossible"
-          let _ <- ConstraintInfer.unify (KindEnv.ofEnv es.E) (.TSch sch) (.TSch isch) |> IO.ofExcept
+          let _ <- ConstraintInfer.unify (KindEnv.ofEnv es.E) es.E.nextTV (.TSch sch) (.TSch isch) |> IO.ofExcept
           let (fe, _) <- runInfer1F (.Var inst (vs.map MLType.TVar) headTy) sch es.E |> IO.ofExcept
           println! format fe
       catch e => println! e
@@ -124,6 +124,7 @@ def main (fs : List String) : IO Unit := do
           println! format fe
         else
           let (_, s, _) <- runInferConstraintT e es.E |> IO.ofExcept
+          let s := SysF.renameMVSch s |>.1
           println! format s
       catch e => println! e
     else if buf.startsWith "#a" then
