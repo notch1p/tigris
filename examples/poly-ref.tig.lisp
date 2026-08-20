@@ -18,45 +18,49 @@ let main : Int =
      | Cons x _ => add x 1
 ;; == TCNF IR ==
 
-let mkref#2/1 (η#3 : a) : a → Ref a = let ffi#4 : Ref a = @quote(#3); ret #4
+let mkref#2/1 (η#3 : a) : Ref a = let ffi#4 : Ref a = @quote(#3) in ret #4
 
-let deref#5/1 (η#6 : Ref a) : Ref a → a = let ffi#7 : a = @eval(#6); ret #7
+let deref#5/1 (η#6 : Ref a) : a = let ffi#7 : a = @eval(#6) in ret #7
 
-let setf#8/2 (η#9 : Ref a, η#10 : a) : Ref a → a → a =
-  let ffi#11 : a = @set(#9, #10); ret #11
+let setf#8/2 (η#9 : Ref a, η#10 : a) : a =
+  let ffi#11 : a = @set(#9, #10) in ret #11
 
 let ref#12/0 : Ref (List α) =
-  let con#13 : List α = Nil⟦⟧; let app#14 : Ref (List α) = #2(#13); ret #14
+  let con#13 : List α = Nil⟦⟧
+  let app#14 : Ref (List α) = #2(#13) in ret #14
 
 let main#15/0 : Int =
-  let con#16 : List Bool = Nil⟦⟧;
-  let con#17 : List Bool = Cons⟦true, #16⟧;
-  let app#18 : List Bool = #8(#12, #17);
-  let app#19 : List Int = #5(#12);
-  join fail#20 : Int = let fail#21 : Int = #0(#19); ret #21;
+  let con#16 : List Bool = Nil⟦⟧
+  let con#17 : List Bool = Cons⟦true, #16⟧
+  let app#18 : List Bool = #8(#12, #17)
+  let app#19 : List Int = #5(#12)
+  join fail#20 : Int = let fail#21 : Int = #0(#19) in ret #21
   case #19 of
-    Cons⟦f#22 : Int, f#23 : List Int⟧ => let π#24 : Int = ADD(#22, 1); ret #24;
+    Cons⟦f#22 : Int, f#23 : List Int⟧ =>
+      let π#24 : Int = ADD(#22, 1) in ret #24;
     _ => jump #20()
 ;; == TCNF CC & Optimize'd ==
 
-let mkref#2/1 (η#3 : a) : a → Ref a = let ffi#4 : Ref a = @quote(#3); ret #4
+let mkref#2/1 (η#3 : a) : Ref a = let ffi#4 : Ref a = @quote(#3) in ret #4
 
-let deref#5/1 (η#6 : Ref a) : Ref a → a = let ffi#7 : a = @eval(#6); ret #7
+let deref#5/1 (η#6 : Ref a) : a = let ffi#7 : a = @eval(#6) in ret #7
 
-let setf#8/2 (η#9 : Ref a, η#10 : a) : Ref a → a → a =
-  let ffi#11 : a = @set(#9, #10); ret #11
+let setf#8/2 (η#9 : Ref a, η#10 : a) : a =
+  let ffi#11 : a = @set(#9, #10) in ret #11
 
 let ref#12/0 : Ref (List α) =
-  let con#13 : List α = Nil⟦⟧; let app#14 : Ref (List α) = #2(#13); ret #14
+  let con#13 : List α = Nil⟦⟧
+  let app#14 : Ref (List α) = #2(#13) in ret #14
 
 let main#15/0 : Int =
-  let con#16 : List Bool = Nil⟦⟧;
-  let con#17 : List Bool = Cons⟦true, #16⟧;
-  let app#18 : List Bool = #8(#12, #17);
-  let app#19 : List Int = #5(#12);
-  join fail#20 : Int = let fail#21 : Int = #0(#19); ret #21;
+  let con#16 : List Bool = Nil⟦⟧
+  let con#17 : List Bool = Cons⟦true, #16⟧
+  let app#18 : List Bool = #8(#12, #17)
+  let app#19 : List Int = #5(#12)
+  join fail#20 : Int = let fail#21 : Int = #0(#19) in ret #21
   case #19 of
-    Cons⟦f#22 : Int, f#23 : List Int⟧ => let π#24 : Int = ADD(#22, 1); ret #24;
+    Cons⟦f#22 : Int, f#23 : List Int⟧ =>
+      let π#24 : Int = ADD(#22, 1) in ret #24;
     _ => jump #20()
 ;; == Runtime ==
 (load "runtime.lisp")

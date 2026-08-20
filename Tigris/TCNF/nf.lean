@@ -303,8 +303,9 @@ joinSep' (arr : Array α) (sep : Format) -- same as joinSep but works with Array
 -/
 @[always_inline, inline] def comma := "," ++ line
 @[always_inline, inline] def colon := ":" ++ line
-@[always_inline, inline] def semi := ";" ++ line
-@[always_inline, inline] def bar := "|" ++ line
+@[always_inline, inline] def «in»  := line ++ "in"
+@[always_inline, inline] def semi  := ";" ++ line
+@[always_inline, inline] def bar   := "|" ++ line
 instance: ToFormat PrimOp where
   format
   | .add => "ADD" | .sub => "SUB" | .mul => "MUL" | .div => "DIV"
@@ -347,12 +348,12 @@ def fmtValue : LetValue φ -> Format
     let ce := nestD $ bracket "⟦" (format c ++ fvE) "⟧"
     group $ "𝐂" ++ ce
 
-def fmtLetDecl : LetDecl φ -> Format -> Format
+def fmtLetDecl (sep : Format) : LetDecl φ -> Format -> Format
   | {fvarId, binderName, ty, value}, k =>
     group $ "let"
       <> fill (s!"{binderName}#{fvarId}" ++ nestD
                 (line ++ ":" <> format ty <> "=" <+> fmtValue value))
-      ++ semi ++ k
+      ++ sep ++ k
 
 def fmtParam : Param -> Format
   | {fvarId, binderName, ty} =>
@@ -362,16 +363,17 @@ instance : ToFormat $ LetValue φ := ⟨fmtValue⟩
 instance : ToFormat Param := ⟨fmtParam⟩
 mutual
 
-partial def fmtFunDecl (isJp : Bool) : FunDecl φ -> Format -> Format
+partial def fmtFunDecl (sep : Format) (isJp : Bool) : FunDecl φ -> Format -> Format
   | {fvarId, binderName, params, ty, body}, k =>
     let kw : Format := if isJp then .text "join" else .text "let"
     let pf := if params.isEmpty then .nil else
       let pf :=  nest 1 $ paren $ align false ++ joinSep' params comma
       " " ++ pf
+    let ty := if params.isEmpty then ty else ty.getRightmost
     group $ kw
       <> fill (s!"{binderName}#{fvarId}" ++ pf
         ++ nestD (line ++ ":" <> format ty <> "=" <+> fmtCode body))
-      ++ semi ++ k
+      ++ sep ++ k
 partial def fmtAlt : Alt φ -> Format
   | .ctor t params k =>
     let pf := if params.isEmpty then .nil else bracket "⟦" (joinSep' params comma) "⟧"
@@ -382,9 +384,18 @@ partial def fmtAlt : Alt φ -> Format
     group $ "_" <> "=>" ++ indentD (fmtCode k)
 
 partial def fmtCode : Code φ -> Format
-  | .«let» d k => fmtLetDecl d (fmtCode k)
-  | .«fun» d k _ => fmtFunDecl false d (fmtCode k)
-  | .jp d k => fmtFunDecl true d (fmtCode k)
+  | .«let» d k =>
+    match k with
+    | .«let» .. | .«fun» .. | .jp .. | .cases .. => fmtLetDecl (.text "\n") d (fmtCode k)
+    | _ => fmtLetDecl «in» d $ indentD $ fmtCode k
+  | .«fun» d k _ =>
+    match k with
+    | .«let» .. | .«fun» .. | .jp .. | .cases .. => fmtFunDecl (.text "\n") false d (fmtCode k)
+    | _ => fmtFunDecl «in» false d $ indentD $ fmtCode k
+  | .jp d k =>
+    match k with
+    | .«let» .. | .«fun» .. | .jp .. | .cases .. => fmtFunDecl (.text "\n") true d (fmtCode k)
+    | _ => fmtFunDecl «in» true d $ indentD $ fmtCode k
   | .jmp jp as =>
     let f := s!"jump #{jp}"
     let as := group $ paren $ nest f.length $ joinSep' as comma
@@ -406,6 +417,7 @@ instance : ToFormat $ Decl φ where
     let pf := if params.isEmpty then .nil else
       let pf := nest 1 $ paren $ align false ++ joinSep' params comma
       " " ++ pf
+    let ty := if params.isEmpty then ty else ty.getRightmost
     group $ "let" ++ (if recursive then .text " rec " else .text " ")
       ++ fill (s!"{name}#{fvarId}/{arity}" ++ pf
         ++ nestD (line ++ ":" <> format ty <> "=" <+> fmtCode body))

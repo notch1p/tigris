@@ -11,21 +11,22 @@
 
 typedef lean_obj_res OBJRES;
 typedef lean_obj_arg OWNED_ARG;
-typedef b_lean_obj_arg BORROWED_ARG;
+typedef b_lean_obj_arg const* BORROWED_ARG;
 
 enum BYTELEN { Bin = 2, Tri, Quad, Invalid = 0 };
 
-OBJRES
-string_repeat_ascii(uint8_t c, size_t n) {
+static inline OBJRES string_repeat_ascii(uint8_t c, size_t n) {
   char* str = (char*)calloc(n + 1, sizeof(uint8_t));
   memset(str, c, n * sizeof(uint8_t));
 
-  return lean_mk_string(str);
+  OBJRES ret = lean_mk_string(str);
+  free(str);
+  return ret;
 }
 
 OBJRES lean_mk_symlink(BORROWED_ARG p1, BORROWED_ARG p2) {
-  lean_string_object* ps1 = lean_to_string(p1);
-  lean_string_object* ps2 = lean_to_string(p2);
+  lean_string_object const* ps1 = lean_to_string((lean_object*)p1);
+  lean_string_object const* ps2 = lean_to_string((lean_object*)p2);
 #if defined(_WIN32)
   // Try as a file symlink first; retry as directory if that fails.
   if (CreateSymbolicLinkA(ps2->m_data, ps1->m_data, 0))
@@ -72,7 +73,7 @@ OBJRES lean_mk_symlink(BORROWED_ARG p1, BORROWED_ARG p2) {
 #else
   if (symlink(ps1->m_data, ps2->m_data) == 0)
     return lean_io_result_mk_ok(lean_box(0));
-  char* msg = strerror(errno);
+  const char* msg = strerror(errno);
   switch (errno) {
     case EACCES:
       return lean_io_result_mk_error(
@@ -103,7 +104,7 @@ OBJRES lean_mk_symlink(BORROWED_ARG p1, BORROWED_ARG p2) {
 #endif
 }
 
-enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {
+static inline enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {
   if (c < 0x800) {
     s[0] = 0xC0 | c >> 6;
     s[1] = 0x80 | c & 0x3F;
@@ -123,8 +124,7 @@ enum BYTELEN codepoint_to_bytes(uint32_t c, char* s) {
   return Invalid;
 }
 
-OBJRES
-string_repeat_utf8(uint32_t c, size_t n) {
+static inline OBJRES string_repeat_utf8(uint32_t c, size_t n) {
   char bytes[4];
   size_t len = codepoint_to_bytes(c, bytes);
   assert(len);
@@ -136,15 +136,17 @@ string_repeat_utf8(uint32_t c, size_t n) {
     memcpy(str + i * len, bytes, len);
   };
 
-  return lean_mk_string(str);
+  OBJRES ret = lean_mk_string(str);
+  free(str);
+  return ret;
 }
 
-LEAN_EXPORT OBJRES lean_string_repeat(uint32_t c, BORROWED_ARG /* Nat */ n) {
-  size_t len = lean_usize_of_nat(n);
+OBJRES lean_string_repeat(uint32_t c, BORROWED_ARG /* Nat */ n) {
+  size_t len = lean_usize_of_nat((lean_object*)n);
   return c < 0x80 ? string_repeat_ascii(c, len) : string_repeat_utf8(c, len);
 }
 
-LEAN_EXPORT OBJRES lean_disable_stdout_buffer(uint8_t i) {
+OBJRES lean_disable_stdout_buffer(uint8_t i) {
   if (i == 0) {
     setbuf(stdout, NULL);
   }
@@ -167,7 +169,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType) {
   }
 }
 
-LEAN_EXPORT lean_obj_res lean_sigint_pipe(void) {
+OBJRES lean_sigint_pipe(void) {
   if (g_ctrlEvent) {
     return lean_io_result_mk_ok(lean_box(1));
   }
@@ -187,7 +189,7 @@ LEAN_EXPORT lean_obj_res lean_sigint_pipe(void) {
   return lean_io_result_mk_ok(lean_box(1));
 }
 
-LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t /*fd*/) {
+OBJRES lean_read_fd_byte(int32_t /*fd*/) {
   if (!g_ctrlEvent) {
     return lean_io_result_mk_ok(lean_box(0));
   }
@@ -204,9 +206,7 @@ LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t /*fd*/) {
 }
 
 #else
-#include <errno.h>
 #include <signal.h>
-#include <unistd.h>
 
 static int32_t sig_pipe[2] = {-1, -1};
 
@@ -218,7 +218,7 @@ static void sigint_handler() {
   }
 }
 
-LEAN_EXPORT OBJRES lean_sigint_pipe() {
+OBJRES lean_sigint_pipe() {
   if (sig_pipe[0] != -1)
     return lean_io_result_mk_ok(lean_box(sig_pipe[0]));  // already installed
   if (pipe(sig_pipe) != 0)
@@ -238,7 +238,7 @@ LEAN_EXPORT OBJRES lean_sigint_pipe() {
   return lean_io_result_mk_ok(lean_box(sig_pipe[0]));
 }
 
-LEAN_EXPORT lean_obj_res lean_read_fd_byte(int32_t fd) {
+OBJRES lean_read_fd_byte(int32_t fd) {
   char b;
   for (;;) {
     ssize_t r = read(fd, &b, 1);

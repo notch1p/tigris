@@ -21,57 +21,56 @@ let main : ∀α [Functor (Sum α)], Sum Int Int × Sum α Int =
 ;; == TCNF IR ==
 
 let i_Functor_0#2/0 : Functor (Sum a) =
-  let fn#3 (f#4 : a₁ → b, ?x₀#5 : Sum a a₁) : (a₁ → b) → Sum a a₁ → Sum a b =
+  let fn#3 (f#4 : a₁ → b, ?x₀#5 : Sum a a₁) : Sum a b =
     case #5 of
-      Inl⟦f#6 : a⟧ => let con#7 : Sum a b = Inl⟦#6⟧; ret #7;
+      Inl⟦f#6 : a⟧ => let con#7 : Sum a b = Inl⟦#6⟧ in ret #7;
       Inr⟦f#8 : a₁⟧ =>
-        let app#9 : b = #4(#8); let con#10 : Sum a b = Inr⟦#9⟧; ret #10;
-      _ => (⊥ : Sum a b);
-  let con#11 : Functor (Sum a) = Functor⟦#3⟧; ret #11
+        let app#9 : b = #4(#8)
+        let con#10 : Sum a b = Inr⟦#9⟧ in ret #10;
+      _ => (⊥ : Sum a b)
+  let con#11 : Functor (Sum a) = Functor⟦#3⟧ in ret #11
 
 let main#12/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
-  let fn#13 (d_Functor_0#14 : Functor (Sum α))
-    : Functor (Sum α) → Sum Int Int × Sum α Int =
-    let con#15 : Sum Int β = Inl⟦2⟧;
-    let con#16 : Sum γ Int = Inr⟦1⟧;
-    let pr#17 : (?m.3 → ?m.4) → Sum Int ?m.3 → Sum Int ?m.4 = #2@Functor[0];
-    let fn#18 (?x₀#19 : Int) : Int → Int =
-      let π#20 : Int = MUL(2, #19); ret #20;
-    let app#21 : Sum Int ?m.4 = #17(#18, #15);
-    let pr#22 : (?m.3 → ?m.4) → Sum α ?m.3 → Sum α ?m.4 = #14@Functor[0];
-    let fn#23 (?x₀#24 : Int) : Int → Int =
-      let π#25 : Int = ADD(1, #24); ret #25;
-    let app#26 : Sum α ?m.4 = #22(#23, #16);
-    let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩; ret #27;
-  ret #13
+  let fn#13 (d_Functor_0#14 : Functor (Sum α)) : Sum Int Int × Sum α Int =
+    let con#15 : Sum Int β = Inl⟦2⟧
+    let con#16 : Sum γ Int = Inr⟦1⟧
+    let pr#17 : (?m.3 → ?m.4) → Sum Int ?m.3 → Sum Int ?m.4 = #2@Functor[0]
+    let fn#18 (?x₀#19 : Int) : Int = let π#20 : Int = MUL(2, #19) in ret #20
+    let app#21 : Sum Int ?m.4 = #17(#18, #15)
+    let pr#22 : (?m.3 → ?m.4) → Sum α ?m.3 → Sum α ?m.4 = #14@Functor[0]
+    let fn#23 (?x₀#24 : Int) : Int = let π#25 : Int = ADD(1, #24) in ret #25
+    let app#26 : Sum α ?m.4 = #22(#23, #16)
+    let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩ in ret #27
+  in
+    ret #13
 ;; == TCNF CC & Optimize'd ==
 
-let fn#28/2 (f#4 : a₁ → b, ?x₀#5 : Sum a a₁) : (a₁ → b) → Sum a a₁ → Sum a b =
+let fn#28/2 (f#4 : a₁ → b, ?x₀#5 : Sum a a₁) : Sum a b =
   case #5 of
-    Inl⟦f#6 : a⟧ => let con#7 : Sum a b = Inl⟦#6⟧; ret #7;
+    Inl⟦f#6 : a⟧ => let con#7 : Sum a b = Inl⟦#6⟧ in ret #7;
     Inr⟦f#8 : a₁⟧ =>
-      let app#9 : b = #4(#8); let con#10 : Sum a b = Inr⟦#9⟧; ret #10;
+      let app#9 : b = #4(#8)
+      let con#10 : Sum a b = Inr⟦#9⟧ in ret #10;
     _ => (⊥ : Sum a b)
 
-let fn#30/1 (?x₀#19 : Int) : Int → Int = let π#20 : Int = MUL(2, #19); ret #20
+let fn#30/1 (?x₀#19 : Int) : Int = let π#20 : Int = MUL(2, #19) in ret #20
 
-let fn#31/1 (?x₀#24 : Int) : Int → Int = let π#25 : Int = ADD(1, #24); ret #25
+let fn#31/1 (?x₀#24 : Int) : Int = let π#25 : Int = ADD(1, #24) in ret #25
 
-let fn#29/1 (d_Functor_0#14 : Functor (Sum α))
-  : Functor (Sum α) → Sum Int Int × Sum α Int =
-  let con#15 : Sum Int β = Inl⟦2⟧;
-  let con#16 : Sum γ Int = Inr⟦1⟧;
-  let fn#18 : Int → Int = 𝐂⟦30⟧;
-  let app#21 : Sum Int ?m.4 = #28(#18, #15);
-  let fn#23 : Int → Int = 𝐂⟦31⟧;
-  let app#26 : Sum α ?m.4 = #14(#23, #16);
-  let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩; ret #27
+let fn#29/1 (d_Functor_0#14 : Functor (Sum α)) : Sum Int Int × Sum α Int =
+  let con#15 : Sum Int β = Inl⟦2⟧
+  let con#16 : Sum γ Int = Inr⟦1⟧
+  let fn#18 : Int → Int = 𝐂⟦30⟧
+  let app#21 : Sum Int ?m.4 = #28(#18, #15)
+  let fn#23 : Int → Int = 𝐂⟦31⟧
+  let app#26 : Sum α ?m.4 = #14(#23, #16)
+  let p#27 : Sum Int Int × Sum α Int = ⟨#21, #26⟩ in ret #27
 
 let i_Functor_0#2/0 : Functor (Sum a) =
-  let fn#3 : (a₁ → b) → Sum a a₁ → Sum a b = 𝐂⟦28⟧; ret #3
+  let fn#3 : (a₁ → b) → Sum a a₁ → Sum a b = 𝐂⟦28⟧ in ret #3
 
 let main#12/0 : Functor (Sum α) → Sum Int Int × Sum α Int =
-  let fn#13 : Functor (Sum α) → Sum Int Int × Sum α Int = 𝐂⟦29⟧; ret #13
+  let fn#13 : Functor (Sum α) → Sum Int Int × Sum α Int = 𝐂⟦29⟧ in ret #13
 ;; == Runtime ==
 (load "runtime.lisp")
 
