@@ -1,0 +1,15 @@
+-- imp1 thru 6 (error) are from Quick Look (Serrano et al. ICFP'20)
+-- since MVs can be solved with polytypes (TSch), it just *works* 
+-- and we gain (some?) impredicativity for free.
+
+let id x = x
+
+type List a = Nil | Cons a (List a)
+
+let head l = match l with | Cons x _ => x | Nil => id
+let ids = Cons id Nil
+
+let app f x = f x
+let revapp x f = f x
+
+let main = revapp ids head 1

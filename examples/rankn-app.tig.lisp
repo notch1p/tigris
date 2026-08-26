@@ -5,8 +5,8 @@ let g : Int → (∀a, a → a) → Int = fun x : Int => fun f : ∀a, a → a =
 let id : ∀α, α → α = Λ α. fun x : α => x
 and apply : ∀α β, (α → β) → α → β = Λ α β. fun f : α → β => fun x : α => f x
 
-let prog1 : Int = g 1 id@?sk.0
-and prog2 : Int = let k : (∀a, a → a) → Int = g 1 in k id@?sk.0
+let prog1 : Int = g 1 id@?m.0
+and prog2 : Int = let k : (∀a, a → a) → Int = g 1 in k id@?m.0
 and prog3 : Int = apply@Int@((?m.10 → ?m.10) → Int) g 1 id@?m.10
 and main : Int × Int × Int = ⟨prog1, ⟨prog2, prog3⟩⟩
 ;; == Runtime ==

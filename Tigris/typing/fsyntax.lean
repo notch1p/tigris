@@ -130,14 +130,13 @@ def lookupDictVar (scope : DictScope) (goal : Pred) : Option (String × MLType) 
     if predEqSkolem templ goal /- || predEqGoal templ goal -/ then some (v, dictTypeOfPred templ)
     else go xs
 
-@[inline] def isGroundPred (p : Pred) : Bool :=
-  (fv p.args).isEmpty
+@[inline] def isGroundPred : Pred -> Bool := Std.TreeSet.isEmpty ∘ fv
 
 @[inline] def patOfIdx (ctor : Symbol) (idx : Nat) (sz : Nat) : Pattern :=
   .PCtor ctor $ Array.replicate sz .PWild |>.set! idx (.PVar s!"m_{ctor}_{idx}")
 
 def mvs (p : Pred) : (List TV × List TV) :=
-  let vs := fv p.args
+  let vs := fv p
   vs.foldl
     (fun (mv, iv) tv =>
       match tv with

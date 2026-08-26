@@ -187,5 +187,10 @@
     "**/Thumbs.db": true,
     "**/CVS": true,
     "**/.ruby-lsp": true
-  }
+  },
+  "latex-workshop.latex.search.rootFiles.exclude": [
+    "docs/midterm/*.tex"
+  ],
+  "latex-workshop.view.pdf.viewer": "tab",
+  "editor.wordWrap": "off"
 }

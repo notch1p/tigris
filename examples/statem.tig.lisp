@@ -11,12 +11,10 @@ let i_Monad_0 : ∀s, Monad (Λa. s → s × a) =
               | (st2, x) => f x st2
 
 let main : Int × Int =
-  let rd_Monad_0 : Monad (Λα. Int → Int × Int) = i_Monad_0@Int
-  and rd_Monad_1 : Monad (Λβ. Int → Int × Int) = i_Monad_0@Int
-  and rd_Monad_2 : Monad (Λγ. Int → Int × Int) = i_Monad_0@Int
-  in rd_Monad_0[1, bind]@(Λα. Int → Int × Int)
-       (rd_Monad_1[0, pure]@(Λβ. Int → Int × Int) 1)
-       fun x : Int => rd_Monad_2[0, pure]@(Λγ. Int → Int × Int) (add x 1)
+  let rd_Monad_0 : Monad (Λa. Int → Int × a) = i_Monad_0@Int
+  in rd_Monad_0[1, bind]@(Λa. Int → Int × a)
+       (rd_Monad_0[0, pure]@(Λa. Int → Int × a) 1)
+       fun x : Int => rd_Monad_0[0, pure]@(Λa. Int → Int × a) (add x 1)
        42
 ;; == Runtime ==
 (load "runtime.lisp")

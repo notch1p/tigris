@@ -1,0 +1,12 @@
+let id x = x
+
+type List a = Nil | Cons a (List a)
+
+let head l = match l with | Cons x _ => x | Nil => id
+let ids = Cons id Nil
+
+let run : (forall s, s -> s) -> Int = fun f => f 1
+
+-- this compiled because of U-Inst1; See rules.ott. Or equivalently,
+-- the TSch .. ~ t branch in unification.
+let main = run (head ids) 

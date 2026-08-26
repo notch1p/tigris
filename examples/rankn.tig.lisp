@@ -4,7 +4,7 @@ let id : ∀α, α → α = Λ α. fun x : α => x
 
 let f : (∀a, a → a) → Int × Bool = fun x : ∀a, a → a => ⟨x 1, x true⟩
 
-let main : Int × Bool = f id@?sk.1
+let main : Int × Bool = f id@?m.1
 ;; == Runtime ==
 (load "runtime.lisp")
 

@@ -11,7 +11,24 @@ inductive Constraint where
   | eq (t₁ t₂ : MLType)
   | pr (eid : Nat) (p : Pred)
 deriving Repr
-
+instance : Rewritable Constraint where
+  fv
+  | .eq t₁ t₂ => fv t₁ ∪ fv t₂
+  | .pr _ p => fv p
+  apply s
+  | .eq t₁ t₂ => .eq (apply s t₁) (apply s t₂)
+  | .pr e p   => .pr e (apply s p)
+open Std.Format Std.ToFormat in
+instance : Std.ToFormat Constraint where
+  format
+  | .eq t₁ t₂ => group $ format t₁ ++ " ~ " ++ format t₂
+  | .pr eid p => group $ paren (format p) ++ "@" ++ format eid
+in instance : Std.ToFormat $ List (Nat × Pred) where
+  format xs :=
+    sbracket (xs.foldr (fun (idx, pred) acc => Std.Format.paren (format pred) ++ "@" ++ format idx ++ "," ++ line ++ acc) .nil )
+in instance : Std.ToFormat Subst where
+  format xs :=
+    sbracket (xs.foldl (fun acc tv ty => acc ++ Std.Format.paren (format tv ++ " ↦ " ++ format ty) ++ "," ++ line ) nil)
 abbrev Rigids := Std.TreeSet TV
 
 structure CState where
@@ -22,6 +39,15 @@ structure CState where
   rTV : Rigids          := ∅
   rTVs : List Rigids    := []
   ke  : KindEnv         := ∅
+deriving Inhabited
+
+/-- wanted-pool solve result -/
+structure SolveResult where
+  sub      : Subst
+  ke       : KindEnv
+  next     : Nat
+  wants    : List (Nat × Pred)       -- leftover preds for generalization
+  leftover : List (MLType × MLType)  -- leftover eqs
 deriving Inhabited
 
 abbrev InferC σ := StateRefT CState (EST TypingError σ)
@@ -84,7 +110,10 @@ private def bindTV (a : TV) (t : MLType) : Except TypingError Subst :=
   else
     match a with
     | .sk _ =>
-      -- rigid: only a bindable metavariable on the other side may absorb it
+      -- rigidity says that only a bindable MV (anything execpt skolems)
+      -- on the RHS may absorb LHS (Obviously, RHS needs to be a TV first).
+      -- previsouly skolems become TCons which rejects in the unification engine
+      -- which is a rough hack.
       match t with
       | .TVar w =>
         match w with
@@ -95,7 +124,7 @@ private def bindTV (a : TV) (t : MLType) : Except TypingError Subst :=
       if a ∈ fv t then throw (.Duplicates a t)
       else pure {(a, t)}
 
-private partial def unifyGo (ke : KindEnv) (n : Nat) : MLType -> MLType -> Except TypingError (Subst × KindEnv × Nat)
+partial def unifyGo (ke : KindEnv) (n : Nat) : MLType -> MLType -> Except TypingError (Subst × KindEnv × Nat)
   | t₁ ×'' t₂, u₁ ×'' u₂
   | t₁ ->' t₂, u₁ ->' u₂ => do
     let (s₁, ke, n) <- unifyGo ke n t₁ u₁
@@ -134,23 +163,18 @@ private partial def unifyGo (ke : KindEnv) (n : Nat) : MLType -> MLType -> Excep
             (headSub, ke, n) as₁' as₂)
         <|> throw (.NoUnify t₁ t₂)
     else unifyGo ke n t₂ t₁
-  | t₁@(TApp h₁ as₁), t₂ => do
-    -- Claude: Pattern-fragment: head is a TVar and args are skolems/rigids -> bind the
-    -- head to a TyLam abstraction of t₂. Otherwise, if there are zero args,
-    -- unify against the head.
-    if as₁.isEmpty then unifyGo ke n h₁ t₂
-    else
-      match h₁ with
-      | TVar v =>
-        -- requires args to be rigid in t₂.
-        let binders : List TV <-
-          as₁.foldrM (init := ([] : List TV)) fun a acc =>
-            match a with
-            | TVar w => pure (w :: acc)
-            | _ => throw (.NoUnify t₁ t₂)
-        let body := binders.foldr (init := t₂) fun b acc => .TyLam b acc
-        (·, ke, n) <$> bindTV v body
-      | _ => throw (.NoUnify t₁ t₂)
+
+    /- we now solve ?m args≠[] ~ t only after the tycon ?m is computed from
+       the instance rule (satisfying queued pred & deferred eq & unique match)
+       or a literal MV binding (then through bindTV it's trivial).
+
+       This is mostly GHC-like first-order unification instead of
+       the higher-order pattern fragment we had before.
+
+       See examples/typeclass0.tig for the reason (it's unsound).
+       Note: ``inert'' in GHC jargon. It falls through the last NoUnify case but
+       is not actually a failure but returns to the wanted pool. -/
+  | TApp h₁ [], t₂ => unifyGo ke n h₁ t₂
   | t₁, t₂@(TApp ..) => unifyGo ke n t₂ t₁
   | ts₁@(.TSch (.Forall tvs₁ ps₁ t₁)), ts₂@(.TSch (.Forall tvs₂ ps₂ t₂)) => do
     if ps₁.length != ps₂.length || tvs₁.length != tvs₂.length then throw (.NoUnify ts₁ ts₂)
@@ -250,7 +274,7 @@ see also the classic OutsideIn(x).
 Below we describe the need for this approach.
 Consider example/statem.tig. To type the program, we must solve
 
-  ?m Int ~ Int -> Int × Int
+  ?m Int ~ Int -> Int × Int (*)
 
 One easily sees that ?m |-> StateM Int being a valid solution yet this equivalence
 can't be solved under HM pattern unification because of principality requirement
@@ -271,17 +295,40 @@ type of (hadd 2 3) can't be known without type ascription. Thus, we permit refin
 iff all of the conditions below is true for a given pred p, a list of deferred equations eqs:
 
 1. eqs is nonempty: the whole point of refinement in advance: to solve equations;
-2. refineStep succeeds;
-3. no such TV occuring in both p and the result type exists (*): such TVs are dictionary
-   params which must be generalized -- in other words, preds that otherwise would
-   be dropped by automatic generalization are safe to refine. listEq from typeclass4.tig
-   is one such case where fix a to Int in Eq a erroneously made it monomorphic.
+2. refineStep succeeds (unique match -- it throws .Ambiguous otherwise).
 
-(*) in practice we use a view to compute the complete set of result fv. otherwise
-    if a subst reveals that ?m |-> List ?m' we wouldn't be able to catch RHS ?m'.
-    This wouldn't be a problem for real generalization and otherwise (3)
-    can accidentally satisfy. This is the subtle problem in listEq. See also
+We have removed condition 3 (a result-fv view protecting to-be-generalized vars from
+monomorphization, to solve listEq) in the first order unification refactoring
+since it's no longer needed. Now, a nested let whose generalized var is both pred-shared and
+equation-blocked is considered ``residual'' (See the paper below) and we generalize
+them carefully using a similar strategy already presented in inferInstanceDecl a long time ago.
+
+And thanks to AI's confirmation, it coincides with what
+GHC's been using (simplifyInfer, Tc/Solver.hs:~932).
+For details, see notes in inferGroup.
+
 > Vytiniotis D. et al, "Let Should Not Be Generalised."
+(I quoted this just because some ideas are from it, let-generalization policy is neither changed
+ nor needed since we don't have open type family or indexed family at the moment.)
+
+However, a combination of removal of pattern fragments and views rendered
+the exact example (statem) above invalid again. Why is that?
+Just by looking at the failing eq: ?m ?sk ~ ?sk' -> ?sk' × ?sk (**), one might assume
+it is the same equation as (*) -- it is NOT. This is the provider's
+internal equation that failed (i.e. not caused by the calls within main, but at instdecl) -- and it
+had skolems -- all TVs, which, got passed the pattern fragments
+(meanwhile, Int is a concrete type which makes sure it got deferred), then
+in Miller style solves by binding ?m |-> Λ?sk. ?sk' -> ?sk' × ?sk which the guess is lucky.
+Now we've removed such guessing, through tracing we found out that though (**) is deferred to be solved here,
+refineStep (Monad ?m) throws NoSynthesize since we are checking the instance being declared
+(thus not in instInfo yet) and ?m stays unresolved throughout the process then fails;
+Although it is clear that ?m := StateM ?sk since that is what the user writes,
+the solution to ?m isn't seen by inner applications since that arises from
+the outermost ascription (refer to inferInstance* for why that is the case).
+Thus, we use a flag `bestEffot` to toggle the behavior: instead of reporting the first
+unsolved equation, we solve what we can and returns the partial substs and the leftover
+preds so that Ascribe branch's two local solves can use it. Since their equations are
+non-consuming, the outer pool solves the whole leftovers, which contains ?m |-> StateM ?sk.
 
 Decidability. Table resolution with ground predicates (canonical) is decidable, as is done in SysF elab. see also
 > Selsam D. et al "Tabled typeclass resolution."
@@ -293,18 +340,20 @@ we must set a maximum recursion depth though cycles surpassing this depth
 still get handled by SysF elab so correctness unaffected. Besides, its likely
 not going to loop for most programs (must satisfy (1) first).
 -/
-partial def solveAll (env : Env) (ke : KindEnv) (n₀ : Nat) (resultFV : Subst -> Std.TreeSet TV) (cs : List Constraint)
-  : Except TypingError (Subst × KindEnv × Nat × List (Nat × Pred)) :=
+partial def solveAllWith (bestEffort : Bool) (refine : Bool) (env : Env) (ke : KindEnv) (n₀ : Nat) (cs : List Constraint)
+  : Except TypingError SolveResult :=
   let (sub₀, eqs₀, pending₀) := cs.foldr (init := (∅, [], []))
     fun | .eq t u  , (sub, eqs, pending) => (sub, (t, u) :: eqs, pending)
         | .pr eid p, (sub, eqs, pending) => (sub, eqs, (eid, p) :: pending)
   go 64 sub₀ ke n₀ ∅ eqs₀ pending₀ []
 where
-  shouldRefine (sub : Subst) (p : Pred) := p.args.foldl (· ∪ fv ·) ∅ |>.any (· ∈ resultFV sub)
+  mkRes (sub : Subst) (ke : KindEnv) (n : Nat) (done : List $ Nat × Pred) (eqs : List $ MLType × MLType)
+    : SolveResult := ⟨sub, ke, n, done.map fun (eid, q) => (eid, apply sub q), eqs⟩
 
   go (fuel : Nat) (sub : Subst) (ke : KindEnv) (n : Nat) (seen : Std.HashSet Pred)
-     (eqs : List (MLType × MLType)) (queue : List (Nat × Pred)) (done : List (Nat × Pred))
-    : Except TypingError (Subst × KindEnv × Nat × List (Nat × Pred)) :=
+     (eqs : List $ MLType × MLType) (queue : List $ Nat × Pred) (done : List $ Nat × Pred)
+    : Except TypingError SolveResult :=
+
     let (sub, ke, n, eqs) := eqs.foldl (init := (sub, ke, n, [])) fun (sub, ke, n, rest) (t, u) =>
       match unify ke n (apply sub t) (apply sub u) with
       | .ok (s, ke, n) => (s ∪' sub, ke, n, rest)
@@ -312,33 +361,49 @@ where
     match queue with
     | [] =>
       match eqs with
-      | [] => return (sub, ke, n, done.map fun (eid, q) => (eid, applyP sub q))
+      | [] => return mkRes sub ke n done []
       | (t, u) :: _ =>
         -- re-run to recover the true failure (a kind error would otherwise
         -- be masked by the retry loop deferring every failure)
         match unify ke n (apply sub t) (apply sub u) with
-        | .error err => throw err
-        | .ok _ => throw (.NoUnify (apply sub t) (apply sub u))
+        | .error err =>
+          if bestEffort
+          then return mkRes sub ke n done eqs
+          else throw err
+        | .ok _ =>
+          if bestEffort
+          then return mkRes sub ke n done []
+          else throw (.NoUnify (apply sub t) (apply sub u))
     | (eid, p) :: rest =>
-      let p := applyP sub p
-      if p ∈ seen || fuel == 0 || eqs.isEmpty || shouldRefine sub p
+      let p := apply sub p
+      if p ∈ seen || fuel == 0 || eqs.isEmpty || !refine
       then go fuel sub ke n seen eqs rest ((eid, p) :: done)
       else match refineStep env ke n p with
         | .error _ => go fuel sub ke n (seen.insert p) eqs rest ((eid, p) :: done)
         | .ok (sub', ke, n, ctx) =>
           let sub := sub' ∪' sub
-          go (fuel - 1) sub ke n (seen.insert p) eqs (rest ++ ctx.map (0, ·)) ((eid, applyP sub' p) :: done)
+          go (fuel - 1) sub ke n (seen.insert p) eqs (rest ++ ctx.map (0, ·)) ((eid, apply sub' p) :: done)
 
-@[inline] def mkSkol := MLType.TVar ∘ .sk ∘ TV.id
+@[macro_inline] def solveAll := solveAllWith (bestEffort := false) (refine := true)
+
+/-- solve all w/o refinement, thus does not consume predicates. Used by the pure phase
+of generalize-first (GHC's simplifyInfer adapted): -/
+@[macro_inline] def solvePure := solveAllWith (bestEffort := true) (refine := false)
+
+/-- Invariant: mkSkol n = ?sk.n. counter is shared. -/
+private def mkSkol := MLType.TVar ∘ .sk ∘ TV.id
+@[inherit_doc mkSkol] theorem mkSkol_eq : mkSkol tv = TVar (.sk tv.id) := by simp[mkSkol, TV.id]
+/-- skolemize over a set (or list) of vars to make instance refinement structurally unable to
+touch them. Cf. MLType.unSkolem in ttypes. -/
+def rigidize (tvs : Std.TreeSet TV) : Subst := tvs.foldl (fun s v => s.insert v (mkSkol v)) ∅
+@[inherit_doc rigidize] def rigidize'(tvs : List TV) : Subst := tvs.foldl (fun s v => s.insert v (mkSkol v)) ∅
+attribute [inline] rigidize rigidize' mkSkol
 
 def skolemizeTSch : MLType -> Except TypingError MLType
-  | .TSch (.Forall tvs _ t) =>
-    let sub : Subst := tvs.foldl (fun s v => s.insert v (mkSkol v)) ∅
-    return apply sub t
-  | _ => throw (.Impossible "skolemizeTSch: expected TSch")
+  | .TSch (.Forall tvs _ t) => return apply (rigidize' tvs) t
+  | t => throw (.Impossible s!"skolemizeTSch: expected TSch but got {repr t}")
 
-@[inline] def extend (Γ : Env) (x : String) (sch : Scheme) : Env :=
-  {Γ with E := Γ.E.insert x sch}
+@[inline] def extend (Γ : Env) (x : String) (sch : Scheme) : Env := {Γ with E := Γ.E.insert x sch}
 
 def generalize (Γ : Env) (t : MLType) (res : List Pred) : Scheme :=
   let envFV := fv Γ
@@ -350,7 +415,7 @@ def generalize (Γ : Env) (t : MLType) (res : List Pred) : Scheme :=
   let keep (p : Pred) :=
   -- Keep a predicate only if it mentions at least one quantified variable
   -- that also appears in the result type (otherwise it is vacuous / removable).
-    let pvs := p.args.foldl (· ∪ fv ·) ∅
+    let pvs := fv p
     let qVars := pvs.filter $ not ∘ envFV.contains
     !(qVars.filter tFV.contains).isEmpty
   let ctx := res.filter keep |>.rmDup
@@ -438,9 +503,7 @@ partial def checkExpr (Γ : Env) (exp : MLType) (e : Expr)
   : InferC σ (TExpr × MLType × List Pred) := do
   match exp with
   | .TSch (.Forall vs ps body) => -- Also the Skol rule
-    if ps.isEmpty then
-      let sub := vs.foldl (fun s v => s.insert v (mkSkol v)) ∅
-      checkExpr Γ (apply sub body) e
+    if ps.isEmpty then checkExpr Γ (apply (rigidize' vs) body) e
     else throw .NoRankN
   | _ =>
     match exp, e with
@@ -592,10 +655,10 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
          -------------------------- Spec
          |-ₛₕ ∀(dom sub)*, ρ₁ <= ρ₂
       -/
-      match solveAll Γ ke next (fun sub => fv (apply sub inst)) $ .eq teMono inst :: cs₀
+      match solveAllWith (bestEffort := true) (refine := true) Γ ke next $ .eq teMono inst :: cs₀
       with
       | .error err => throw err
-      | .ok (sub, ke, next, _) =>
+      | .ok {sub, ke, next, ..} =>
         modify ({· with ke, next})
         if sub.any (fun tv rhs => tv ∈ rigid && rhs != MLType.TVar tv)
         then throw (.NoUnify teMono inst)
@@ -610,9 +673,10 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
          ------------------------ Skol
          |-ₛₕ σ <= ∀ tvs. ρ
       -/
-      match solveAll Γ ke next (fun sub => fv (apply sub skTy)) (.eq teMono skTy :: cs₀) with
+      match solveAllWith (bestEffort := true) (refine := true) Γ ke next (.eq teMono skTy :: cs₀)
+      with
       | .error err => throw err
-      | .ok (_, ke, next, _) => (.Ascribe te sch, inst, preds) <$ modify ({· with ke, next})
+      | .ok {ke, next, ..} => (.Ascribe te sch, inst, preds) <$ modify ({· with ke, next})
 
   | Ascribe e ty =>
     if containsTSch ty then do -- the TSch branch above keeps its wanted-pool structure
@@ -665,21 +729,66 @@ partial def inferGroup (Γ : Env) (binds : Array (String × Expr))
 
   let csAll <- get <&> (·.cst)
   let localCs := csAll.take (csAll.length - startCs)
-  -- the complete fv set of the result types of each RHS.
-  let view := fun s => fv $ apply s $ Array.seq2 (Prod.fst ∘ .snd ∘ .snd) tyRec tyNon
   let {ke, next,..} <- get
-  match solveAll Γ ke next view localCs with
+
+  /- GHC's simplifyInfer adapted to the deferred pool. It is simplified because
+     we don't have eager instance rules (Cf. hkt-dict-parametricity.tig & hkt-eager-specialize.tig)
+     which matches what Lean does. (see also similar approach in inferInstanceDecl)
+
+     1. solvePure solves the equations to exhaustion without refinement so that
+        everything the equations alone can determine (including the rec names' mvs) is fixed;
+     2. skolemizes all TVs (TVᵣ) shared between the result types
+        (subst'd from step 1) and the pending predicates,
+        minus the environment's and the leftover equations'. Concretely,
+
+          TVᵣ := fv [sub₁]trs ∩ fv wants \ fv Γ \ fv leftover
+
+        TVᵣ is now effectively _untouchable_ (see OutsideIn(X)), preventing them from being
+        refined/specialized/monomorphized to a concrete instance head in step 3 (see bindTV)
+        (parametric instances still bind their ?inst TVs to the skolem, unchanged)
+
+     3. normal solving as before (*) on the skolemized constraints.
+     (*) except that we must undo 2 (unSkolem) before generalization since it
+         relies on fvT which doesn't count skolems.
+
+     Above is mostly standard procedure; Most importantly, we must consume the constraints
+     after this. Otherwise this leads to a new problem examined in let-gen.tig which previously
+     blocked by views, described below.
+
+     1. the group (f x, g y) infers and generalizes to f : ∀α β [C α]... which is correct
+     2. but in this process the constraints are non-consuming, outer toplevel solve re-solves
+        them again, where, in the outer pool, from g we yield ?m |-> Λa. a, it is then used
+        to rewrite f's body with tArgs become that.
+     3. We now have a desync between the body and the scheme in f. While we quantified α
+        in the scheme, in the body it is a groud, concrete Λa. a. SysF elab thus
+        directly synthesizes C Id instead of using the dict parameter (not even there
+        in the program since the goal is erroneously solved already)
+     4. Previously an implicit assumption is that re-solving constraints is harmless
+        thanks to the views. Now that's unsound. -/
+  let ⟨sub₁, ke, next, wants₁, leftEqs₁⟩ <- solvePure Γ ke next localCs
+  let trs := Array.seq2 (Prod.fst ∘ .snd ∘ .snd) tyRec tyNon
+  let resFV := Array.foldl (· ∪ fv ·) ∅ $ apply sub₁ trs
+  let predFV := wants₁.foldl (· ∪ fv ·.snd) ∅
+  let eqFV := leftEqs₁.foldl (fun acc (t, u) => acc ∪ fv t ∪ fv u) ∅
+  let rigidSub := rigidize $ ((resFV ∩ predFV) \ fv Γ) \ eqFV
+  let cs₂ := apply rigidSub localCs
+  match solveAll Γ ke next cs₂ with
   | .error err => throw err
-  | .ok (sub, ke, next, wants) =>
-    modify ({· with ke, next})
+  | .ok {sub, ke, next, wants, ..} =>
+    -- manually consume (drop, really) and modify the state to avoid outer solveAll
+    -- re-solving the group's original/unskolemized constraints which otherwise
+    -- defeats the hard work that has been done (to the local copy cs₂) here.
+    modify fun st => {st with ke, next, cst := st.cst.drop (st.cst.length - startCs)}
+
     let predsFor evStart evEnd :=
       wants.foldr (init := []) fun (eid, p) acc =>
         if evStart <= eid && eid < evEnd
-        then apply sub p :: acc else acc
+        then unSkolemP (apply sub p) :: acc else acc
     let gen := fun (Γ, bindsTyped) (n, te, ty, ps, l, r) =>
-      let ty := apply sub ty
-      let sch := generalize Γ ty (apply sub ps ++ predsFor l r)
-      (extend Γ n sch, bindsTyped.push (n, sch, apply sub te))
+      let ty := unSkolem $ apply sub ty
+      let sch := generalize Γ ty $ ps.map (unSkolemP ∘ apply sub) ++ predsFor l r
+      (extend Γ n sch, bindsTyped.push (n, sch, (apply sub te) |>.mapTypes unSkolem unSkolemS))
+
     return Array.seq2fold gen (Γ, #[]) tyRec tyNon
 
 partial def inferLet (Γ : Env) (binds : Array (String × Expr)) (body : Expr)
@@ -753,9 +862,9 @@ def runInferConstraintT (e : Expr) (Γ : Env) : Except TypingError (TExpr × Sch
   match runInfer1 with
   | .error err => .error err
   | .ok ((te, ty, preds), {log,cst,ke,next,..}) =>
-    match solveAll Γ ke next (fun sub => fv (apply sub te)) cst with
+    match solveAll Γ ke next cst with
     | .error err => .error err
-    | .ok (sub, _, next, wants) =>
+    | .ok {sub, next, wants, ..} =>
       let te := apply sub te
       let ty := apply sub ty
       let ps := preds ++ wants.map (apply sub ∘ Prod.snd)
@@ -815,7 +924,7 @@ in private def inferInstanceDecl (E : Env) (ci : ClassInfo) (existingCount : Nat
     let iname := s!"i_{ci.cname}_{existingCount}"
     let ordered <- orderInstanceMethods ci methods
     let rigidTVs := fv args ∪ fv ctxPreds
-    let rigidSub : Subst := rigidTVs.foldl (fun s v => s.insert v (mkSkol v)) ∅
+    let rigidSub : Subst := rigidize rigidTVs
     let argsSk := apply rigidSub args
     let rawBody := buildInstProvider ci ordered argsSk
     let (typedBody, inferredSch, l, n') <- runInferConstraintT rawBody E
@@ -928,7 +1037,7 @@ def inferToplevelC
             s!"pattern binding does not support addition of constraints (it is dropped.)\n"
         else ""
       let ((E, b), {log := l₂, cst, ke, next,..}) <- runEST fun _ => inferPattern E te pat |>.run {ke := KindEnv.ofEnv E, next := n'}
-      let (subst, _, next, _) <- solveAll E ke next (fun sub => fv (apply sub e)) cst
+      let {sub := subst, next, ..} <- solveAll E ke next cst
       let E := {apply subst E with nextTV := next}
       let E := apply subst E
       let (ex, _, _) := Exhaustive.exhaustWitness E #[te] #[(#[pat], Expr.CUnit)]

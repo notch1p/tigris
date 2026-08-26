@@ -5,7 +5,7 @@ examples/poly-ref*.tig            linguist-language=haskell
 examples/where.tig                linguist-language=haskell
 examples/neg.tig                  linguist-language=haskell
 examples/hkt-*.tig                linguist-language=haskell
-examples/*                        linguist-vendored
+examples/**                       linguist-vendored
 runtime.lean                      linguist-vendored
 docs/midterm/report.tex           linguist-vendored
 docs/midterm/report-1-mng.tex     linguist-vendored
@@ -20,4 +20,4 @@ Tigris/oldcps/*                   linguist-vendored
 Tigris/oldInterpreter/*           linguist-vendored
 Tigris/oldcore2/matchAppF.lean   -linguist-vendored
 oldMain.lean                      linguist-vendored
-tests/cases/*                     linguist-vendored
+tests/cases/**                    linguist-vendored

@@ -8,7 +8,8 @@ structure TestSpec where
 
 open System.FilePath renaming mk -> fp, fileStem -> fn in
 def execCases : Array TestSpec :=
---    sources             SBCL format ~S output                Interpreted Value (evalCEK.lean)
+--  sources                SBCL ~S output (normalized)       Interpreted Value (evalCEK.lean)
+--                         empty to skip
  #[ (cases/"r1"            , r"(42 15 . 2)"                  , .pair
                                                                  (.int 42)
                                                                  (.pair (.int 15) (.int 2))  )
@@ -19,6 +20,7 @@ def execCases : Array TestSpec :=
   , (cases/"nested"        , r"1"                            , .int 1                        )
   , (cases/"hkt-infer"     , r"#S(|c/Some| :|tag| 1 :|f0| 1)", .constr "Some" #[.int 1]      )
   , (examples/"runst"      , r"1"                            , .int 1                        )
+  , (examples/"recinst"    , r"9"                            , .int 9                        )
   , (examples/"mutual"     , r"5"                            , .int 5                        )
   , (examples/"where"      , r"50"                           , .int 50                       )
   , (examples/"cont"       , r"42"                           , .int 42                       )
@@ -31,19 +33,25 @@ def execCases : Array TestSpec :=
   , (examples/"rankn-app"  , r"(1 1 . 1)"                    , .pair
                                                                  (.int 1)
                                                                  (.pair (.int 1) (.int 1))   )
-  , (examples/"typeclass0" , r"3"                            , .int 3                        )
-  , (examples/"hkt-eta"    , r"#S(|c/Some| :|tag| 0 :|f0| 3)", .constr "Some" #[.int 3]      )]
+  , (examples/"typeclass0" , r"(3 . 1)"                      , .pair (.int 3) (.int 1)       )
+  , (examples/"hkt-eta"    , r"#S(|c/Some| :|tag| 0 :|f0| 3)", .constr "Some" #[.int 3]      )
+  , (examples/"let-gen"    , r""
+                           , .constr "Mk" #[ .constr "Mk" #[.bool true, .bool false]
+                                           , .constr "Mk" #[.bool true, .bool false]]        )]
   |>.map fun (p, s, v) => ⟨name p, p.addExtension "tig", s, v⟩
 where examples := fp "examples"
       cases    := fp "tests" / "cases"
       name p   := fn p |>.getD p.toString
 in open execCases in
 def errorCases : Array TestSpec :=
- #[ (error/"inst"   , "Kind mismatch")
-  , (error/"juxta"  , "Kind mismatch")
-  , (error/"overapp", "Kind mismatch")
-  , (error/"infer"  , "Can't unify")
-  , (error/"amb"    , "Ambiguous: HEq") ]
+ #[ (error/"inst"       , "Kind mismatch")
+  , (error/"juxta"      , "Kind mismatch")
+  , (error/"overapp"    , "Kind mismatch")
+  , (error/"infer"      , "Can't unify")
+  , (error/"amb2"       , "Can't unify")
+  , (error/"amb"        , "Ambiguous: HEq")
+  , (error/"recinst-fun", "Ambiguous: Eq (List")
+  , (error/"imp6"       , "Can't unify")]
   |>.map fun (p, s) => {name := name p, path := p.addExtension "tig", expected := s}
 where error := cases/fp "error"
 
@@ -51,5 +59,6 @@ def compileCases : Array TestSpec :=
  #[ "fact", "list", "opt", "op-let", "struct"
   , "typeclass4", "typeclass5", "typeclass6"
   , "hkt-dict-parametricity", "hkt-eager-specialize"
-  , "poly-ref", "poly-ref-io", "poly-ref-io-safe"]
+  , "poly-ref", "poly-ref-io", "poly-ref-io-safe"
+  , "recinst"]
   |>.map fun n => {name := n, path := execCases.examples / n |>.addExtension "tig"}

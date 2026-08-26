@@ -1,7 +1,7 @@
 ;; == System F IR ==
 
 let apply2 : ((∀a, a → a) → Int) → Int =
-  fun h : (∀a, a → a) → Int => h fun x : ?sk.0 => x
+  fun h : (∀a, a → a) → Int => h fun x : ?m.0 => x
 
 let main : Int = apply2 fun g : ∀a, a → a => g 1
 ;; == Runtime ==

@@ -1,0 +1,11 @@
+let id x = x
+
+type List a = Nil | Cons a (List a)
+
+let head l = match l with | Cons x _ => x | Nil => id
+let ids = Cons id Nil
+
+let app f x = f x
+let revapp x f = f x
+
+let main = let f = app head ids in (f id, f 1)

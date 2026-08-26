@@ -1,0 +1,22 @@
+type List a = Nil | Cons a (List a)
+infixr 67 "::" => Cons
+class Functor f where fmap : forall a b, (a -> b) -> f a -> f b
+
+-- some recursive instances just ``works''.
+-- here the recursive call (fmap f xs) yields ?m ?m' ~ List ?m' where Functor ?m
+-- thus ?m |-> List, which is ground. SysF elabs it normally, the dictionary memoized itself.
+-- nevertheless this feature shouldn't be taken as guaranteed since Tigris aligns
+-- with Lean on this one where recursive instances aren't allowed, from the start.
+
+-- meanwhile tests/cases/error/recinst-fun.tig doesn't just work.
+instance Functor List where
+  fmap f
+  | Nil => Nil
+  | x :: xs => f x :: fmap f xs
+
+let main = 
+  let rec foldr f init
+    | Nil => init
+    | x :: xs => f x $ foldr f init xs
+
+  foldr (_ + _) 0 $ fmap (_ + 1) $ 1 :: 2 :: 3 :: Nil

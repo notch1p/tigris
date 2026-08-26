@@ -96,8 +96,8 @@ def main (fs : List String) : IO Unit := do
           println! inst
         else
           -- mirror inferInstanceDecl
-          let sk := vs.foldl (fun s v => s.insert v (ConstraintInfer.mkSkol v)) (∅ : Subst)
-          let inst <- Resolve.matchHead es.E {p with args := Rewritable.apply sk p.args }
+          let sk := ConstraintInfer.rigidize' vs
+          let inst <- Resolve.matchHead es.E (Rewritable.apply sk p)
                    |> IO.ofExcept
           let headTy := MLType.mkApp (.TCon p.cls) p.args
           let sch := .Forall vs ctx headTy

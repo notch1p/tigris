@@ -106,14 +106,29 @@ lean_exe "tigrisl" where
   root := `Tigrisl
   needs := #[runtime.lean]
 
+def spawnScriptM (args : IO.Process.SpawnArgs) : ScriptM ExitCode :=
+  IO.Process.spawn args >>= (·.wait) >>= fun
+  | 0 => pure 0
+  | x => error s!"process {args.cmd} failed with exit code {x}"
+
 def lake2 : IO.Process.SpawnArgs where
   cmd  := "lake"
   args :=
     let tigrisl := if System.Platform.isWindows then "tigrisl.exe" else "tigrisl"
     let tigrisi := if System.Platform.isWindows then "tigrisi.exe" else "tigrisi"
     #["test", "--", _package.config.buildDir / _package.config.binDir |>.toString, tigrisl, tigrisi]
-in script shortcut do
-  liftM $ IO.println =<< IO.Process.run lake2
+script shortcut do spawnScriptM lake2
+
+def mkPdf (mkTarget : String) : IO.Process.SpawnArgs where
+  cmd  := "make"
+  args := #[mkTarget]
+  cwd  := "Tigris/typing/formal"
+script formal.pdf args do
+  match args with
+  | [] => liftM $ IO.println =<< IO.Process.run (mkPdf "default")
+  | "--clean" :: [] | "clean" :: [] =>
+    liftM $ IO.println =<< IO.Process.run (mkPdf "clean")
+  | xs => error s!"Unknown args: {xs}"
   return 0
 
 --lean_exe «eval-direct» where

@@ -1,4 +1,8 @@
 -- rank-2 runST shape
 let id x = x
 let run : (forall s, s -> s) -> Int = fun f => f 1
-let main = run id
+let main' = 
+  let main' = id run -- we have *some* impredicativity, see also tests/cases/impred
+  main' id -- == main
+let main  = run id
+

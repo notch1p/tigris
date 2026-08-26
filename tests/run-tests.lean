@@ -81,6 +81,7 @@ open IO (mkRef)
 def main (paths : List String) : IO UInt32 := do
   let pass <- mkRef 0
   let fail <- mkRef 0
+  let skip <- mkRef 0
   let stdout <- IO.getStdout
   let println s := IO.println s *> stdout.flush
   let eprintln s := IO.eprintln s *> stdout.flush
@@ -105,8 +106,8 @@ def main (paths : List String) : IO UInt32 := do
         fail.modify .succ *> eprintln s!"  X {name}: expected error beginning with \"{expected}\", but got compiled"
       | .error e =>
         if e.startsWith expected
-        then if e.length > 80
-             then pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e |>.take 80}..."
+        then if e.length > 40
+             then pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e |>.take 40}..."
              else pass.modify .succ *> println s!" OK {name}{pad name}{normalizeMsg e}"
         else fail.modify .succ *> eprintln s!"  X {name}: expected error beginning with \"{expected}\", got {normalizeMsg e}"
 
@@ -117,15 +118,20 @@ def main (paths : List String) : IO UInt32 := do
       | .error e =>
         fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
       | .ok cl =>
-        runSbcl cl >>=
-          fun
-          | .error e =>
-            fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
-          | .ok got =>
-            if got == expected then pass.modify .succ *> println s!" OK {name}{pad name}==> {got}"
-            else fail.modify .succ *> eprintln s!"  X {name}: expected {expected}, got {normalizeMsg got}"
+        if expected.isEmpty
+        then skip.modify .succ *> eprintln s!"  S {name}{pad name}refer to interpreter output instead"
+        else
+          runSbcl cl >>=
+            fun
+            | .error e =>
+              fail.modify .succ *> eprintln s!"  X {name}: {normalizeMsg e}"
+            | .ok got =>
+              let got := normalizeMsg got
+              if got == expected.toSlice
+              then pass.modify .succ *> println s!" OK {name}{pad name}==> {got}"
+              else fail.modify .succ *> eprintln s!"  X {name}: expected {expected}, got {normalizeMsg got}"
 
-  println "\n== exec (Interpreter: evalCEK) =="
+  println "\n== exec (Incremental Lowering; Interpreter: evalCEK) =="
   waitAll =<< execCases.mapM fun {name, path, interpreted := v',..} =>
     .asTask $ TCNF.Interpreter.checkFile path false >>=
       fun v =>
@@ -137,7 +143,8 @@ def main (paths : List String) : IO UInt32 := do
 
   let pass <- pass.get
   let fail <- fail.get
-  println! "\n{pass} passed, {fail} failed"
+  let skip <- skip.get
+  println! "\n{pass} passed, {skip} skipped, {fail} failed"
   if fail > 0 then return 1
   match paths with
   | bindir :: paths =>

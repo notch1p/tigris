@@ -1,0 +1,16 @@
+abbrev Id a = a
+
+class Functor f where
+  fmap : forall a b, (a -> b) -> f a -> f b
+
+type Maybe a = Some a | None
+
+instance Functor Id where
+  fmap f = f
+
+instance Functor Maybe where
+  fmap f
+  | Some x => Some (f x)
+  | None => None
+
+let main = fmap (fun x => true) 2

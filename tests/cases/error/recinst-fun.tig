@@ -1,0 +1,15 @@
+-- Ambiguous: Eq (List ?m.3)
+-- unlike recinst, Eq genuinely quantifies over a in List a.
+-- in constraint solving, a is skolemized (inferInstanceDecl) and we have Eq (List ?sk.3)
+-- which is also ground BUT unskolem at the end restores it to ?m.3 
+-- and in SysF, isGroundPred does not like that.
+
+class Eq a where eq : a -> a -> Bool
+type List a = Nil | Cons a (List a)
+infixr 67 "::" => Cons
+
+instance forall a [Eq a], Eq (List a) where
+  eq
+  | Nil, Nil => true
+  | x :: xs, y :: ys => 
+    if x = y then xs = ys else false

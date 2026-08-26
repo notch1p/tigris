@@ -7,4 +7,9 @@ instance Functor Id where
   fmap f = f
 
 let main =
-  fmap (1 + _) 2
+  let 
+    x = fmap (1 + _) 2         -- emitted a dictionary for Functor (Λα. Int) instead of Functor (Λα. α).
+    y = fmap (fun _ => 1) true -- previously this yields the unsound true |- Int
+                               -- Both are because of the Miller-style higher-order pattern fragment 
+                               -- in unification we had been using, which is unsound when mixed w/ classes.
+  (x, y)

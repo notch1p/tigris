@@ -4,7 +4,10 @@ let id : ∀α, α → α = Λ α. fun x : α => x
 
 let run : (∀s, s → s) → Int = fun f : ∀s, s → s => f 1
 
-let main : Int = run id@?sk.1
+let main' : Int =
+  let main' : (∀s, s → s) → Int = id@((∀s, s → s) → Int) run in main' id@?m.1
+
+let main : Int = run id@?m.1
 ;; == Runtime ==
 (load "runtime.lisp")
 
@@ -42,7 +45,9 @@ let main : Int = run id@?sk.1
 ; ftype
 (declaim (ftype (function (clos) integer) |run-4|))
 
-(declaim (type integer |main-7|))
+(declaim (type integer |main'-7|))
+
+(declaim (type integer |main-10|))
 
 ; body
 (defun |id-2| (|x-3|)
@@ -51,5 +56,9 @@ let main : Int = run id@?sk.1
 (defun |run-4| (|f-5|)
   (gapply1 |f-5| 1))
 
-(defparameter |main-7|
+(defparameter |main'-7|
+  (let* ((|app-8| (|id-2| (%clos (function |run-4|) 1))))
+     (gapply1 |app-8| (%clos (function |id-2|) 1))))
+
+(defparameter |main-10|
   (|run-4| (%clos (function |id-2|) 1)))

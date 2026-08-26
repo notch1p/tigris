@@ -1,0 +1,3 @@
+let id x = x
+let run : (forall s, s -> s) -> Int = fun f => f 1
+let main = if true then id else run -- should reject

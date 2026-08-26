@@ -372,3 +372,6 @@ Tigris/TCNF/cci.txt
 /tigrisl.exe
 /tigrisi
 /tigrisl
+*.ott.tex
+*.ottdump
+Tigris/typing/formal/rules.pdf

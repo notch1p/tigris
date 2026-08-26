@@ -1,0 +1,19 @@
+abbrev Id a = a
+
+class C m where
+  c : forall a, a -> m a
+
+instance C Id where
+  c x = x
+
+let f x = c x
+and g y = (c y : Id Int) -- see notes in inferGroup.
+
+type Box a = Mk a a
+
+instance C Box where
+  c x = Mk x x
+
+let main' = f $ Mk true false
+
+let main : Box (Box Bool) = main'
