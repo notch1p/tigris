@@ -1,0 +1,31 @@
+type List a = Nil | Cons a (List a)
+
+infixr 90 "::" => Cons
+infixl 50 "++"
+
+let rec xs ++ ys =
+  match xs, ys with
+  | Nil, ys => ys
+  | x :: xs, ys => x :: (xs ++ ys)
+
+
+-- f : List (forall a, a -> a)
+-- f': List (Int -> Int)
+let (f, f') :: _ =
+  let x = (1 + _) :: Nil
+      y : List (forall a, a -> a)
+        = (fun x => x) :: Nil
+
+  (x ++ y, y ++ x)
+
+
+let main = do
+
+  -- Low-level error: Interpreter: expected Int, found true
+  -- Current Frame:
+  --    FVar   Value
+  --      12   true
+  f true
+
+  -- can't unify Bool with Int
+  f' true

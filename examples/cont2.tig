@@ -1,0 +1,37 @@
+-- abbrev variant
+extern append   "%string-append" : String -> String -> String
+extern signal   "error"          : forall a, a -> Unit
+extern println  "%println"       : forall a, a -> Unit
+extern y-or-n   "y-or-n-p"       : String -> Bool
+
+infixl 65 "++" => append
+
+abbrev Cont ρ α = (α -> ρ) -> ρ
+
+let cont/pure x k : forall ρ α, α -> Cont ρ α = k x
+
+let call/cc f k
+  : forall ρ α β, ((α -> Cont ρ β) -> Cont ρ α) -> Cont ρ α =
+  f (fun a _ => k a) k
+
+infixr 90 ">>="
+prefix 100 "↑" => cont/pure
+
+let c >>= f = fun k => c fun a => f a k
+
+let greet =
+  let prog = call/cc fun exitK =>
+        get-name exitK >>= fun name =>
+          cont/pure $ "welcome, " ++ name ++ "!"
+      exit = fun
+        | "robot" => signal "You are not welcomed."
+        | s => println s
+
+  prog exit
+
+where get-name exit-with =
+  if   y-or-n "Are you a human?" 
+  then ↑"some human"
+  else exit-with "robot"
+
+let main = greet

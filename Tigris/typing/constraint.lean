@@ -635,7 +635,8 @@ partial def inferExpr (Γ : Env) : Expr -> InferC σ (TExpr × MLType × List Pr
           other positions unify structurally), so nothing is floated and no pr is needed.
           Thus ∀a b, a -> b -> b ≅/≅ ∀a, a -> ∀b, b -> b, in our unification -- and no,
           it's not because of value restriction since we don't have that either,
-          we just don't allow that isomorphism.
+          we just don't allow that isomorphism _HERE_. Later added U-Inst1 is strong enough
+          that it unifies them through instantiating.
       -/
       let sub <- vs.foldlM (Std.TreeMap.insert · · <$> fresh) ∅
       for p in ps do () <$ freshEvidence (apply sub p)

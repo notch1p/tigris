@@ -138,4 +138,4 @@ script formal.pdf args do
 --  root := `evalCEK
 --  srcDir := "Tigris/TCNF/interpreter"
 
-require Parser from git "https://github.com/fgdorais/lean4-parser"@"2ca6e66d5bd4f3f51390f98fdb415ed9891b0b89"
+require Parser from git "https://github.com/fgdorais/lean4-parser"@"3db7189e9142c9c463a53bd8b360fea2b78f4be5"

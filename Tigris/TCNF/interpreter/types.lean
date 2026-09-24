@@ -169,12 +169,12 @@ def throwErrWithFrame (s : String) : EvaluatorCEK α := fun {locals,..} =>
   then throwErr s
   else throw $ TypingError.Lowlevel
              $ "Interpreter: " ++ s
-            ++ frameString locals (eq_false_of_ne_true h)
+            ++ frameString locals (Bool.eq_false_of_ne_true h)
 
 def throwErrWithTrace (s : String) (k : Kont) : EvaluatorCEK α := do
   let {locals, ..} <- read
   let trace <- if k matches .halt then pure "" else k.trace
-  let framestr := if h : locals.isEmpty then "" else frameString locals (eq_false_of_ne_true h)
+  let framestr := if h : locals.isEmpty then "" else frameString locals (Bool.eq_false_of_ne_true h)
   throwErr (s ++ framestr ++ trace)
 --  if h : TreeMap.isEmpty locals
 --  then throw $ TypingError.Lowlevel
