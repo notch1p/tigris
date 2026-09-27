@@ -132,5 +132,3 @@
 
 (defparameter |main-56|
   |greet-40|)
-
-(format t "~S~%" |main-56|)

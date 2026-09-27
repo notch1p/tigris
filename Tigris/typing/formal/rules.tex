@@ -1,0 +1,278 @@
+\documentclass[a4paper, 11pt]{article}
+\usepackage[top=3cm, bottom=3cm, left = 2cm, right = 2cm]{geometry}
+\geometry{a4paper}
+\usepackage{ottalt}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathpartir}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\title{A formal description of the type system}
+\author{notch1p}
+\date{August 21, 2026}
+\inputott{rules.ott}
+
+\newenvironment{rules}{\bigskip}{\bigskip}
+
+\begin{document}
+\maketitle
+\section{Introduction}
+
+The purpose of this document is to provide readers with a up-to-date formal
+description of Tigris' type system, with a heavy emphasis on its implementation
+-- judgements are all algorithmic, specifically.
+It is advised that this be read alongside all the notes\footnote{
+  Readers are also assumed familiarity with the various works this document quotes, for
+  being the sturdy foundation that Tigris relys on.
+}
+in
+\texttt{typing/} to form a more complete understanding of ``how we did it'',
+``why it is done this way''. Meanwhile, System F elaboration is trivial modulo instance
+resolution and dictionary synthesis -- since the description is not about the latter, we omit the former
+here completely.
+
+For an \emph{much outdated} review and formal description of the language,
+I suggest reading doc/midterm (in English) for a work-in-progress yet self-contained report,
+or my B.Eng. thesis%
+\footnote{TinyTheorem: A dependently-typed programming language with light theorem proving (I really should name it \emph{Tigris} in the title.)}
+(in Chinese) located in the repo (and the submodule in \texttt{doc/}) \texttt{beng-thesis}.
+Directories \texttt{examples/} and \texttt{tests/cases/} showcase some of the
+(mostly) up-to-date features and capability of the language.
+
+\paragraph{Layout.} We don't follow the traditional formal grammar - judgements order but
+instead gives every important datatype their own sections.
+
+Below we present the core calculus at both term and type level. Not everything is presented here,
+for brevity. Refer to \texttt{syntax.ott} for the complete syntaxes.
+
+\section{Terms}
+\nonterms{expr}
+
+let-expressions and toplevel bindings have been simplified to take single binding. Same
+applies to case analysis. A recursive binding is no different from a normal one except
+its \textbf{fun}-shaped RHS is wrapped in a \textbf{fix} node with its name as the head argument; Others are processed as-is.
+Literals are omitted.
+
+The Let(rec)-group in the surface language is inferred in SCC order, thus a nonrecursive
+binding may still be mutually recursive iff each one of them does not mention itself. Note that
+this is different from OCaml's Let-group semantics.
+
+\section{Types}
+\nonterms{tyvar,typeexpr,scheme,predicate}
+Tigris is in System F. The type system supports arbitrary ranked types,
+allows polytypes to nest everywhere in the types\footnote{Though a higher-rank scheme cannot carry predicates, for now.}.
+Later we'll show how \emph{partial} impredicativity is obtained ``for free''
+without Quick Look (Serrano et al. ICFP'20), unlike GHC -- and why much of what we
+once boasted was unsound.
+
+The usually-absent type lambda is part of the syntax directly to encode both higher-kinded
+types and type synonyms (abbreviations). It is handled with care to ensure no beta-redexes
+survive construction whereas partial applicated type constructors get eta-expanded. Unlike GHC,
+we permit partially applicated type synonyms.
+
+Typeclasses in the surface language is syntactic sugar (with additional infomation recorded) for structures,
+which, in turn, is syntactic sugar for single-constructor inductive types whose type constructor's \emph{name}
+is the same as the value constructor. This invariant is enforced by the parser. A predicate is a typeclass constraint.
+Unlike GHC, typeclass constructor (often higher-rank) can be called directly and the methods
+can be explicitly pattern matched out of a instance with generalization.
+
+We now describe expression typing. Note that toplevel binding is omitted since in practice
+we simply wrap them in a Letexp whose body is \textsf{Unit}.
+
+\subsection{Constraint Generation.} Tigris implements a constraint solver with wanted pools
+similar to that of OutsideIn(X) based on the understanding that type
+inference is a process of generating and solving constraints (Pottier, \'{R}emy).
+
+\begin{remark}
+  We deem a judgement \emph{most} ``algorithmic'' if it generates constraints. Those
+  judgements uses $\vDash$ whereas others use $\vdash$ unless told otherwise. Readers
+  should not assume judgements are ``pure'' since most of them carry a state for
+  e.g. counters used for fresh type variables.
+\end{remark}
+
+\nonterms{constraint}
+
+\paragraph{Term Inference.} $[[R ; G |= e => ty | Cs]]$ reads,
+under typing environment $[[G]]$ and rigid set $[[R]]$,
+$e$ is inferred to be $ty$. Below we give the trivial ones directly, then elaborate
+on mroe interesting cases.
+
+\drules[I]{$[[R ; G |= e => ty | Cs]]$}{term inference}{Var,Lam,Prod,Ascribe-Mono,Cond,Fix,Match}
+
+\subparagraph{Function Application.} We eagerly consume the arrow when possible. In the
+case that the function's instantiated type is not (yet) an arrow, possibly
+a metavariable, we leave an ordinary equation to the pool. A forall that surfaces in it only
+after solving can only unify with another forall -- it is never instantiated (see Instantiation). A rank-n
+function hiding behind a metavariable thus needs an ascription guiding it, e.g. with
+$g : \textsf{Int}\to(\forall\alpha.\,\alpha\to\alpha)\to\textsf{Int}$, \texttt{apply g 1 id}
+needs $(\forall\alpha.\,\alpha\to\alpha)\to\textsf{Int}$ on \texttt{apply g 1}.
+The two cases are given below as
+
+\begin{mathpar}
+  \drule{I-App-Arrow}
+  \drule{I-App-MV}
+\end{mathpar}
+
+Type ascriptions are divided into rank-1 and rank-n. The shallow subsumption $\vdash_\textsf{sh}$
+from jones2007 gave rise to two derivation \rref{Spec,Skol}
+which corresponding to the two \texttt{solveAll}s in rank-1. Meanwhile, we switch to
+check mode for rank-n modulo predicates for which the paper's \rref{Gen2,Annot} provide
+guidances.
+Monotype ascription is trivial enough that we've given it above already.
+
+\subparagraph{Rank-1 Ascription.} \Rref{Spec} solves against the instantiated
+annotation whereas \rref{Skol} solves against its skolemization, with escape-check
+on rigids. It is worth noting the solving here is \emph{lax}, or \emph{best effort},
+in the comments, which simply means ``solve what we can'': by
+returning a partial subst, leaving the rest to the outer pool
+(i.e. the outer call to \texttt{solveAll}) to try again instead of signaling an error.
+Readers may see this as a kind of backtracking -- we try again in hopes that the outer pool
+may reveal more solutions that makes the unsolvables solvable.
+
+\begin{mathpar}
+  \drule{I-Ascribe-RankOne}
+  \drule{I-Ascribe-RankN}
+\end{mathpar}
+
+\subparagraph{Rank-N Ascription.} An interesting case is that we do not have prenex
+conversion\footnote{
+  the coercion counterpart of deep skolemization $\vdash_\textsf{dsh}$.
+  The latter is used for \emph{annotated} lambdas \rref{AAbs2}
+  which is absent here at syntax level. Though we need them back if we were to support OCaml's
+  locally abstract types or GHC's scoped type variables. Not a real concern at the moment.
+}
+that \rref{Gen2} requires. From what we have gathered, a direct result seems to be, that, e.g.
+the two supposedly isomorphic types are no longer so,
+\[
+  \forall \alpha\,\beta.\,\alpha\to\beta\to\beta \ncong \forall \alpha.\,
+  \alpha\to\forall \beta.\,\beta\to\beta.
+\]
+This used to be papered over by \rref{U-Inst1}, which turned out to be unsound and has been
+removed. Now ascribing the latter to a variable $f$ of the former type is
+rejected though eta-expansion ($\lambda x.\,f\,x$ is accepted) circumvents it -- which aligns
+with GHC's behavior\footnote{The author verified this claim on his machine with GHC 9.14.1.}.
+
+\subparagraph{Let-expression.}
+``Let should not be generalized'' is a polemic about abolishing local let generalization for type system
+with complex extensions. While our system isn't complex enough to justify that, the author's exposition
+about generalizing in OutsideIn(X) remains relevant to us as well: A to-be-generalized free var shared by both
+pending predicates and result types would be erroneously monomorphized by solve-time
+resolution the pool introduces, missing what could be generalized.
+
+\begin{mathpar}
+  \drule{I-Let}
+\end{mathpar}
+where $L$ denotes the constraint set that contains \emph{leftover} equations;
+\textsf{rigidize} and \textsf{unskolem} kept opaque for brevity.
+
+OutsideIn(X) proposes the concept of ``untouchables'' to bar refinement from touching those variables.
+While we could do some plumbing in the pool and maintain a so-called \emph{untouchable set}, the
+straightfoward, readily available tool in our system is \emph{skolemization}. Thus, typing a Let-expression
+requires the following steps:
+
+\begin{enumerate}
+  \item Solves the group's equations to exhaustion with refinement disabled. Which always makes sense
+    whether we take predicate constraint into consideration or not.
+  \item Skolemizes the abstract-able\footnote{
+      The exact condition is given in the rules; A crucial point is that
+      we must not quantify over free vars in $L$ since they are determined
+      by the pool, not \emph{robbed} by us;
+      Also, ``abstract'' and ``generalize'' are used interchangably.
+    }
+    free vars on top of the substituted result from step 1.
+  \item Re-solve again with refinement enabled.
+  \item Manually consume the group's constraint to avoid
+    outer pools re-solving the same, unskolemized constraints, otherwise it defeats
+    the very work we've done. Given the fact that the pool is non-consuming in the sense it does not
+    consumes constraints by itself. Practically, \texttt{solveAll} isn't even in the typechecking
+    monad \texttt{InferC}, pure-by-construction.
+  \item Finally, undo step 2 (unskolemize) and generalize by plain HM(X).
+\end{enumerate}
+
+\paragraph{Checking.}
+Checking monotypes is trivial. It is more interesting to see what unrestricted
+binding under checking allows us to achieve.
+
+\drules[C]{$[[R ; G |= e <= ty | Cs]]$}{term checking}{Skol,Default,Lam-Mono,Lam-Poly}
+\Rref{C-Skol} is also a derivation of the shallow subsumption.
+This way we can make sure the type of $[[e]]$
+is as general (if not more) as that of the user.
+
+\Rref{Lam-Mono,Lam-Poly} are the keys to arbitrary-rank types. Concretely in \rref{Lam-Poly}
+the parameter is bound with the domain as-is, a scheme, so that a polymorphic parameter
+instantiates (\rref{I-Var}) at each use in the body.
+
+Impredicativity, on the other hand, comes with the representation. Since we allow a metavariable
+to bind anything (polytypes, specifically), a type variable may be instantiated with a polytype
+-- the impredicativity, by definition, of System F. For example, consider
+\begin{align*}
+  \texttt{run} &: (\forall s.\,s\to s)\to\textsf{Int},\\
+  \texttt{id}\,\textsf{run} &: ((\forall s.\,s\to s)\to\textsf{Int})\to((\forall s.\,s\to s)\to\textsf{Int}),\\
+  \texttt{Cons} &: (\forall\alpha.\,\alpha\to\alpha)\to\textsf{List}\,(\forall\alpha.\,\alpha\to\alpha)\to\textsf{List}\,(\forall\alpha.\,\alpha\to\alpha),
+\end{align*}
+where we instantiated quantified TVs with polytypes.
+Note the difference: a polytype at the top is aliased to a type variable only from a type, as in the latter,
+never from a term, since \rref{I-Var,C-Default} instantiate it first -- so much for \textit{free}.
+However, such a solution is reached by equations alone
+(\rref{U-Var-Bind,U-TSch}), and a polytype that is only known after solving -- hidden behind a
+metavariable when the term was inferred or checked -- stays opaque. It is neither instantiated nor
+skolemized, and becomes usable only once it is syntactically visible again: through let-generalization,
+by substituting it in, or through an ascription; Plain program would get rejected\footnote{
+  see \texttt{examples/impred} for concrete programs.
+}.
+Polytypes in constructor fields, e.g.
+$\texttt{PCons} : (\forall\alpha.\,\alpha\to\alpha)\to\textsf{PList}\to\textsf{PList}$, are
+unaffected, since the field's type is visible both when constructing and when matching.
+
+Notice the claim is quantified with \textit{partial}. The deleted \rref{U-Inst1} instantiated any forall against
+non-polys in an equation thus a polytype behind a metavariable \emph{was} instantiated at its uses:
+\texttt{(id run) id}, \texttt{apply g 1 id}, $[\texttt{id}] : \textsf{List}\,(\forall\alpha.\,\alpha\to\alpha)$, and matching an element out of such a list to
+apply it all typechecked. That part of impredicativity was obtained erroneously which we shall
+explain below.
+
+\paragraph{Instantiation.}
+A central part of our typechecker, which, is especially the case after first-order refactoring,
+unification is no longer higher-order -- homogenous unification for polytypes up to renaming
+by \rref{U-TSch}. Instantiation thus happens in
+\rref{I-Var,I-App-Arrow,C-Default} and \rref{Spec} of rank-1 ascription, where we know
+the provided and expected types.
+
+\begin{remark}[Why \rref{U-Inst1} is unsound]
+  There used to be one more instantiation, \rref{U-Inst1}, inside unification: a scheme
+  $[[forall </ tvi // i /> . ty]]$ against a monotype $[[ty']]$ instantiated $[[</ tvi // i />]]$
+  with fresh metavariables and unified the body with $[[ty]]$.
+  \begin{mathpar}
+    \drule{U-InstOne}
+  \end{mathpar}
+  It was meant for rank-n functions
+  hiding behind a metavariable e.g. \texttt{apply g 1 id}, on the grounds that skolemizing instead
+  would reject $\forall\alpha.\,\alpha\to\alpha \sim \beta\to\textsf{Bool}$, which solves with
+  $\alpha\mapsto\textsf{Bool}$. That argument -- $\vdash\mathsf{i}\sigma\Rightarrow\tau$ holds only for
+  \begin{enumerate}
+    \item a poly on the \emph{provided} side,
+    \item the check is at the top of that provided/expected comparison.
+  \end{enumerate}
+  but binrel $(\sim)$ is commutative -- equation commutes and \rref{U-Inst1}
+  isn't guaranteed to be at the top -- we satisfies neither.
+  Specifically, unification is symmetric (though not shown, the rules are implicitly commutative),
+  and \rref{U-Arr,U-Prod,U-App} recurse into arrow domains first (where the direction flips)
+  and type arguments before the rule is reached. To put it simply, \rref{U-Inst1} instantiated polytypes that \textit{should've stayed poly}
+  -- the solution (substs) need not equate both sides
+  -- the one thing unification promises.
+  If we were to keep it, we would unsoundly accept:
+  \begin{itemize}
+    \item $h : (\textsf{Int}\to\textsf{Int})\to\textsf{Int}$ aliased to
+      $k : (\forall\alpha.\,\alpha\to\alpha)\to\textsf{Int}$, rank-2 only: $k$ applies its argument
+      to \texttt{true}, and $h$ passes it a \texttt{(1 + \_)};
+    \item \texttt{apply g 1} $(\lambda x.\,x+1)$, the very case the rule was for, with a $g$
+      that applies its argument to \texttt{true};
+    \item \texttt{x ++ y} where $x : \textsf{List}\,(\textsf{Int}\to\textsf{Int}),\, y : \textsf{List}\,(\forall\alpha.\,\alpha\to\alpha)$: the pool first solves the metavariable
+      of \texttt{(++)} to the polytype, then the rule accepts
+      $\textsf{List}\,(\textsf{Int}\to\textsf{Int}) \sim \textsf{List}\,(\forall\alpha.\,\alpha\to\alpha)$
+      under $\textsf{List}$.
+  \end{itemize}
+  It is now removed at the expense of impredicativity discussed under Checking\footnote{
+    \texttt{error/\{rankn-\{contra,mv\},impred-share\}} have more counterexamples.
+  }.
+\end{remark}
+
+\end{document}

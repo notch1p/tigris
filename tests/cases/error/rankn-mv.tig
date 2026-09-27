@@ -1,0 +1,12 @@
+-- g's domain hides behind apply's result MV when the lambda is inferred,
+-- so accepting it would have to erroneously instantiate the forall.
+-- see also prog3, exampels/rankn-app
+
+let g x f : Int -> (forall a, a -> a) -> Int = 
+  if f true 
+  then f x 
+  else 0
+
+and apply f x = f x
+
+let main = apply g 1 (fun x => x + 1) -- should reject

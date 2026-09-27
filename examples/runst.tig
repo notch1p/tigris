@@ -2,7 +2,7 @@
 let id x = x
 let run : (forall s, s -> s) -> Int = fun f => f 1
 let main' = 
-  let main' = id run -- we have *some* impredicativity, see also tests/cases/impred
+  let main' = id run -- we have *some* impredicativity, see also examples/impred
   main' id -- == main
 let main  = run id
 

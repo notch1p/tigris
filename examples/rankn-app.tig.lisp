@@ -7,7 +7,7 @@ and apply : ∀α β, (α → β) → α → β = Λ α β. fun f : α → β =>
 
 let prog1 : Int = g 1 id@?m.0
 and prog2 : Int = let k : (∀a, a → a) → Int = g 1 in k id@?m.0
-and prog3 : Int = apply@Int@((?m.10 → ?m.10) → Int) g 1 id@?m.10
+and prog3 : Int = apply@Int@((∀a, a → a) → Int) g 1 id@?m.6
 and main : Int × Int × Int = ⟨prog1, ⟨prog2, prog3⟩⟩
 ;; == Runtime ==
 (load "runtime.lisp")

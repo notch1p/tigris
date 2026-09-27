@@ -35,6 +35,10 @@ def execCases : Array TestSpec :=
                                                                  (.pair (.int 1) (.int 1))   )
   , (examples/"typeclass0" , r"(3 . 1)"                      , .pair (.int 3) (.int 1)       )
   , (examples/"hkt-eta"    , r"#S(|c/Some| :|tag| 0 :|f0| 3)", .constr "Some" #[.int 3]      )
+  , (examples/"impred"     , r"(1 1 1 1 . T)"                , .pair (.int 1)
+                                                                 (.pair (.int 1)
+                                                                   (.pair (.int 1)
+                                                                     (.pair (.int 1) (.bool true))))  )
   , (examples/"let-gen"    , r""
                            , .constr "Mk" #[ .constr "Mk" #[.bool true, .bool false]
                                            , .constr "Mk" #[.bool true, .bool false]]        )]
@@ -51,7 +55,10 @@ def errorCases : Array TestSpec :=
   , (error/"amb2"       , "Can't unify")
   , (error/"amb"        , "Ambiguous: HEq")
   , (error/"recinst-fun", "Ambiguous: Eq (List")
-  , (error/"imp6"       , "Can't unify")]
+  , (error/"imp6"       , "Can't unify")
+  , (error/"rankn-contra", "Can't unify")
+  , (error/"rankn-mv"   , "Can't unify")
+  , (error/"impred-share", "Can't unify")]
   |>.map fun (p, s) => {name := name p, path := p.addExtension "tig", expected := s}
 where error := cases/fp "error"
 

@@ -1,3 +1,6 @@
+-- previously this is unsound via U-Inst1. But now it's gone, this
+-- gets correctly rejected.
+
 type List a = Nil | Cons a (List a)
 
 infixr 90 "::" => Cons
@@ -11,21 +14,25 @@ let rec xs ++ ys =
 
 -- f : List (forall a, a -> a)
 -- f': List (Int -> Int)
-let (f, f') :: _ =
-  let x = (1 + _) :: Nil
-      y : List (forall a, a -> a)
-        = (fun x => x) :: Nil
-
-  (x ++ y, y ++ x)
+let f  = x ++ y
+and f' = y ++ x
+where
+  x = (1 + _) :: Nil
+  y : List (forall a, a -> a)
+    = (fun x => x) :: Nil
 
 
 let main = do
+  let (f  :: _) = f
+  let (f' :: _) = f'
 
   -- Low-level error: Interpreter: expected Int, found true
   -- Current Frame:
   --    FVar   Value
   --      12   true
-  f true
+  -- f true
 
   -- can't unify Bool with Int
-  f' true
+  -- f' true
+
+  (f, f')

@@ -1,0 +1,12 @@
+-- instantiating the forall in k's negative position 
+-- would let h pass a mono function where k requires
+-- a more general one.
+
+let k g : (forall a, a -> a) -> Int = 
+  if g true 
+  then g 1 
+  else 0
+
+and h : (Int -> Int) -> Int = k -- must reject
+
+let main = h (1 + _)

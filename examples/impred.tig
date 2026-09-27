@@ -1,0 +1,34 @@
+-- a new example demonstrate the partial impredicativity we 
+-- obtained for free after the removal of U-Inst1
+
+type List a = Nil | Cons a (List a)
+abbrev Id = ∀a, a -> a
+
+infixr 90 "::" => Cons
+
+let id x = x
+and head l = match l with | x :: _ => x
+and run : Id -> Int = fun f => f 1
+and g : Int -> Id -> Int = fun x f => f x
+and apply f x = f x
+
+-- A polytype at the top is instantiated by I-Var and C-Default first.
+-- we manually recover the impredicativity of Cons by annotating it.
+let consP : Id -> List Id -> List Id = Cons
+
+let main = (ex1, ex2, ex3, ex4)
+where -- uses let generalization to recover the polytype.
+
+  ex1 = let r = id run             -- id at (∀s, s -> s) -> Int.
+        r id
+
+  ex2 = let r = head (run :: Nil)  -- (::) and head at (∀s, s -> s) -> Int.
+        r id
+
+  ex3 = let k = apply g 1          -- apply's result at (∀a, a -> a) -> Int.
+        k id
+
+  ex4 =                            -- List and head at ∀a, a -> a; the elements are checked against consP's visible domain.
+    let ids = consP (fun x => x) (consP id Nil)
+        f = head ids
+    (f 1, f true)

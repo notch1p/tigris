@@ -1,0 +1,17 @@
+-- one instantiation of (++) shared by a mono list and a poly list
+-- and whichever binds the MV first, the other
+-- list's elements would have to be instantiated or generalized under List.
+-- see also examples/unsound2
+
+type List a = Nil | Cons a (List a)
+
+infixl 50 "++"
+infixr 90 "::" => Cons
+
+let rec xs ++ ys =
+  match xs, ys with
+  | Nil, ys => ys
+  | x :: xs, ys => x :: (xs ++ ys)
+
+let f ys : List (forall a, a -> a) -> List (forall a, a -> a) 
+         = ((1 + _) :: Nil) ++ ys -- should reject
